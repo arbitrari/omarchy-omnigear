@@ -29,6 +29,8 @@ var Entries = []model.Entry{
 		},
 		// Every capability this model declares is now driven, HITS included.
 		Support: model.SupportFull,
+		// A white shell with black left and right clicks.
+		Icon: "mouse-two-tone",
 		Capabilities: []model.Capability{
 			model.CapBattery,
 			model.CapDPI,

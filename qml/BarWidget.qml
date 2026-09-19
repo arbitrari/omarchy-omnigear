@@ -3,6 +3,7 @@ import Quickshell
 import qs.Commons
 import qs.Ui
 import "Model.js" as Model
+import "ui"
 
 // The bar entry: one icon for the device that most needs attention, with every
 // connected device in the tooltip. Clicking it opens the drill-down.
@@ -134,15 +135,17 @@ BarWidget {
                         width: glyph.implicitWidth + (bolt.visible ? bolt.implicitWidth : 0)
                         height: glyph.implicitHeight
 
-                        Text {
+                        // The same component the panel cards use, so a device
+                        // with a look of its own keeps it here. `size` is a
+                        // font pixel size, so this lands exactly where the
+                        // plain glyph did.
+                        DeviceIcon {
                             id: glyph
                             anchors.left: parent.left
                             anchors.verticalCenter: parent.verticalCenter
-                            text: Model.barIcon(gear.primary)
-                            textFormat: Text.PlainText
-                            color: button.foreground
-                            font.family: button.fontFamily
-                            font.pixelSize: button.fontSize
+                            bar: root.bar
+                            device: gear.primary
+                            size: button.fontSize
                         }
 
                         Text {

@@ -64,6 +64,7 @@ function parseDevice(raw) {
     support: safeText(d.support, "planned", 16),
     connected: s.connected !== false,
     connection: parseConnection(d.connection),
+    icon: safeText(d.icon, "", 32),
     onboardProfile: safeText(s.onboardProfile, "", 16),
     capabilities: Array.isArray(d.capabilities) ? d.capabilities : [],
     battery: parseBattery(s.battery),
@@ -202,13 +203,8 @@ function barCharge(device, showPercentage) {
   return batteryText(device.battery.percent)
 }
 
-/// The device glyph for the bar.
-function barIcon(device) {
-  return device ? categoryIcon(device.category) : categoryIcon("")
-}
-
 /// How many icon slots the bar label needs, so the widget reserves the right
-/// width for whatever barCharge and barIcon are about to draw.
+/// width for the charge reading and the device icon beside it.
 function barSlots(device, showPercentage) {
   var slots = 1.0
   if (showPercentage && device && device.battery) slots += 1.2

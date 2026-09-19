@@ -163,6 +163,10 @@ type Entry struct {
 	Names        []string
 	Support      Support
 	Capabilities []Capability
+	// Icon names a drawing style for models that look like something in
+	// particular. Empty means the plain category icon, which is the right
+	// answer for almost everything.
+	Icon string
 	// Driver is nil for a planned model: it is listed, and nothing more.
 	Driver Driver
 }
@@ -627,6 +631,7 @@ type DeviceJSON struct {
 	Slug         string       `json:"slug"`
 	Support      Support      `json:"support"`
 	Capabilities []Capability `json:"capabilities"`
+	Icon         string       `json:"icon,omitempty"`
 	Connection   Connection   `json:"connection"`
 	Path         string       `json:"path"`
 	State        DeviceState  `json:"state"`
@@ -642,6 +647,7 @@ func (d *Device) JSON(state DeviceState) DeviceJSON {
 		Slug:         d.Entry.Slug,
 		Support:      d.Entry.Support,
 		Capabilities: nonNilCapabilities(d.Entry.Capabilities),
+		Icon:         d.Entry.Icon,
 		Connection:   ConnectionOf(d.Node),
 		Path:         d.Node.Path,
 		State:        state,

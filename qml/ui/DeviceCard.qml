@@ -107,12 +107,11 @@ Rectangle {
                     font.pixelSize: Style.font.title
                 }
 
-                Text {
+                DeviceIcon {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: Model.categoryIcon(root.device ? root.device.category : "")
-                    color: root.foreground
-                    font.family: "monospace"
-                    font.pixelSize: Style.font.heading
+                    bar: root.bar
+                    device: root.device
+                    size: Style.font.heading
                 }
 
                 Column {
