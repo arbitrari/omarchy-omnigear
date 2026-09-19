@@ -1,0 +1,28 @@
+#!/bin/bash
+# Build OmniGear and install it into the running shell.
+#
+# Mirrors what `omarchy plugin add` produces — the repo, minus build output —
+# so what you test is what a user would get. Saving a file under the plugins
+# directory makes the shell reload plugin code on its own; the explicit rescan
+# is here for the first install, when there is nothing yet to reload.
+
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+REPO="$PWD"
+ID=$(jq -r '.id' manifest.json)
+TARGET="$HOME/.config/omarchy/plugins/$ID"
+
+echo "building omnigear..."
+mise exec -- go build -ldflags="-s -w" -o bin/omnigear .
+
+echo "installing $ID -> $TARGET"
+mkdir -p "$TARGET"
+rsync -a --delete \
+  --exclude '.git' \
+  --exclude '/scripts' \
+  "$REPO/" "$TARGET/"
+
+omarchy plugin validate "$TARGET"
+omarchy-shell shell rescanPlugins >/dev/null
+echo "installed. enable it with: omarchy plugin enable $ID"

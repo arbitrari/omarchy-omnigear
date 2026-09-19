@@ -1,0 +1,365 @@
+// Package model is the vocabulary every device in the catalog is described
+// with.
+//
+// Nothing here knows how to talk to hardware. A Driver turns a Device into a
+// DeviceState; the QML side only ever sees the JSON these types marshal to.
+package model
+
+import (
+	"fmt"
+	"strconv"
+
+	"github.com/arbitrari/omarchy-omnigear/internal/transport/hidraw"
+)
+
+// Category is what kind of peripheral it is. One per "###" section of the
+// README.
+type Category string
+
+const (
+	Mouse    Category = "mouse"
+	Keyboard Category = "keyboard"
+	Headset  Category = "headset"
+)
+
+// Brand is who makes it. One per "####" section of the README.
+type Brand string
+
+const (
+	Logitech    Brand = "logitech"
+	Razer       Brand = "razer"
+	Corsair     Brand = "corsair"
+	Glorious    Brand = "glorious"
+	FinalMouse  Brand = "finalmouse"
+	Keychron    Brand = "keychron"
+	SteelSeries Brand = "steelseries"
+	HyperX      Brand = "hyperx"
+	Sony        Brand = "sony"
+	Apple       Brand = "apple"
+	Google      Brand = "google"
+	Nothing     Brand = "nothing"
+	OnePlus     Brand = "oneplus"
+)
+
+// brandLabels are the names as the README prints them.
+var brandLabels = map[Brand]string{
+	Logitech:    "Logitech",
+	Razer:       "Razer",
+	Corsair:     "Corsair",
+	Glorious:    "Glorious",
+	FinalMouse:  "FinalMouse",
+	Keychron:    "Keychron",
+	SteelSeries: "Steelseries",
+	HyperX:      "HyperX",
+	Sony:        "Sony",
+	Apple:       "Apple",
+	Google:      "Google",
+	Nothing:     "Nothing",
+	OnePlus:     "OnePlus",
+}
+
+func (b Brand) Label() string {
+	if label, ok := brandLabels[b]; ok {
+		return label
+	}
+	return string(b)
+}
+
+// Support is how far along support for a model is. Mirrors the README's
+// traffic lights.
+type Support string
+
+const (
+	// SupportFull — every capability the model has is implemented.
+	SupportFull Support = "full"
+	// SupportPartial — the model is driven, but some capabilities are missing.
+	SupportPartial Support = "partial"
+	// SupportPlanned — catalogued, not implemented.
+	SupportPlanned Support = "planned"
+)
+
+func (s Support) Emoji() string {
+	switch s {
+	case SupportFull:
+		return "🟩"
+	case SupportPartial:
+		return "🟨"
+	default:
+		return "🟥"
+	}
+}
+
+// Capability is a thing a device can report or be told to do.
+//
+// Capabilities are the contract between a driver and the UI: a driver declares
+// which of these a model has, and the panel renders the matching control. A
+// new device never needs new QML — only a new catalog entry.
+type Capability string
+
+const (
+	CapBattery     Capability = "battery"
+	CapDPI         Capability = "dpi"
+	CapPollingRate Capability = "polling-rate"
+	// CapHITS — Haptic Inductive Trigger System, analog left/right click.
+	CapHITS Capability = "hits"
+	// CapLOD — lift-off distance.
+	CapLOD Capability = "lod"
+	// CapOnboardProfile — onboard vs host profile storage.
+	CapOnboardProfile Capability = "onboard-profile"
+)
+
+// USBID is a vendor/product pair a model shows up as. A model that enumerates
+// differently wired and wireless lists both.
+type USBID struct {
+	Vendor  uint16 `json:"vendor"`
+	Product uint16 `json:"product"`
+}
+
+func (id USBID) String() string {
+	return fmt.Sprintf("%04X:%04X", id.Vendor, id.Product)
+}
+
+// Driver knows how to read and write a family of devices. The catalog knows
+// which models use it. Keeping the two apart is what stops every new Logitech
+// mouse from needing new code.
+type Driver interface {
+	// Name is a human-readable name for diagnostics.
+	Name() string
+
+	// Read returns everything the device's catalog entry claims it can do.
+	// Individual capability failures land in DeviceState.Errors rather than
+	// failing the whole read — a mouse whose DPI read times out should still
+	// show its battery.
+	Read(device *Device) DeviceState
+
+	// Write applies one change.
+	Write(device *Device, setting Setting) error
+}
+
+// Entry is one model, as catalogued. Entries live next to the driver that
+// handles them, under devices/<category>/<brand>/.
+type Entry struct {
+	// Model is the name exactly as the README prints it.
+	Model string
+	// Slug is the stable identifier used in device ids and CLI arguments.
+	Slug         string
+	Brand        Brand
+	Category     Category
+	USB          []USBID
+	Support      Support
+	Capabilities []Capability
+	// Driver is nil for a planned model: it is listed, and nothing more.
+	Driver Driver
+}
+
+func (e *Entry) Has(capability Capability) bool {
+	for _, c := range e.Capabilities {
+		if c == capability {
+			return true
+		}
+	}
+	return false
+}
+
+func (e *Entry) Matches(vendor, product uint16) bool {
+	for _, id := range e.USB {
+		if id.Vendor == vendor && id.Product == product {
+			return true
+		}
+	}
+	return false
+}
+
+// Device is a catalogued model that is actually plugged in right now.
+type Device struct {
+	Entry *Entry
+	// ID is "<category>/<brand>/<slug>", plus "#<serial>" when the kernel
+	// knows one. Deliberately the same shape as the source path the driver
+	// lives at.
+	ID string
+	// Node is the hidraw node that answered.
+	Node hidraw.Node
+}
+
+// --- state -----------------------------------------------------------------
+
+type Battery struct {
+	// Percent is nil when the device reports only a coarse level.
+	Percent *int `json:"percent"`
+	// Level is "critical", "low", "good" or "full", for devices that bucket.
+	Level string `json:"level,omitempty"`
+	// Status is "discharging", "charging", "full" or "unknown".
+	Status string `json:"status"`
+}
+
+type DPI struct {
+	Current uint32 `json:"current"`
+	Min     uint32 `json:"min"`
+	Max     uint32 `json:"max"`
+	Step    uint32 `json:"step"`
+	// Presets are stops worth offering; empty means "use min/max/step".
+	Presets []uint32 `json:"presets"`
+}
+
+type PollingRate struct {
+	// Current is in Hz.
+	Current   uint32   `json:"current"`
+	Supported []uint32 `json:"supported"`
+}
+
+type HITSButton struct {
+	Actuation    uint8 `json:"actuation"`
+	RapidTrigger uint8 `json:"rapidTrigger"`
+	Haptics      uint8 `json:"haptics"`
+}
+
+type HITS struct {
+	Left  HITSButton `json:"left"`
+	Right HITSButton `json:"right"`
+}
+
+// DeviceState is everything a driver managed to read. Every field is optional:
+// a capability the device claims but the read failed for comes back null with
+// a line in Errors, rather than failing the whole device.
+type DeviceState struct {
+	Battery        *Battery     `json:"battery"`
+	DPI            *DPI         `json:"dpi"`
+	PollingRate    *PollingRate `json:"pollingRate"`
+	HITS           *HITS        `json:"hits"`
+	LOD            *string      `json:"lod"`
+	OnboardProfile *string      `json:"onboardProfile"`
+	// Errors holds non-fatal problems, one per capability that could not be
+	// read. Never nil, so it marshals as [] rather than null.
+	Errors []string `json:"errors"`
+}
+
+func NewDeviceState() DeviceState {
+	return DeviceState{Errors: []string{}}
+}
+
+func (s *DeviceState) Fail(capability Capability, err error) {
+	s.Errors = append(s.Errors, fmt.Sprintf("%s: %v", capability, err))
+}
+
+// --- settings --------------------------------------------------------------
+
+type SettingKey string
+
+const (
+	SettingDPI         SettingKey = "dpi"
+	SettingPollingRate SettingKey = "polling-rate"
+)
+
+// Setting is a change the UI asks for.
+type Setting struct {
+	Key   SettingKey
+	Value uint32
+}
+
+// ParseSetting parses the key and value of `omnigear set <device> <key> <value>`.
+func ParseSetting(key, value string) (Setting, error) {
+	var settingKey SettingKey
+	switch key {
+	case "dpi":
+		settingKey = SettingDPI
+	case "polling-rate", "rate":
+		settingKey = SettingPollingRate
+	default:
+		return Setting{}, fmt.Errorf("unknown setting %q (expected one of: dpi, polling-rate)", key)
+	}
+
+	number, err := strconv.ParseUint(value, 10, 32)
+	if err != nil {
+		return Setting{}, fmt.Errorf("%q is not a whole number", value)
+	}
+	return Setting{Key: settingKey, Value: uint32(number)}, nil
+}
+
+// Reading pulls the one number a setting is about back out of a fresh read.
+// The second result is false when the device did not report it at all.
+func (s *DeviceState) Reading(key SettingKey) (uint32, bool) {
+	switch key {
+	case SettingDPI:
+		if s.DPI != nil {
+			return s.DPI.Current, true
+		}
+	case SettingPollingRate:
+		if s.PollingRate != nil {
+			return s.PollingRate.Current, true
+		}
+	}
+	return 0, false
+}
+
+// --- json ------------------------------------------------------------------
+
+// EntryJSON is a catalog entry as JSON: the support matrix, with no hardware
+// present.
+type EntryJSON struct {
+	Model        string       `json:"model"`
+	Slug         string       `json:"slug"`
+	Brand        Brand        `json:"brand"`
+	BrandLabel   string       `json:"brandLabel"`
+	Category     Category     `json:"category"`
+	Support      Support      `json:"support"`
+	Capabilities []Capability `json:"capabilities"`
+	USB          []USBID      `json:"usb"`
+}
+
+func (e *Entry) JSON() EntryJSON {
+	return EntryJSON{
+		Model:        e.Model,
+		Slug:         e.Slug,
+		Brand:        e.Brand,
+		BrandLabel:   e.Brand.Label(),
+		Category:     e.Category,
+		Support:      e.Support,
+		Capabilities: nonNilCapabilities(e.Capabilities),
+		USB:          nonNilUSB(e.USB),
+	}
+}
+
+// DeviceJSON is a device plus its live state, as the QML side consumes it.
+type DeviceJSON struct {
+	ID           string       `json:"id"`
+	Name         string       `json:"name"`
+	Brand        Brand        `json:"brand"`
+	BrandLabel   string       `json:"brandLabel"`
+	Category     Category     `json:"category"`
+	Slug         string       `json:"slug"`
+	Support      Support      `json:"support"`
+	Capabilities []Capability `json:"capabilities"`
+	Path         string       `json:"path"`
+	State        DeviceState  `json:"state"`
+}
+
+func (d *Device) JSON(state DeviceState) DeviceJSON {
+	return DeviceJSON{
+		ID:           d.ID,
+		Name:         d.Entry.Model,
+		Brand:        d.Entry.Brand,
+		BrandLabel:   d.Entry.Brand.Label(),
+		Category:     d.Entry.Category,
+		Slug:         d.Entry.Slug,
+		Support:      d.Entry.Support,
+		Capabilities: nonNilCapabilities(d.Entry.Capabilities),
+		Path:         d.Node.Path,
+		State:        state,
+	}
+}
+
+// Empty slices marshal as [], nil marshals as null. The UI iterates these, so
+// they are always a list.
+func nonNilCapabilities(in []Capability) []Capability {
+	if in == nil {
+		return []Capability{}
+	}
+	return in
+}
+
+func nonNilUSB(in []USBID) []USBID {
+	if in == nil {
+		return []USBID{}
+	}
+	return in
+}
