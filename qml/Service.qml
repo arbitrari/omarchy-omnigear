@@ -18,11 +18,11 @@ Item {
     readonly property bool ok: internal.state.ok
     readonly property string error: internal.state.error
     readonly property var primary: Model.primary(internal.state.devices)
-    readonly property bool busy: listProcess.running
+    readonly property bool busy: listProcess.running || setProcess.running
 
     readonly property int pollIntervalSec: {
-        var configured = settings ? Number(settings.pollInterval) : NaN
-        return Math.max(5, configured || 20)
+        var configured = settings ? Number(settings.pollInterval) : NaN;
+        return Math.max(5, configured || 20);
     }
 
     // Resolved from this file's own location rather than the plugin id, so the
@@ -40,8 +40,9 @@ Item {
             listProcess.running = true;
     }
 
-    // `set` writes, verifies against hardware, and returns the device fresh —
-    // so the reply is used as the new state rather than re-polling after it.
+    // Ask the CLI to write a setting. It verifies against hardware and replies
+    // with the device as it actually ended up, so the reply is the new truth
+    // and there is no need to poll again behind it.
     function apply(deviceId, key, value) {
         if (setProcess.running)
             return;
@@ -56,6 +57,22 @@ Item {
         property var state: Model.emptyState()
         property string pendingId: ""
         property string pendingKey: ""
+
+        // Replace one device in place, leaving the others alone. A `set` reply
+        // carries only the device it wrote; the rest of the list is still good.
+        function merge(device) {
+            if (!device)
+                return;
+            var next = state.devices.map(function (existing) {
+                return existing.id === device.id ? device : existing;
+            });
+            state = {
+                ok: state.ok,
+                devices: next,
+                error: state.error,
+                note: state.note
+            };
+        }
     }
 
     Process {
@@ -75,12 +92,21 @@ Item {
             waitForEnd: true
             onStreamFinished: {
                 var reply = Model.parse((setOut.text || "").trim());
-                // A `set` reply carries one device, not a list; a failed one
-                // carries only the error. Either way, re-read to stay truthful.
-                root.applied(internal.pendingId, internal.pendingKey, reply.ok, reply.error);
+                var deviceId = internal.pendingId;
+                var key = internal.pendingKey;
                 internal.pendingId = "";
                 internal.pendingKey = "";
-                root.refresh();
+
+                if (reply.ok && reply.devices.length > 0) {
+                    internal.merge(reply.devices[0]);
+                    root.applied(deviceId, key, true, reply.note);
+                } else {
+                    // The write was refused, or went through and changed
+                    // nothing. Re-read so the panel shows the device as it is
+                    // rather than as it was asked to be.
+                    root.applied(deviceId, key, false, reply.error);
+                    root.refresh();
+                }
             }
         }
     }

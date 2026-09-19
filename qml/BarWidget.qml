@@ -1,18 +1,25 @@
 import QtQuick
+import Quickshell
 import qs.Commons
 import qs.Ui
 import "Model.js" as Model
 
 // The bar entry: one icon for the device that most needs attention, with every
-// connected device in the tooltip. The drill-down panel comes next.
+// connected device in the tooltip. Clicking it opens the drill-down.
 BarWidget {
     id: root
     moduleName: "io.github.arbitrari.omnigear"
+
+    readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
+    readonly property bool popoutSwitchClosing: panelLoader.item
+        ? panelLoader.item.popoutSwitchClosing === true : false
 
     readonly property bool showPercentage: setting("showPercentage", true) === true
 
     implicitWidth: button.implicitWidth
     implicitHeight: button.implicitHeight
+
+    onBarChanged: injectPanel()
 
     function togglePercentage() {
         root.settings = Object.assign({}, root.settings, {
@@ -22,16 +29,59 @@ BarWidget {
             root.bar.shell.updateEntryInline(root.moduleName, root.settings);
     }
 
+    // The panel is a sibling component, so the bar has to hand it everything it
+    // needs: where to anchor, who owns it, and the one Service instance. Two
+    // services would mean two poll timers and two answers.
+    function injectPanel() {
+        if (!panelLoader.item)
+            return;
+        panelLoader.item.bar = root.bar;
+        panelLoader.item.anchorItem = button;
+        panelLoader.item.hostWidget = root;
+        panelLoader.item.gear = gear;
+    }
+
+    function open() {
+        if (panelLoader.item)
+            panelLoader.item.open();
+    }
+
+    function close() {
+        if (panelLoader.item)
+            panelLoader.item.close();
+    }
+
+    function toggle() {
+        if (panelLoader.item)
+            panelLoader.item.toggle();
+    }
+
+    function closeForPopoutSwitch() {
+        if (panelLoader.item)
+            panelLoader.item.closeForPopoutSwitch();
+    }
+
     Service {
         id: gear
         settings: root.settings
+    }
+
+    Loader {
+        id: panelLoader
+        active: true
+        source: Qt.resolvedUrl("DevicePanel.qml")
+        visible: false
+        onLoaded: {
+            root.injectPanel();
+            Qt.callLater(root.injectPanel);
+        }
     }
 
     BarIconButton {
         id: button
         anchors.fill: parent
         bar: root.bar
-        active: false
+        active: root.opened
         useActiveColor: false
         slotSize: Style.bar.iconSlot * (root.showPercentage && gear.primary ? 2.2 : 1.0)
         tooltipText: Model.tooltip(gear.state)
@@ -50,7 +100,7 @@ BarWidget {
 
         onPressed: function (code) {
             if (code === Qt.LeftButton)
-                gear.refresh();
+                root.toggle();
             else if (code === Qt.RightButton)
                 root.togglePercentage();
         }

@@ -2,9 +2,14 @@
 # Build OmniGear and install it into the running shell.
 #
 # Mirrors what `omarchy plugin add` produces — the repo, minus build output —
-# so what you test is what a user would get. Saving a file under the plugins
-# directory makes the shell reload plugin code on its own; the explicit rescan
-# is here for the first install, when there is nothing yet to reload.
+# so what you test is what a user would get.
+#
+# The shell notices a changed plugin file and logs that it is reloading, but a
+# bar widget that is already on the bar keeps its existing instance: QML edits
+# do not take effect until the shell restarts. Only the Go binary picks up
+# changes on its own, because it is re-run on every poll. So this restarts the
+# shell, which is disruptive but is the difference between testing your changes
+# and testing the last ones.
 
 set -euo pipefail
 
@@ -24,5 +29,14 @@ rsync -a --delete \
   "$REPO/" "$TARGET/"
 
 omarchy plugin validate "$TARGET"
-omarchy-shell shell rescanPlugins >/dev/null
+
+if [[ ${1:-} == --no-restart ]]; then
+  omarchy-shell shell rescanPlugins >/dev/null
+  echo "installed (shell not restarted; QML changes will not be live)"
+else
+  echo "restarting shell so QML changes take effect..."
+  omarchy-restart-shell >/dev/null 2>&1 &
+  sleep 5
+fi
+
 echo "installed. enable it with: omarchy plugin enable $ID"
