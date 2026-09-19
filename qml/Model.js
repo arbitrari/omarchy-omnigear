@@ -332,12 +332,19 @@ function profileModeLabel(mode) {
   }
 }
 
+/// The word beside the percentage, and only when it adds something.
+///
+/// A discharging device gets no word at all. The device's own coarse level is
+/// not worth printing: an MX Master 3S reports "full" alongside 65%, so the
+/// two readings contradict each other on screen. The percentage is the honest
+/// one, and it is already there.
 function batteryStatusLabel(battery) {
   if (!battery) return ""
   switch (battery.status) {
   case "charging": return "Charging"
-  case "full": return "Full"
-  case "discharging": return battery.level ? titleCase(battery.level) : "On Battery"
+  // Charge complete while still on power — worth saying, because the
+  // percentage alone does not distinguish it from simply being near full.
+  case "full": return "Charged"
   default: return ""
   }
 }
