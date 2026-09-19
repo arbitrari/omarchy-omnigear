@@ -70,7 +70,8 @@ Column {
         }
     }
 
-    PanelSlider {
+    // SquaredSlider, not Omarchy's PanelSlider: same behaviour, squared corners.
+    SquaredSlider {
         id: slider
 
         visible: root.adjustable
