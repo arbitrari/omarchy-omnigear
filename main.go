@@ -174,7 +174,14 @@ func cmdSet(selector, key, value string) (reply, error) {
 			"device":    device.JSON(afterState),
 		}, nil
 	case known:
-		return nil, fmt.Errorf("device accepted the change but kept %d", after)
+		message := fmt.Sprintf("device accepted the change but kept %d", after)
+		// The most common cause is another HID++ client on the same node
+		// undoing the write. Name it rather than leave the caller guessing.
+		if holders := hidraw.OtherHolders(device.Node.Path); len(holders) > 0 {
+			message += fmt.Sprintf(" — %s also has %s open, which can revert writes",
+				hidraw.HolderList(holders), device.Node.Path)
+		}
+		return nil, fmt.Errorf("%s", message)
 	default:
 		return nil, fmt.Errorf("device accepted the change but will not report %s back", setting.Key)
 	}
@@ -198,6 +205,7 @@ type nodeReport struct {
 	Driver     string          `json:"driver"`
 	Uniq       string          `json:"uniq"`
 	Link       hidraw.Link     `json:"link"`
+	OpenedBy   []hidraw.Holder `json:"openedBy"`
 	Catalogued string          `json:"catalogued,omitempty"`
 	DeviceIdx  *int            `json:"hidppDeviceIndex"`
 	HIDPPName  string          `json:"hidppName,omitempty"`
@@ -243,6 +251,7 @@ func cmdProbe() (reply, error) {
 			Driver:   node.Driver,
 			Uniq:     node.Uniq,
 			Link:     node.Link,
+			OpenedBy: hidraw.OtherHolders(node.Path),
 			Features: []featureReport{},
 		}
 

@@ -114,6 +114,32 @@ source:
 - The polling rates on offer depend on the *link*: 125–1000 Hz on Lightspeed,
   125–8000 Hz on a cable. `hidraw.Node.Link` reads that off the sysfs parent.
 
+## You are not the only one talking to the device
+
+A hidraw node delivers every reply to **every** open reader. A second HID++
+client on the same mouse — Solaar, libratbag/Piper, a vendor plugin — is not
+partitioned from OmniGear: its replies arrive interleaved with ours, and its
+writes can revert ours moments after they land.
+
+The signature is a device that reads perfectly but will not keep a setting.
+It is unguessable from the outside, so both places that can see it say so:
+
+```bash
+omnigear probe    # every node lists `openedBy`
+# → { "path": "/dev/hidraw8", "openedBy": [{"pid": 1234, "name": "solaar"}] }
+```
+
+and a write that does not stick names the other client in its error rather
+than just reporting the stale value:
+
+```
+device accepted the change but kept 4000 — solaar (pid 1234) also has
+/dev/hidraw8 open, which can revert writes
+```
+
+Only same-user processes are visible through `/proc`, so an empty list means
+"nothing found", not "nothing there".
+
 ## Writes are verified, never assumed
 
 A device can accept a write and quietly ignore it. `omnigear set` therefore
