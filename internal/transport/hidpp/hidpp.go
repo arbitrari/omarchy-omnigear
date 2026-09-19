@@ -67,11 +67,15 @@ const maxSkippedReports = 4096
 
 // Well-known HID++ 2.0 feature ids used by this project.
 const (
+	// FeatureSet lists every feature a device implements, so a device can be
+	// asked what it can do rather than guessed at.
+	FeatureSet                uint16 = 0x0001
 	FeatureDeviceName         uint16 = 0x0005
 	FeatureBatteryStatus      uint16 = 0x1000
 	FeatureBatteryVoltage     uint16 = 0x1001
 	FeatureUnifiedBattery     uint16 = 0x1004
 	FeatureHITS               uint16 = 0x1B0C // Haptic Inductive Trigger System
+	FeatureSmartShift         uint16 = 0x2110
 	FeatureAdjustableDPI      uint16 = 0x2201
 	FeatureExtendedAdjustDPI  uint16 = 0x2202
 	FeatureReportRate         uint16 = 0x8060
@@ -523,4 +527,57 @@ func pairedCount(node hidraw.Node) int {
 		}
 	}
 	return maxPairedDevices
+}
+
+// Feature is one entry of a device's feature table.
+type Feature struct {
+	Index byte
+	ID    uint16
+	Type  byte
+}
+
+// Obsolete reports whether the device marks this feature as deprecated.
+func (f Feature) Obsolete() bool { return f.Type&0x80 != 0 }
+
+// Hidden reports whether the feature is one the device does not advertise for
+// ordinary use.
+func (f Feature) Hidden() bool { return f.Type&0x40 != 0 }
+
+// Features enumerates everything the device implements, via feature 0x0001.
+//
+// Probing ids one at a time only ever finds what is already known to look for.
+// This asks the device for its own table, which is how a new model's
+// capabilities get discovered rather than assumed.
+func (d *Device) Features() ([]Feature, error) {
+	index, err := d.FeatureIndex(FeatureSet)
+	if err != nil {
+		return nil, err
+	}
+
+	count, err := d.Call(index, 0x00)
+	if err != nil {
+		return nil, err
+	}
+	if len(count) == 0 {
+		return nil, ErrTimeout
+	}
+	total := int(count[0])
+
+	// Index 0 is the root feature, which the table does not count.
+	features := []Feature{{Index: 0, ID: 0x0000}}
+	for i := 1; i <= total; i++ {
+		reply, err := d.Call(index, 0x01, byte(i))
+		if err != nil {
+			return features, err
+		}
+		if len(reply) < 3 {
+			continue
+		}
+		features = append(features, Feature{
+			Index: byte(i),
+			ID:    uint16(reply[0])<<8 | uint16(reply[1]),
+			Type:  reply[2],
+		})
+	}
+	return features, nil
 }

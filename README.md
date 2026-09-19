@@ -33,22 +33,24 @@ Updates can be done directly in the plugin.
 <details>
 <summary><b>Logitech</b></summary>
 
-|  | Name | Battery | DPI | Polling | HITS* | Notes 
-|------|-----|-----|-----|-----|-----|-----|
-| 🟩 | PRO X2 SUPERSTRIKE  |🟩|🟩|🟩|🟩|Not configurable when using Onboard memory|
-| 🟥 | PRO X2 SUPERLIGHT 2 | | | | N/A | |
-| 🟥 | PRO X2 SUPERLIGHT   | | | | N/A | |
-| 🟥 | PRO 2 LIGHTSPEED    | | | | N/A | |
-| 🟥 | G502 X / PLUS       | | | | N/A | |
-| 🟥 | G309 LIGHTSPEED     | | | | N/A | |
-| 🟥 | G305                | | | | N/A | |
-| 🟥 | MX Master 4         | | | | N/A | |
-| 🟥 | MX Master 3S        | | | | N/A | |
-| 🟥 | MX Master 3         | | | | N/A | |
-| 🟥 | MX Master 2         | | | | N/A | |
-| 🟥 | MX Master           | | | | N/A | |
+|  | Name | Battery | DPI | Polling | HITS* | SmartShift** | Notes 
+|------|-----|-----|-----|-----|-----|-----|-----|
+| 🟩 | PRO X2 SUPERSTRIKE  |🟩|🟩|🟩|🟩| N/A |Not configurable when using Onboard memory|
+| 🟥 | PRO X2 SUPERLIGHT 2 | | | | N/A | | |
+| 🟥 | PRO X2 SUPERLIGHT   | | | | N/A | | |
+| 🟥 | PRO 2 LIGHTSPEED    | | | | N/A | | |
+| 🟥 | G502 X / PLUS       | | | | N/A | | |
+| 🟥 | G309 LIGHTSPEED     | | | | N/A | | |
+| 🟥 | G305                | | | | N/A | | |
+| 🟥 | MX Master 4         | | | | N/A | | |
+| 🟨 | MX Master 3S        | | | | N/A |🟩| |
+| 🟥 | MX Master 3         | | | | N/A | | |
+| 🟥 | MX Master 2         | | | | N/A | | |
+| 🟥 | MX Master           | | | | N/A | | |
  
 ***Haptic Inductive Trigger System:** configurable actuation points and haptic feedback for left and right click. In the plugin, this appears as a Triggers tab in the SUPERSTRIKE's Panel
+
+****Smartshift:** ability for the scroll wheel to automatically switch between ratcheting and smooth scroll. In the plugin, this appears as a Wheel tab in the XM Master family's Panel
 
 </details>
 

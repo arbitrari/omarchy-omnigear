@@ -234,23 +234,25 @@ type featureReport struct {
 	Feature string `json:"feature"`
 	ID      string `json:"id"`
 	Index   byte   `json:"index"`
+	Hidden  bool   `json:"hidden,omitempty"`
 }
 
-// knownFeatures are probed by name so a `probe` reads like a checklist.
-var knownFeatures = []struct {
-	Label string
-	ID    uint16
-}{
-	{"device-name", hidpp.FeatureDeviceName},
-	{"unified-battery", hidpp.FeatureUnifiedBattery},
-	{"battery-voltage", hidpp.FeatureBatteryVoltage},
-	{"battery-status", hidpp.FeatureBatteryStatus},
-	{"adjustable-dpi", hidpp.FeatureAdjustableDPI},
-	{"extended-adjustable-dpi", hidpp.FeatureExtendedAdjustDPI},
-	{"report-rate", hidpp.FeatureReportRate},
-	{"extended-report-rate", hidpp.FeatureExtendedReportRate},
-	{"onboard-profiles", hidpp.FeatureOnboardProfiles},
-	{"hits", hidpp.FeatureHITS},
+// featureNames are the ids worth recognising on sight. An id missing here is
+// still listed, just unnamed — the device's table is the source of truth, this
+// only makes it readable.
+var featureNames = map[uint16]string{
+	0x0000: "IRoot", 0x0001: "IFeatureSet", 0x0003: "DeviceInformation",
+	0x0005: "DeviceName", 0x0007: "DeviceFriendlyName", 0x0020: "ConfigChange",
+	0x0021: "UniqueID", 0x00C2: "DFUControl", 0x1000: "BatteryStatus",
+	0x1001: "BatteryVoltage", 0x1004: "UnifiedBattery", 0x1602: "PasswordAccess",
+	0x1802: "DeviceReset", 0x1814: "ChangeHost", 0x1815: "HostsInfo",
+	0x1830: "PowerModes", 0x18A1: "LEDTest", 0x1B04: "ReprogrammableKeys",
+	0x1B0C: "HITS", 0x1D4B: "WirelessDeviceStatus", 0x1E00: "EnableHiddenFeatures",
+	0x1E22: "SPIDirectAccess", 0x2100: "VerticalScrolling", 0x2110: "SmartShift",
+	0x2111: "SmartShiftEnhanced", 0x2121: "HiResWheel", 0x2130: "RatchetWheel",
+	0x2150: "Thumbwheel", 0x2201: "AdjustableDPI", 0x2202: "ExtendedAdjustableDPI",
+	0x2250: "AnalyticsData", 0x8060: "ReportRate", 0x8061: "ExtendedReportRate",
+	0x8100: "OnboardProfiles",
 }
 
 // cmdProbe lists every hidraw node, whether the catalog claims it, and for a
@@ -282,14 +284,18 @@ func cmdProbe() (reply, error) {
 				if name, err := link.Name(); err == nil {
 					report.HIDPPName = name
 				}
-				for _, feature := range knownFeatures {
-					if featureIndex, err := link.FeatureIndex(feature.ID); err == nil {
-						report.Features = append(report.Features, featureReport{
-							Feature: feature.Label,
-							ID:      fmt.Sprintf("0x%04X", feature.ID),
-							Index:   featureIndex,
-						})
+				features, _ := link.Features()
+				for _, feature := range features {
+					name := featureNames[feature.ID]
+					if name == "" {
+						name = "unknown"
 					}
+					report.Features = append(report.Features, featureReport{
+						Feature: name,
+						ID:      fmt.Sprintf("0x%04X", feature.ID),
+						Index:   feature.Index,
+						Hidden:  feature.Hidden(),
+					})
 				}
 				link.Close()
 			}
@@ -329,7 +335,14 @@ func cmdCall(selector, feature, function string, params []string) (reply, error)
 		return nil, err
 	}
 
-	link, err := hidpp.Open(device.Node)
+	// Address the device explicitly when it sits behind a receiver, exactly as
+	// the driver does; otherwise a raw call could land on the wrong one.
+	var link *hidpp.Device
+	if device.Index != 0 {
+		link, err = hidpp.OpenAt(device.Node, device.Index)
+	} else {
+		link, err = hidpp.Open(device.Node)
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -103,6 +103,9 @@ const (
 	CapPollingRate Capability = "polling-rate"
 	// CapHITS — Haptic Inductive Trigger System, analog left/right click.
 	CapHITS Capability = "hits"
+	// CapSmartShift — the ratcheting scroll wheel: whether it clicks or spins
+	// free, and how fast it must be flicked to break into a free spin.
+	CapSmartShift Capability = "smart-shift"
 	// CapLOD — lift-off distance.
 	CapLOD Capability = "lod"
 	// CapOnboardProfile — onboard vs host profile storage.
@@ -272,6 +275,55 @@ type PollingRate struct {
 	Supported []uint32 `json:"supported"`
 }
 
+// SmartShift is the scroll wheel's ratchet behaviour.
+type SmartShift struct {
+	// Mode is "ratchet" or "freespin".
+	Mode string `json:"mode"`
+	// Threshold is the flick speed that breaks a ratcheting wheel into a free
+	// spin. ThresholdNever means it never does.
+	Threshold uint8 `json:"threshold"`
+	// Default is the value the device shipped with, which it reports alongside
+	// the current one.
+	Default uint8 `json:"default"`
+	// Max is the largest value this project offers. The device takes a whole
+	// byte and does not report a range; past about this point the wheel
+	// effectively never shifts, which is what ThresholdNever is for.
+	Max uint8 `json:"max"`
+}
+
+// ThresholdNever is the threshold at which a ratcheting wheel never breaks
+// into a free spin.
+const ThresholdNever = 255
+
+// Wheel modes, as the device numbers them. Zero means "leave it alone".
+const (
+	WheelUnchanged = 0
+	WheelFreespin  = 1
+	WheelRatchet   = 2
+)
+
+func WheelModeName(value uint32) string {
+	switch value {
+	case WheelFreespin:
+		return "freespin"
+	case WheelRatchet:
+		return "ratchet"
+	default:
+		return "unknown"
+	}
+}
+
+func WheelModeValue(name string) (uint32, bool) {
+	switch name {
+	case "freespin":
+		return WheelFreespin, true
+	case "ratchet":
+		return WheelRatchet, true
+	default:
+		return 0, false
+	}
+}
+
 type HITSButton struct {
 	Actuation    uint8 `json:"actuation"`
 	RapidTrigger uint8 `json:"rapidTrigger"`
@@ -305,6 +357,7 @@ type DeviceState struct {
 	DPI            *DPI         `json:"dpi"`
 	PollingRate    *PollingRate `json:"pollingRate"`
 	HITS           *HITS        `json:"hits"`
+	SmartShift     *SmartShift  `json:"smartShift"`
 	LOD            *string      `json:"lod"`
 	OnboardProfile *string      `json:"onboardProfile"`
 	// Errors holds non-fatal problems, one per capability that could not be
@@ -328,6 +381,9 @@ const (
 	SettingDPI         SettingKey = "dpi"
 	SettingPollingRate SettingKey = "polling-rate"
 	SettingProfileMode SettingKey = "profile-mode"
+
+	SettingSmartShiftMode      SettingKey = "smart-shift-mode"
+	SettingSmartShiftThreshold SettingKey = "smart-shift-threshold"
 
 	// HITS is per click and per field, so each combination is its own key.
 	// Three fields across two buttons is small enough to name outright, and
@@ -396,6 +452,14 @@ func ParseSetting(key, value string) (Setting, error) {
 		settingKey = SettingDPI
 	case "polling-rate", "rate":
 		settingKey = SettingPollingRate
+	case "smart-shift-mode", "wheel-mode":
+		mode, ok := WheelModeValue(value)
+		if !ok {
+			return Setting{}, fmt.Errorf("%q is not a wheel mode (expected: ratchet, freespin)", value)
+		}
+		return Setting{Key: SettingSmartShiftMode, Value: mode}, nil
+	case "smart-shift-threshold", "wheel-threshold":
+		settingKey = SettingSmartShiftThreshold
 	case "profile-mode", "profile":
 		// The only setting named rather than numbered. Its values are the two
 		// words a user would say, not 1 and 2.
@@ -410,7 +474,8 @@ func ParseSetting(key, value string) (Setting, error) {
 			break
 		}
 		return Setting{}, fmt.Errorf("unknown setting %q (expected one of: dpi, "+
-			"polling-rate, profile-mode, hits-{left,right}-{actuation,rapid-trigger,haptics})", key)
+			"polling-rate, profile-mode, smart-shift-mode, smart-shift-threshold, "+
+			"hits-{left,right}-{actuation,rapid-trigger,haptics})", key)
 	}
 
 	number, err := strconv.ParseUint(value, 10, 32)
@@ -437,6 +502,18 @@ func (s *DeviceState) Reading(key SettingKey) (uint32, bool) {
 			if value, ok := ProfileModeValue(*s.OnboardProfile); ok {
 				return value, true
 			}
+		}
+
+	case SettingSmartShiftMode:
+		if s.SmartShift != nil {
+			if value, ok := WheelModeValue(s.SmartShift.Mode); ok {
+				return value, true
+			}
+		}
+
+	case SettingSmartShiftThreshold:
+		if s.SmartShift != nil {
+			return uint32(s.SmartShift.Threshold), true
 		}
 
 	case SettingHITSLeftActuation, SettingHITSLeftRapidTrigger, SettingHITSLeftHaptics,

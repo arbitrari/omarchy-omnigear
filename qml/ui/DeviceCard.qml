@@ -204,6 +204,21 @@ Rectangle {
             }
         }
 
+        // --- wheel ---------------------------------------------------------
+        SmartShiftControl {
+            bar: root.bar
+            busy: root.busy
+            visible: root.showingDetail && root.currentTab === "wheel"
+                && root.device && root.device.smartShift !== null
+            smartShift: root.device ? root.device.smartShift : null
+            onModeRequested: function (mode) {
+                root.settingRequested("smart-shift-mode", mode);
+            }
+            onThresholdRequested: function (threshold) {
+                root.settingRequested("smart-shift-threshold", String(threshold));
+            }
+        }
+
         // --- triggers ------------------------------------------------------
         HitsControl {
             bar: root.bar

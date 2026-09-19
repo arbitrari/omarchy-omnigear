@@ -73,6 +73,14 @@ func (driver) Read(device *model.Device) model.DeviceState {
 			state.DPI = dpi
 		}
 	}
+	if device.Entry.Has(model.CapSmartShift) {
+		shift, err := readSmartShift(link)
+		if err != nil {
+			state.Fail(model.CapSmartShift, err)
+		} else {
+			state.SmartShift = shift
+		}
+	}
 	if device.Entry.Has(model.CapOnboardProfile) {
 		mode, err := readOnboardMode(link)
 		if err != nil {
@@ -116,6 +124,10 @@ func (driver) Write(device *model.Device, setting *model.Setting) error {
 	case model.SettingPollingRate:
 		if err := writePollingRate(link, device.Node, setting.Value); err != nil {
 			return fmt.Errorf("polling-rate: %w", err)
+		}
+	case model.SettingSmartShiftMode, model.SettingSmartShiftThreshold:
+		if err := writeSmartShift(link, setting); err != nil {
+			return fmt.Errorf("%s: %w", setting.Key, err)
 		}
 	case model.SettingProfileMode:
 		if err := writeOnboardMode(link, setting.Value); err != nil {
@@ -347,6 +359,79 @@ func snapHITS(value uint32, min, max uint8) uint8 {
 		snapped = uint32(min)
 	}
 	return uint8(snapped)
+}
+
+// --- smart shift -----------------------------------------------------------
+//
+// Feature 0x2110, the ratcheting scroll wheel on the MX line.
+//
+//	fn 0 getRatchetSpeed        → [mode, threshold, defaultThreshold]
+//	                              e.g. 02 0A 0A — ratcheting, breaks at 10
+//	fn 1 setRatchetSpeed(mode, threshold, defaultThreshold), echoing what it
+//	     applied
+//
+// Mode 1 is a free spin, 2 a ratchet, and 0 means "leave the mode alone" —
+// which is not used here, because a read-modify-write says what it is doing.
+
+// smartShiftMax is the largest threshold this project offers.
+//
+// The device takes a whole byte and reports no range; it accepted 20 and 255
+// alike. Past roughly this point the wheel effectively never breaks into a
+// spin, which is what the 255 "never" value already says more clearly.
+const smartShiftMax = 50
+
+func readSmartShift(link *hidpp.Device) (*model.SmartShift, error) {
+	reply, err := link.CallFeature(hidpp.FeatureSmartShift, 0x00)
+	if err != nil {
+		return nil, err
+	}
+	return &model.SmartShift{
+		Mode:      model.WheelModeName(uint32(at(reply, 0))),
+		Threshold: at(reply, 1),
+		Default:   at(reply, 2),
+		Max:       smartShiftMax,
+	}, nil
+}
+
+// writeSmartShift changes one field, carrying the others over unchanged: the
+// device only takes all three at once.
+func writeSmartShift(link *hidpp.Device, setting *model.Setting) error {
+	index, err := link.FeatureIndex(hidpp.FeatureSmartShift)
+	if err != nil {
+		return err
+	}
+	current, err := link.Call(index, 0x00)
+	if err != nil {
+		return err
+	}
+
+	mode, threshold, fallback := at(current, 0), at(current, 1), at(current, 2)
+
+	switch setting.Key {
+	case model.SettingSmartShiftMode:
+		mode = byte(setting.Value)
+	default:
+		// A threshold of zero would be a wheel that breaks into a spin at the
+		// slightest touch, which is not a setting anyone means.
+		threshold = clampThreshold(setting.Value)
+		setting.Value = uint32(threshold)
+	}
+
+	_, err = link.Call(index, 0x01, mode, threshold, fallback)
+	return err
+}
+
+func clampThreshold(value uint32) uint8 {
+	if value >= model.ThresholdNever {
+		return model.ThresholdNever
+	}
+	if value < 1 {
+		return 1
+	}
+	if value > smartShiftMax {
+		return smartShiftMax
+	}
+	return uint8(value)
 }
 
 // --- onboard profiles ------------------------------------------------------

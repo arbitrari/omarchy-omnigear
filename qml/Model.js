@@ -78,6 +78,11 @@ function parseDevice(raw) {
       current: Number(s.pollingRate.current) || 0,
       supported: Array.isArray(s.pollingRate.supported) ? s.pollingRate.supported : []
     } : null,
+    smartShift: s.smartShift ? {
+      mode: safeText(s.smartShift.mode, "", 16),
+      threshold: Number(s.smartShift.threshold) || 0,
+      max: Number(s.smartShift.max) || 1
+    } : null,
     hits: s.hits ? {
       left: parseHitsButton(s.hits.left),
       right: parseHitsButton(s.hits.right),
@@ -247,6 +252,7 @@ function groups(devices) {
 /// whichever tab is open.
 var TAB_GROUPS = [
   { id: "sensor", label: "Sensor", capabilities: ["dpi", "polling-rate", "onboard-profile"] },
+  { id: "wheel", label: "Wheel", capabilities: ["smart-shift"] },
   { id: "triggers", label: "Triggers", capabilities: ["hits"] }
 ]
 
@@ -275,6 +281,7 @@ function capabilityLabel(capability) {
   case "dpi": return "DPI"
   case "polling-rate": return "Polling Rate"
   case "hits": return "Haptic Triggers"
+  case "smart-shift": return "Smart Shift"
   case "lod": return "Lift-Off Distance"
   case "onboard-profile": return "Profile Storage"
   default: return capability
@@ -286,7 +293,8 @@ function capabilityLabel(capability) {
 /// hiding it would make the mouse look less capable than it is.
 function unsupportedCapabilities(device) {
   if (!device) return []
-  var handled = ["battery", "dpi", "polling-rate", "onboard-profile", "hits"]
+  var handled = ["battery", "dpi", "polling-rate", "onboard-profile", "hits",
+                 "smart-shift"]
   return device.capabilities.filter(function (c) {
     return handled.indexOf(c) === -1
   })
@@ -294,6 +302,22 @@ function unsupportedCapabilities(device) {
 
 /// Which side owns the device's settings. "Onboard" means the device runs its
 /// own stored profile and refuses software writes.
+/// A threshold past the end of the scale means the wheel never breaks into a
+/// free spin, which reads better as a word than as 255.
+var THRESHOLD_NEVER = 255
+
+function thresholdLabel(threshold) {
+  return threshold >= THRESHOLD_NEVER ? "Never" : String(threshold)
+}
+
+function wheelModeLabel(mode) {
+  switch (mode) {
+  case "ratchet": return "Ratchet"
+  case "freespin": return "Free Spin"
+  default: return ""
+  }
+}
+
 function profileModeLabel(mode) {
   switch (mode) {
   case "onboard": return "Onboard"
