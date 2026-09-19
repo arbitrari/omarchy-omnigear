@@ -35,7 +35,7 @@ Updates can be done directly in the plugin.
 
 |  | Name | Battery | DPI | Polling | HITS* | Notes 
 |------|-----|-----|-----|-----|-----|-----|
-| 🟥 | PRO X2 SUPERSTRIKE  | | | | | |
+| 🟩 | PRO X2 SUPERSTRIKE  |🟩|🟩|🟩|🟩|Not configurable when using Onboard memory|
 | 🟥 | PRO X2 SUPERLIGHT 2 | | | | N/A | |
 | 🟥 | PRO X2 SUPERLIGHT   | | | | N/A | |
 | 🟥 | PRO 2 LIGHTSPEED    | | | | N/A | |
@@ -48,7 +48,7 @@ Updates can be done directly in the plugin.
 | 🟥 | MX Master 2         | | | | N/A | |
 | 🟥 | MX Master           | | | | N/A | |
  
-***Haptic Inductive Trigger System:** configurable actuation points and haptic feedback for left and right click 
+***Haptic Inductive Trigger System:** configurable actuation points and haptic feedback for left and right click. In the plugin, this appears as a Triggers tab in the SUPERSTRIKE's Panel
 
 </details>
 
