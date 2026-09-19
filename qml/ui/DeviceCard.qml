@@ -26,7 +26,9 @@ Rectangle {
     readonly property color foreground: bar ? bar.foreground : Color.foreground
     readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
     readonly property var unsupported: Model.unsupportedCapabilities(device)
-    readonly property var tabs: Model.deviceTabs(device)
+    readonly property bool connected: device ? device.connected : false
+    // A device that is not answering has nothing to show and nothing to set.
+    readonly property var tabs: connected ? Model.deviceTabs(device) : []
     readonly property bool showTabs: tabs.length > 1
 
     // Which tab is open is owned by the panel, not by this card. The card is a
@@ -110,6 +112,7 @@ Rectangle {
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 width: implicitWidth
+                visible: root.connected
                 bar: root.bar
                 battery: root.device ? root.device.battery : null
             }
@@ -137,7 +140,7 @@ Rectangle {
         Column {
             width: parent.width
             spacing: Style.space(10)
-            visible: root.currentTab === "sensor"
+            visible: root.connected && root.currentTab === "sensor"
 
             DpiControl {
                 bar: root.bar
@@ -173,7 +176,8 @@ Rectangle {
             busy: root.busy
             // A failed HITS read leaves the tab present but empty; guard so it
             // does not draw bare "Left click" headings over nothing.
-            visible: root.currentTab === "triggers" && root.device && root.device.hits !== null
+            visible: root.connected && root.currentTab === "triggers"
+                && root.device && root.device.hits !== null
             hits: root.device ? root.device.hits : null
             onRequested: function (field, value) {
                 root.settingRequested("hits-" + field, String(value));

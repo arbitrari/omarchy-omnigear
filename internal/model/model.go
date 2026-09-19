@@ -297,6 +297,10 @@ type HITS struct {
 // a capability the device claims but the read failed for comes back null with
 // a line in Errors, rather than failing the whole device.
 type DeviceState struct {
+	// Connected is false when the device is catalogued and its node is still
+	// present, but nothing answers — a wireless mouse switched off leaves its
+	// node behind, because the dongle it is paired to is still plugged in.
+	Connected      bool         `json:"connected"`
 	Battery        *Battery     `json:"battery"`
 	DPI            *DPI         `json:"dpi"`
 	PollingRate    *PollingRate `json:"pollingRate"`
@@ -309,7 +313,7 @@ type DeviceState struct {
 }
 
 func NewDeviceState() DeviceState {
-	return DeviceState{Errors: []string{}}
+	return DeviceState{Connected: true, Errors: []string{}}
 }
 
 func (s *DeviceState) Fail(capability Capability, err error) {

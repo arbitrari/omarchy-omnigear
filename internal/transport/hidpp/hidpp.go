@@ -217,27 +217,63 @@ func Open(node hidraw.Node) (*Device, error) {
 // to it afterwards is held to the ordinary call timeout, because a device
 // that is awake and still silent is a device with a problem.
 func openWith(node hidraw.Node, ping, call time.Duration) (*Device, error) {
+	// Every index at once, not one after another.
+	//
+	// A device that is switched off still has its node — the dongle it is
+	// paired to is still plugged in — so every index times out. In turn that
+	// is seven timeouts per read; at the wake budget it is eighteen seconds,
+	// which is longer than the poll interval and leaves the UI reading
+	// forever. Asked together, the whole sweep costs one timeout.
+	indexes := []byte{0xFF, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06}
+
+	type attempt struct {
+		device *Device
+		err    error
+	}
+	results := make(chan attempt, len(indexes))
+	for _, index := range indexes {
+		go func(index byte) {
+			device, err := openAt(node, index, ping, call)
+			results <- attempt{device: device, err: err}
+		}(index)
+	}
+
+	var winner *Device
+	var last error = ErrTimeout
+	for range indexes {
+		got := <-results
+		switch {
+		case got.err != nil:
+			last = got.err
+		case winner == nil:
+			winner = got.device
+		default:
+			// Two indexes answered; only one conversation is wanted.
+			got.device.Close()
+		}
+	}
+
+	if winner != nil {
+		return winner, nil
+	}
+	return nil, last
+}
+
+// openAt is the single-index open both entry points are built from.
+func openAt(node hidraw.Node, index byte, ping, call time.Duration) (*Device, error) {
 	handle, err := node.Open()
 	if err != nil {
 		return nil, err
 	}
 
 	short, _ := reports(node)
-	device := &Device{handle: handle, timeout: ping, alwaysLong: !short}
-
-	var last error = ErrTimeout
-	for _, index := range []byte{0xFF, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06} {
-		device.index = index
-		if err := device.Ping(); err == nil {
-			device.timeout = call
-			return device, nil
-		} else {
-			last = err
-		}
+	device := &Device{handle: handle, index: index, timeout: ping, alwaysLong: !short}
+	if err := device.Ping(); err != nil {
+		handle.Close()
+		return nil, err
 	}
-
-	handle.Close()
-	return nil, last
+	device.timeout = call
+	return device, nil
 }
 
 func (d *Device) Close() error { return d.handle.Close() }
@@ -404,19 +440,7 @@ type Paired struct {
 // searching for whichever answers. A receiver with two devices paired needs
 // the caller to say which one it means.
 func OpenAt(node hidraw.Node, index byte) (*Device, error) {
-	handle, err := node.Open()
-	if err != nil {
-		return nil, err
-	}
-
-	short, _ := reports(node)
-	device := &Device{handle: handle, index: index, timeout: wakeTimeout, alwaysLong: !short}
-	if err := device.Ping(); err != nil {
-		handle.Close()
-		return nil, err
-	}
-	device.timeout = callTimeout
-	return device, nil
+	return openAt(node, index, wakeTimeout, callTimeout)
 }
 
 // PairedDevices lists what is reachable through a receiver node, by index.

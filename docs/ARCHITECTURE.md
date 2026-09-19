@@ -250,6 +250,26 @@ device accepted the change but kept 4000 — solaar (pid 1234) also has
 Only same-user processes are visible through `/proc`, so an empty list means
 "nothing found", not "nothing there".
 
+## A device that is off still has a node
+
+Switch a wireless mouse off and its node stays: the dongle it is paired to is
+still plugged in, so the kernel still lists it. Discovery finds it, the driver
+tries to talk to it, and nothing answers.
+
+Two things follow.
+
+**The sweep has to be bounded.** Trying each device index in turn at the wake
+budget is seven timeouts — eighteen seconds, longer than the poll interval,
+which leaves the UI reading forever and never finishing. The indexes are asked
+concurrently, so the whole sweep costs one timeout rather than seven.
+
+**Silence is a state, not an error.** A timeout sets `connected: false` and
+adds nothing to `errors`, because "Disconnected" says it better than an error
+message would. Any other failure — a permission problem, a broken node — is
+still reported. The panel shows such a device as a name and `Disconnected`,
+with no controls to operate and no tabs, and the bar never picks it to speak
+for the widget.
+
 ## Writes are verified, never assumed
 
 A device can accept a write and quietly ignore it. `omnigear set` therefore

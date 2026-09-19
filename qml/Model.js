@@ -62,6 +62,7 @@ function parseDevice(raw) {
     brand: safeText(d.brandLabel, "", 32),
     category: safeText(d.category, "", 16),
     support: safeText(d.support, "planned", 16),
+    connected: s.connected !== false,
     connection: parseConnection(d.connection),
     onboardProfile: safeText(s.onboardProfile, "", 16),
     capabilities: Array.isArray(d.capabilities) ? d.capabilities : [],
@@ -150,9 +151,16 @@ function batteryText(percent) {
 }
 
 /// The device the bar should speak for: the one with the lowest battery, so the
-/// thing about to die is the thing you see.
+/// thing about to die is the thing you see. A device that is switched off has
+/// nothing to report and never speaks for the bar.
 function primary(devices) {
   if (!devices || devices.length === 0) return null
+  var live = devices.filter(function (d) {
+    return d.connected
+  })
+  if (live.length === 0) return null
+  devices = live
+
   var withBattery = devices.filter(function (d) {
     return d.battery && d.battery.percent !== UNKNOWN
   })
@@ -167,6 +175,7 @@ function tooltip(state) {
   if (state.devices.length === 0) return "OmniGear: no supported devices"
 
   return state.devices.map(function (d) {
+    if (!d.connected) return d.name + " · off"
     var parts = [d.name]
     if (d.battery && d.battery.percent !== UNKNOWN) {
       parts.push(batteryText(d.battery.percent))
@@ -298,6 +307,11 @@ function titleCase(text) {
 function deviceSubtitle(device) {
   if (!device) return ""
   var parts = [device.brand]
+  if (!device.connected) {
+    // Nothing else is known while it is off, and the connection it would use
+    // is not the same as the one it has.
+    return parts.concat(["Disconnected"]).join(" · ")
+  }
   if (device.connection && device.connection.label) parts.push(device.connection.label)
   var support = supportLabel(device.support)
   if (support) parts.push(support)

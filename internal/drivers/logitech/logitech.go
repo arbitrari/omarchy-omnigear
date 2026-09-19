@@ -15,6 +15,7 @@
 package logitech
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -45,7 +46,13 @@ func (driver) Read(device *model.Device) model.DeviceState {
 
 	link, err := connect(device)
 	if err != nil {
-		state.Errors = append(state.Errors, fmt.Sprintf("connect: %v", err))
+		state.Connected = false
+		// Silence is the ordinary way a switched-off device presents itself,
+		// and "disconnected" says that better than an error would. Anything
+		// else — a permission problem, a broken node — is worth reporting.
+		if !errors.Is(err, hidpp.ErrTimeout) {
+			state.Errors = append(state.Errors, fmt.Sprintf("connect: %v", err))
+		}
 		return state
 	}
 	defer link.Close()
