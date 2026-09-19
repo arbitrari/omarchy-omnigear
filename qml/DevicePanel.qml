@@ -47,6 +47,14 @@ Panel {
     // widget, because that is where the widget's settings live.
     property string primaryMouseId: ""
 
+    // Space held back down the right for the scrollbar.
+    //
+    // Reserved always, not only while the list happens to overflow. Taking it
+    // from the content on demand made the cards change width the moment a tab
+    // grew tall enough to scroll — switching to Wheel visibly resized the
+    // whole section.
+    readonly property int gutter: Style.space(8)
+
     readonly property int mouseCount: Model.devicesOfCategory(state.devices, "mouse").length
 
     function choosePrimaryMouse(deviceId) {
@@ -161,6 +169,7 @@ Panel {
                 anchors.top: parent.top
                 anchors.left: parent.left
                 anchors.right: parent.right
+                anchors.rightMargin: root.gutter
                 height: wordmark.height
 
                 // The wordmark is block art on a 62.5 x 10 grid of square
@@ -229,6 +238,7 @@ Panel {
                 id: footer
                 anchors.left: parent.left
                 anchors.right: parent.right
+                anchors.rightMargin: root.gutter
                 anchors.bottom: parent.bottom
                 // Computed from the model, not from the chooser's own
                 // visibility: a parent whose visibility depends on its child's
@@ -280,7 +290,7 @@ Panel {
 
                 Column {
                     id: content
-                    width: flick.width - (flick.interactive ? Style.space(8) : 0)
+                    width: flick.width - root.gutter
                     spacing: Style.space(12)
 
                     // --- the devices ---------------------------------------
