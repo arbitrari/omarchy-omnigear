@@ -205,10 +205,10 @@ function capabilityLabel(capability) {
   switch (capability) {
   case "battery": return "Battery"
   case "dpi": return "DPI"
-  case "polling-rate": return "Polling rate"
-  case "hits": return "Haptic triggers"
-  case "lod": return "Lift-off distance"
-  case "onboard-profile": return "Profile storage"
+  case "polling-rate": return "Polling Rate"
+  case "hits": return "Haptic Triggers"
+  case "lod": return "Lift-Off Distance"
+  case "onboard-profile": return "Profile Storage"
   default: return capability
   }
 }
