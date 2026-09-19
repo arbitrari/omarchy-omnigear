@@ -20,6 +20,7 @@
 package hidpp
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"strings"
@@ -46,6 +47,12 @@ const (
 )
 
 const callTimeout = 600 * time.Millisecond
+
+// probeTimeout is the budget for deciding whether a node is worth talking to
+// at all. A device that is there answers a ping in single-digit milliseconds;
+// one that is not never answers, and paying the full call timeout seven times
+// over to find that out would stall every poll.
+const probeTimeout = 150 * time.Millisecond
 
 // A reply can be preceded by unrelated notifications (battery, connection).
 // Drain a bounded number of them before giving up.
@@ -117,8 +124,39 @@ func Unsupported(err error) bool {
 
 // Device is an open HID++ conversation with one device.
 type Device struct {
-	handle *hidraw.Handle
-	index  byte
+	handle  *hidraw.Handle
+	index   byte
+	timeout time.Duration
+}
+
+// Speaks reports whether a node carries HID++ at all, by looking for the short
+// and long report ids in its HID report descriptor. It opens nothing.
+//
+// This is what separates a mouse's HID++ interface from its plain input ones:
+// of the four nodes a wired PRO X2 SUPERSTRIKE owns, exactly one declares both.
+func Speaks(node hidraw.Node) bool {
+	descriptor, err := node.ReportDescriptor()
+	if err != nil {
+		// Unreadable: do not rule the node out on the strength of a guess.
+		return true
+	}
+	// 0x85 is the HID "Report ID" item; the byte after it is the id.
+	return bytes.Contains(descriptor, []byte{0x85, reportShort}) &&
+		bytes.Contains(descriptor, []byte{0x85, reportLong})
+}
+
+// Responds reports whether a device is actually reachable on this node.
+//
+// A node outlives the device behind it: unplug a mouse from its dongle and
+// pair it over USB, and the dongle's node stays, answering nothing. Only a
+// ping can tell the two apart.
+func Responds(node hidraw.Node) bool {
+	device, err := openWith(node, probeTimeout)
+	if err != nil {
+		return false
+	}
+	device.Close()
+	return true
 }
 
 // Open opens node and finds the device index that answers a ping.
@@ -127,12 +165,16 @@ type Device struct {
 // through a receiver answers on its paired slot. Trying both keeps drivers
 // from having to care which node they were handed.
 func Open(node hidraw.Node) (*Device, error) {
+	return openWith(node, callTimeout)
+}
+
+func openWith(node hidraw.Node, timeout time.Duration) (*Device, error) {
 	handle, err := node.Open()
 	if err != nil {
 		return nil, err
 	}
 
-	device := &Device{handle: handle}
+	device := &Device{handle: handle, timeout: timeout}
 	var last error = ErrTimeout
 	for _, index := range []byte{0xFF, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06} {
 		device.index = index
@@ -203,7 +245,7 @@ func (d *Device) Call(featureIndex, function byte, params ...byte) ([]byte, erro
 	}
 
 	for i := 0; i < maxSkippedReports; i++ {
-		reply, err := d.handle.Read(callTimeout)
+		reply, err := d.handle.Read(d.timeout)
 		if err != nil {
 			if errors.Is(err, hidraw.ErrTimeout) {
 				return nil, ErrTimeout

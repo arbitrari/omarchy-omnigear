@@ -196,6 +196,15 @@ func parentReceiverID(uevent string) ReceiverID {
 	return ReceiverID{}
 }
 
+// ReportDescriptor returns the node's HID report descriptor, which says which
+// report ids the interface carries. A device usually owns several nodes and
+// only one of them speaks a given protocol; the descriptor tells them apart
+// without opening or writing to anything.
+func (n Node) ReportDescriptor() ([]byte, error) {
+	name := filepath.Base(n.Path)
+	return os.ReadFile(filepath.Join(sysClass, name, "device", "report_descriptor"))
+}
+
 // Open opens the node for reading and writing. The caller closes it.
 func (n Node) Open() (*Handle, error) {
 	fd, err := unix.Open(n.Path, unix.O_RDWR|unix.O_CLOEXEC, 0)

@@ -63,6 +63,7 @@ function parseDevice(raw) {
     category: safeText(d.category, "", 16),
     support: safeText(d.support, "planned", 16),
     connection: parseConnection(d.connection),
+    onboardProfile: safeText(s.onboardProfile, "", 16),
     capabilities: Array.isArray(d.capabilities) ? d.capabilities : [],
     battery: parseBattery(s.battery),
     dpi: s.dpi ? {
@@ -217,10 +218,21 @@ function capabilityLabel(capability) {
 /// hiding it would make the mouse look less capable than it is.
 function unsupportedCapabilities(device) {
   if (!device) return []
-  var handled = ["battery", "dpi", "polling-rate"]
+  var handled = ["battery", "dpi", "polling-rate", "onboard-profile"]
   return device.capabilities.filter(function (c) {
     return handled.indexOf(c) === -1
   })
+}
+
+/// Which side owns the device's settings. "Onboard" means the device runs its
+/// own stored profile and refuses software writes.
+function profileModeLabel(mode) {
+  switch (mode) {
+  case "onboard": return "Onboard"
+  case "host": return "Software"
+  case "": return ""
+  default: return titleCase(mode)
+  }
 }
 
 function batteryStatusLabel(battery) {

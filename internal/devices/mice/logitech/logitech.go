@@ -23,7 +23,10 @@ var Entries = []model.Entry{
 		Slug:     "pro-x2-superstrike",
 		Brand:    model.Logitech,
 		Category: model.Mouse,
-		USB:      []model.USBID{{Vendor: vendor, Product: ProX2SuperstrikeWireless}},
+		USB: []model.USBID{
+			{Vendor: vendor, Product: ProX2SuperstrikeWireless},
+			{Vendor: vendor, Product: ProX2SuperstrikeWired},
+		},
 		// HITS is what makes this model special and it is not implemented yet,
 		// so the support level says partial rather than full.
 		Support: model.SupportPartial,
@@ -31,6 +34,7 @@ var Entries = []model.Entry{
 			model.CapBattery,
 			model.CapDPI,
 			model.CapPollingRate,
+			model.CapOnboardProfile,
 			model.CapHITS,
 		},
 		Driver: driver.HIDPP,

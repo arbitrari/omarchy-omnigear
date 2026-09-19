@@ -121,6 +121,42 @@ source:
   is not refused — the device takes the first byte as the index and sets a rate
   nobody asked for.
 
+## One device, many nodes, and some of them lie
+
+A device owns several hidraw nodes and can own them under more than one USB id
+at once. Plug a wireless mouse in with a cable while its dongle is still in the
+machine and both sets exist side by side — but only one of them carries the
+mouse. The other keeps answering nothing, which surfaces as
+`connect: device did not answer`.
+
+`discovery.choose` sorts that out with two filters, cheapest first:
+
+1. **The report descriptor.** `hidpp.Speaks` looks for the short and long HID++
+   report ids in `report_descriptor`. Of the four nodes a wired PRO X2
+   SUPERSTRIKE owns, exactly one declares both. Nothing is opened.
+2. **A ping.** If more than one node survives, only a ping distinguishes the
+   live one from the leftover. They are probed concurrently and the first
+   answer wins, because a live device replies in milliseconds while a stale
+   node costs the whole probe budget.
+
+Nodes are grouped by serial, not by USB id, and the serial is normalised first:
+the same mouse reports `5f-ba-c9-65` through its dongle and `5FBAC965` over
+USB. Without that, plugging in a cable would split one mouse into two devices.
+
+## Onboard mode refuses writes
+
+Feature 0x8100 says who owns a device's settings. In **onboard** mode it runs
+the profile in its own memory and refuses software writes; in **host** mode
+software owns them. The refusal arrives as error 0x05, "logitech internal",
+which explains nothing — so `writeDPI` reads the mode first and fails with the
+real reason.
+
+The mode is not fixed. A PRO X2 SUPERSTRIKE is in host mode on its dongle and
+onboard mode over USB, so the identical write succeeds or fails depending on
+which cable is in. OmniGear reports the mode and does not change it: switching
+to host mode would silently take the device's own profile out of the picture,
+which is the user's call, not the tool's.
+
 ## You are not the only one talking to the device
 
 A hidraw node delivers every reply to **every** open reader. A second HID++

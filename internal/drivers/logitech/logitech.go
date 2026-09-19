@@ -55,6 +55,14 @@ func (driver) Read(device *model.Device) model.DeviceState {
 			state.DPI = dpi
 		}
 	}
+	if device.Entry.Has(model.CapOnboardProfile) {
+		mode, err := readOnboardMode(link)
+		if err != nil {
+			state.Fail(model.CapOnboardProfile, err)
+		} else {
+			state.OnboardProfile = &mode
+		}
+	}
 	if device.Entry.Has(model.CapPollingRate) {
 		rate, err := readPollingRate(link, device.Node)
 		if err != nil {
@@ -156,6 +164,35 @@ func readBatteryLegacy(link *hidpp.Device) (*model.Battery, error) {
 		}
 	}
 	return battery, nil
+}
+
+// --- onboard profiles ------------------------------------------------------
+
+// Feature 0x8100 getOnboardMode (fn 2) replies with one byte.
+const (
+	modeOnboard = 0x01
+	modeHost    = 0x02
+)
+
+// readOnboardMode reports which of the two owns the device's settings.
+//
+// In onboard mode the mouse runs the profile stored in its own memory and
+// refuses software writes; in host mode software owns them. A PRO X2
+// SUPERSTRIKE is in host mode on its dongle and onboard mode over USB, so the
+// same write succeeds or fails depending on which cable is in.
+func readOnboardMode(link *hidpp.Device) (string, error) {
+	reply, err := link.CallFeature(hidpp.FeatureOnboardProfiles, 0x02)
+	if err != nil {
+		return "", err
+	}
+	switch at(reply, 0) {
+	case modeOnboard:
+		return "onboard", nil
+	case modeHost:
+		return "host", nil
+	default:
+		return "unknown", nil
+	}
 }
 
 // --- dpi -------------------------------------------------------------------
@@ -291,6 +328,12 @@ func decodeDPIStream(bytes []byte) (presets []uint32, min, max, step uint32) {
 }
 
 func writeDPI(link *hidpp.Device, value uint32) error {
+	// A refusal here comes back as "logitech internal", which explains
+	// nothing. Check the cause first so the message can name it.
+	if mode, err := readOnboardMode(link); err == nil && mode == "onboard" {
+		return fmt.Errorf("the device is in onboard mode, where its own stored " +
+			"profile owns the DPI and software writes are refused")
+	}
 	if value > 0xFFFF {
 		value = 0xFFFF
 	}

@@ -91,6 +91,7 @@ Rectangle {
         PanelSeparator {
             foreground: root.foreground
             visible: dpi.visible || rate.visible || unsupportedList.visible
+                || (root.device && root.device.onboardProfile !== "")
         }
 
         // --- what it can do ------------------------------------------------
@@ -112,6 +113,13 @@ Rectangle {
             onRequested: function (hz) {
                 root.settingRequested("polling-rate", hz);
             }
+        }
+
+        SettingHeader {
+            bar: root.bar
+            visible: root.device && root.device.onboardProfile !== ""
+            label: Model.capabilityLabel("onboard-profile")
+            value: root.device ? Model.profileModeLabel(root.device.onboardProfile) : ""
         }
 
         Column {
