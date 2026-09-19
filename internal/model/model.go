@@ -283,7 +283,39 @@ type SettingKey string
 const (
 	SettingDPI         SettingKey = "dpi"
 	SettingPollingRate SettingKey = "polling-rate"
+	SettingProfileMode SettingKey = "profile-mode"
 )
+
+// Profile modes, as both the wire and this API spell them. The numbers are
+// HID++ feature 0x8100's own, so a Setting can stay a plain number.
+const (
+	ProfileModeOnboard = 1
+	ProfileModeHost    = 2
+)
+
+// ProfileModeName turns the wire value into the word the UI and CLI use.
+func ProfileModeName(value uint32) string {
+	switch value {
+	case ProfileModeOnboard:
+		return "onboard"
+	case ProfileModeHost:
+		return "host"
+	default:
+		return "unknown"
+	}
+}
+
+// ProfileModeValue is the inverse, for verifying a write against a fresh read.
+func ProfileModeValue(name string) (uint32, bool) {
+	switch name {
+	case "onboard":
+		return ProfileModeOnboard, true
+	case "host":
+		return ProfileModeHost, true
+	default:
+		return 0, false
+	}
+}
 
 // Setting is a change the UI asks for.
 type Setting struct {
@@ -299,8 +331,17 @@ func ParseSetting(key, value string) (Setting, error) {
 		settingKey = SettingDPI
 	case "polling-rate", "rate":
 		settingKey = SettingPollingRate
+	case "profile-mode", "profile":
+		// The only setting named rather than numbered. Its values are the two
+		// words a user would say, not 1 and 2.
+		mode, ok := ProfileModeValue(value)
+		if !ok {
+			return Setting{}, fmt.Errorf("%q is not a profile mode (expected: onboard, host)", value)
+		}
+		return Setting{Key: SettingProfileMode, Value: mode}, nil
 	default:
-		return Setting{}, fmt.Errorf("unknown setting %q (expected one of: dpi, polling-rate)", key)
+		return Setting{}, fmt.Errorf(
+			"unknown setting %q (expected one of: dpi, polling-rate, profile-mode)", key)
 	}
 
 	number, err := strconv.ParseUint(value, 10, 32)
@@ -321,6 +362,12 @@ func (s *DeviceState) Reading(key SettingKey) (uint32, bool) {
 	case SettingPollingRate:
 		if s.PollingRate != nil {
 			return s.PollingRate.Current, true
+		}
+	case SettingProfileMode:
+		if s.OnboardProfile != nil {
+			if value, ok := ProfileModeValue(*s.OnboardProfile); ok {
+				return value, true
+			}
 		}
 	}
 	return 0, false

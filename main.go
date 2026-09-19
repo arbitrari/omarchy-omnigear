@@ -31,7 +31,9 @@ const usage = `omnigear — read and write peripheral settings
 USAGE:
     omnigear list                          every catalogued device present, with state
     omnigear get <device>                  one device, with state
-    omnigear set <device> <key> <value>    change a setting (dpi, polling-rate)
+    omnigear set <device> <key> <value>    change a setting:
+                                             dpi <n> | polling-rate <hz>
+                                             profile-mode onboard|host
     omnigear catalog                       the support matrix, hardware or not
     omnigear probe                         diagnostics: hidraw nodes and what answered
     omnigear call <device> <feature> <fn> [byte...]

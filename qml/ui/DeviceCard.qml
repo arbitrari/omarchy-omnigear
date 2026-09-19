@@ -17,7 +17,7 @@ Rectangle {
 
     // Emitted when the user asks for a change. The card never talks to the
     // hardware itself — the panel owns the service.
-    signal settingRequested(string key, int value)
+    signal settingRequested(string key, string value)
 
     readonly property color foreground: bar ? bar.foreground : Color.foreground
     readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
@@ -90,8 +90,8 @@ Rectangle {
 
         PanelSeparator {
             foreground: root.foreground
-            visible: dpi.visible || rate.visible || unsupportedList.visible
-                || (root.device && root.device.onboardProfile !== "")
+            visible: dpi.visible || rate.visible || profile.visible
+                || unsupportedList.visible
         }
 
         // --- what it can do ------------------------------------------------
@@ -101,7 +101,7 @@ Rectangle {
             busy: root.busy
             dpi: root.device ? root.device.dpi : null
             onRequested: function (value) {
-                root.settingRequested("dpi", value);
+                root.settingRequested("dpi", String(value));
             }
         }
 
@@ -111,15 +111,18 @@ Rectangle {
             busy: root.busy
             pollingRate: root.device ? root.device.pollingRate : null
             onRequested: function (hz) {
-                root.settingRequested("polling-rate", hz);
+                root.settingRequested("polling-rate", String(hz));
             }
         }
 
-        SettingHeader {
+        ProfileModeControl {
+            id: profile
             bar: root.bar
-            visible: root.device && root.device.onboardProfile !== ""
-            label: Model.capabilityLabel("onboard-profile")
-            value: root.device ? Model.profileModeLabel(root.device.onboardProfile) : ""
+            busy: root.busy
+            mode: root.device ? root.device.onboardProfile : ""
+            onRequested: function (mode) {
+                root.settingRequested("profile-mode", mode);
+            }
         }
 
         Column {

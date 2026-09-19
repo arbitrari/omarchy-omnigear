@@ -153,9 +153,13 @@ real reason.
 
 The mode is not fixed. A PRO X2 SUPERSTRIKE is in host mode on its dongle and
 onboard mode over USB, so the identical write succeeds or fails depending on
-which cable is in. OmniGear reports the mode and does not change it: switching
-to host mode would silently take the device's own profile out of the picture,
-which is the user's call, not the tool's.
+which cable is in.
+
+The mode is settable — `omnigear set <device> profile-mode onboard|host`, and a
+toggle in the panel — but only ever as an explicit choice. It is the one write
+that changes how the device behaves when OmniGear is not running, so a failed
+DPI write says why and stops, rather than quietly flipping the device into host
+mode to get its way.
 
 ## You are not the only one talking to the device
 

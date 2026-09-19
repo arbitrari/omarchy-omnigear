@@ -91,6 +91,10 @@ func (driver) Write(device *model.Device, setting model.Setting) error {
 		if err := writePollingRate(link, device.Node, setting.Value); err != nil {
 			return fmt.Errorf("polling-rate: %w", err)
 		}
+	case model.SettingProfileMode:
+		if err := writeOnboardMode(link, setting.Value); err != nil {
+			return fmt.Errorf("profile-mode: %w", err)
+		}
 	default:
 		return fmt.Errorf("this driver cannot set %q", setting.Key)
 	}
@@ -193,6 +197,21 @@ func readOnboardMode(link *hidpp.Device) (string, error) {
 	default:
 		return "unknown", nil
 	}
+}
+
+// writeOnboardMode hands the device's settings to its own profile or to
+// software, via setOnboardMode (fn 1).
+//
+// This is the one write that changes how the device behaves when OmniGear is
+// not running: in host mode its stored profile stops applying. It is offered
+// as an explicit choice for that reason, never taken automatically to make
+// some other write succeed.
+func writeOnboardMode(link *hidpp.Device, mode uint32) error {
+	if mode != modeOnboard && mode != modeHost {
+		return fmt.Errorf("%q is not a profile mode", model.ProfileModeName(mode))
+	}
+	_, err := link.CallFeature(hidpp.FeatureOnboardProfiles, 0x01, byte(mode))
+	return err
 }
 
 // --- dpi -------------------------------------------------------------------
