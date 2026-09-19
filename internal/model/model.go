@@ -133,7 +133,12 @@ type Driver interface {
 	Read(device *Device) DeviceState
 
 	// Write applies one change.
-	Write(device *Device, setting Setting) error
+	//
+	// The setting is passed by pointer so a driver can report back what it
+	// actually attempted: a device with coarser granularity than the request
+	// has its value snapped first, and the caller needs the snapped number to
+	// judge whether the write took.
+	Write(device *Device, setting *Setting) error
 }
 
 // Entry is one model, as catalogued. Entries live next to the driver that
@@ -251,6 +256,16 @@ type HITSButton struct {
 type HITS struct {
 	Left  HITSButton `json:"left"`
 	Right HITSButton `json:"right"`
+	// Limits the device reports for itself. The units are the device's own —
+	// a SUPERSTRIKE counts actuation to 40 and the other two to 20 — and what
+	// one unit means in millimetres is not something it says.
+	MaxActuation    uint8 `json:"maxActuation"`
+	MaxRapidTrigger uint8 `json:"maxRapidTrigger"`
+	MaxHaptics      uint8 `json:"maxHaptics"`
+	// Step is the granularity the device actually stores. It does not report
+	// one, and it does not refuse a value off the grid — it silently rounds
+	// down, which reads as the device ignoring the change.
+	Step uint8 `json:"step"`
 }
 
 // DeviceState is everything a driver managed to read. Every field is optional:
@@ -284,7 +299,28 @@ const (
 	SettingDPI         SettingKey = "dpi"
 	SettingPollingRate SettingKey = "polling-rate"
 	SettingProfileMode SettingKey = "profile-mode"
+
+	// HITS is per click and per field, so each combination is its own key.
+	// Three fields across two buttons is small enough to name outright, and
+	// keeps a Setting a plain key and number.
+	SettingHITSLeftActuation    SettingKey = "hits-left-actuation"
+	SettingHITSLeftRapidTrigger SettingKey = "hits-left-rapid-trigger"
+	SettingHITSLeftHaptics      SettingKey = "hits-left-haptics"
+
+	SettingHITSRightActuation    SettingKey = "hits-right-actuation"
+	SettingHITSRightRapidTrigger SettingKey = "hits-right-rapid-trigger"
+	SettingHITSRightHaptics      SettingKey = "hits-right-haptics"
 )
+
+// hitsSettings is every HITS key, so parsing and reading back stay in step.
+var hitsSettings = map[SettingKey]struct{}{
+	SettingHITSLeftActuation:     {},
+	SettingHITSLeftRapidTrigger:  {},
+	SettingHITSLeftHaptics:       {},
+	SettingHITSRightActuation:    {},
+	SettingHITSRightRapidTrigger: {},
+	SettingHITSRightHaptics:      {},
+}
 
 // Profile modes, as both the wire and this API spell them. The numbers are
 // HID++ feature 0x8100's own, so a Setting can stay a plain number.
@@ -340,8 +376,12 @@ func ParseSetting(key, value string) (Setting, error) {
 		}
 		return Setting{Key: SettingProfileMode, Value: mode}, nil
 	default:
-		return Setting{}, fmt.Errorf(
-			"unknown setting %q (expected one of: dpi, polling-rate, profile-mode)", key)
+		if _, ok := hitsSettings[SettingKey(key)]; ok {
+			settingKey = SettingKey(key)
+			break
+		}
+		return Setting{}, fmt.Errorf("unknown setting %q (expected one of: dpi, "+
+			"polling-rate, profile-mode, hits-{left,right}-{actuation,rapid-trigger,haptics})", key)
 	}
 
 	number, err := strconv.ParseUint(value, 10, 32)
@@ -368,6 +408,25 @@ func (s *DeviceState) Reading(key SettingKey) (uint32, bool) {
 			if value, ok := ProfileModeValue(*s.OnboardProfile); ok {
 				return value, true
 			}
+		}
+
+	case SettingHITSLeftActuation, SettingHITSLeftRapidTrigger, SettingHITSLeftHaptics,
+		SettingHITSRightActuation, SettingHITSRightRapidTrigger, SettingHITSRightHaptics:
+		if s.HITS == nil {
+			return 0, false
+		}
+		button := s.HITS.Left
+		if key == SettingHITSRightActuation || key == SettingHITSRightRapidTrigger ||
+			key == SettingHITSRightHaptics {
+			button = s.HITS.Right
+		}
+		switch key {
+		case SettingHITSLeftActuation, SettingHITSRightActuation:
+			return uint32(button.Actuation), true
+		case SettingHITSLeftRapidTrigger, SettingHITSRightRapidTrigger:
+			return uint32(button.RapidTrigger), true
+		default:
+			return uint32(button.Haptics), true
 		}
 	}
 	return 0, false

@@ -20,11 +20,11 @@ Row {
 
     Text {
         anchors.verticalCenter: parent.verticalCenter
-        text: Model.capabilityLabel(root.capability)
+        text: Model.capabilityLabel(root.capability).toUpperCase()
         textFormat: Text.PlainText
-        color: Qt.darker(root.foreground, 1.4)
+        color: root.foreground
         font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
+        font.pixelSize: Style.font.bodySmall
         font.bold: true
     }
 

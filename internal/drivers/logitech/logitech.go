@@ -16,6 +16,7 @@ package logitech
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/arbitrari/omarchy-omnigear/internal/model"
 	"github.com/arbitrari/omarchy-omnigear/internal/transport/hidpp"
@@ -63,6 +64,14 @@ func (driver) Read(device *model.Device) model.DeviceState {
 			state.OnboardProfile = &mode
 		}
 	}
+	if device.Entry.Has(model.CapHITS) {
+		hits, err := readHITS(link)
+		if err != nil {
+			state.Fail(model.CapHITS, err)
+		} else {
+			state.HITS = hits
+		}
+	}
 	if device.Entry.Has(model.CapPollingRate) {
 		rate, err := readPollingRate(link, device.Node)
 		if err != nil {
@@ -75,7 +84,7 @@ func (driver) Read(device *model.Device) model.DeviceState {
 	return state
 }
 
-func (driver) Write(device *model.Device, setting model.Setting) error {
+func (driver) Write(device *model.Device, setting *model.Setting) error {
 	link, err := hidpp.Open(device.Node)
 	if err != nil {
 		return fmt.Errorf("connect: %w", err)
@@ -96,7 +105,9 @@ func (driver) Write(device *model.Device, setting model.Setting) error {
 			return fmt.Errorf("profile-mode: %w", err)
 		}
 	default:
-		return fmt.Errorf("this driver cannot set %q", setting.Key)
+		if err := writeHITSSetting(link, setting); err != nil {
+			return fmt.Errorf("%s: %w", setting.Key, err)
+		}
 	}
 	return nil
 }
@@ -168,6 +179,157 @@ func readBatteryLegacy(link *hidpp.Device) (*model.Battery, error) {
 		}
 	}
 	return battery, nil
+}
+
+// --- hits ------------------------------------------------------------------
+//
+// Feature 0x1B0C, the analog left and right click on a PRO X2 SUPERSTRIKE.
+//
+//	fn 0 getCapabilities  → [_, buttons, maxActuation, maxRapidTrigger,
+//	                         maxHaptics, min]   e.g. 00 03 28 14 14 01
+//	fn 2 getSettings(btn) → [btn, actuation, rapidTrigger, haptics]
+//	                        e.g. 00 10 08 08 left, 01 14 08 08 right
+//	fn 1 setSettings(btn, actuation, rapidTrigger, haptics), echoing what it
+//	     applied
+//
+// The units are the device's own and it does not say what they mean; 40 steps
+// of actuation across a click is all that can honestly be claimed.
+
+const (
+	hitsButtonLeft  = 0x00
+	hitsButtonRight = 0x01
+)
+
+// hitsStep is the granularity every HITS field is stored at.
+//
+// Not reported by the device and not enforced by it either: ask a SUPERSTRIKE
+// for 17, 18 or 19 and it stores 16 without complaint, and 20 for 20. Every
+// value it ships with is a multiple of 4, and max/4 gives the level counts
+// Logitech's own software offers — 10 for actuation, 5 each for rapid trigger
+// and haptics. Requests are snapped to the grid so a change either lands or
+// says why, instead of appearing to be ignored.
+const hitsStep = 4
+
+func readHITS(link *hidpp.Device) (*model.HITS, error) {
+	index, err := link.FeatureIndex(hidpp.FeatureHITS)
+	if err != nil {
+		return nil, err
+	}
+
+	caps, err := link.Call(index, 0x00)
+	if err != nil {
+		return nil, err
+	}
+	left, err := readHITSButton(link, index, hitsButtonLeft)
+	if err != nil {
+		return nil, err
+	}
+	right, err := readHITSButton(link, index, hitsButtonRight)
+	if err != nil {
+		return nil, err
+	}
+
+	return &model.HITS{
+		Left:            left,
+		Right:           right,
+		MaxActuation:    at(caps, 2),
+		MaxRapidTrigger: at(caps, 3),
+		MaxHaptics:      at(caps, 4),
+		Step:            hitsStep,
+	}, nil
+}
+
+func readHITSButton(link *hidpp.Device, index, button byte) (model.HITSButton, error) {
+	reply, err := link.Call(index, 0x02, button)
+	if err != nil {
+		return model.HITSButton{}, err
+	}
+	return model.HITSButton{
+		Actuation:    at(reply, 1),
+		RapidTrigger: at(reply, 2),
+		Haptics:      at(reply, 3),
+	}, nil
+}
+
+// writeHITSSetting changes one field of one click.
+//
+// The device only takes all three fields at once, so the other two are read
+// back and resent unchanged rather than assumed.
+func writeHITSSetting(link *hidpp.Device, setting *model.Setting) error {
+	button, field, ok := hitsTarget(setting.Key)
+	if !ok {
+		return fmt.Errorf("this driver cannot set %q", setting.Key)
+	}
+
+	index, err := link.FeatureIndex(hidpp.FeatureHITS)
+	if err != nil {
+		return err
+	}
+	caps, err := link.Call(index, 0x00)
+	if err != nil {
+		return err
+	}
+	current, err := readHITSButton(link, index, button)
+	if err != nil {
+		return err
+	}
+
+	value := setting.Value
+	var effective uint8
+	switch field {
+	case "actuation":
+		// A click that never actuates would be a button the user cannot undo
+		// the setting with, so the floor is one step rather than zero.
+		effective = snapHITS(value, hitsStep, at(caps, 2))
+		current.Actuation = effective
+	case "rapid-trigger":
+		effective = snapHITS(value, hitsStep, at(caps, 3))
+		current.RapidTrigger = effective
+	default:
+		// Haptics genuinely has an off.
+		effective = snapHITS(value, 0, at(caps, 4))
+		current.Haptics = effective
+	}
+	setting.Value = uint32(effective)
+
+	_, err = link.Call(index, 0x01, button,
+		current.Actuation, current.RapidTrigger, current.Haptics)
+	return err
+}
+
+func hitsTarget(key model.SettingKey) (button byte, field string, ok bool) {
+	rest, found := strings.CutPrefix(string(key), "hits-")
+	if !found {
+		return 0, "", false
+	}
+	side, field, found := strings.Cut(rest, "-")
+	if !found {
+		return 0, "", false
+	}
+	switch side {
+	case "left":
+		return hitsButtonLeft, field, true
+	case "right":
+		return hitsButtonRight, field, true
+	default:
+		return 0, "", false
+	}
+}
+
+// snapHITS rounds a request to the nearest value the device can hold, then
+// clamps it into range.
+func snapHITS(value uint32, min, max uint8) uint8 {
+	if max == 0 {
+		max = 0xFF
+	}
+	snapped := ((value + hitsStep/2) / hitsStep) * hitsStep
+	if snapped > uint32(max) {
+		snapped = uint32(max)
+	}
+	if snapped < uint32(min) {
+		snapped = uint32(min)
+	}
+	return uint8(snapped)
 }
 
 // --- onboard profiles ------------------------------------------------------

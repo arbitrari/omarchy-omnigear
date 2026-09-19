@@ -27,9 +27,8 @@ var Entries = []model.Entry{
 			{Vendor: vendor, Product: ProX2SuperstrikeWireless},
 			{Vendor: vendor, Product: ProX2SuperstrikeWired},
 		},
-		// HITS is what makes this model special and it is not implemented yet,
-		// so the support level says partial rather than full.
-		Support: model.SupportPartial,
+		// Every capability this model declares is now driven, HITS included.
+		Support: model.SupportFull,
 		Capabilities: []model.Capability{
 			model.CapBattery,
 			model.CapDPI,

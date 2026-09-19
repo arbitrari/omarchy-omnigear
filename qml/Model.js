@@ -77,9 +77,26 @@ function parseDevice(raw) {
       current: Number(s.pollingRate.current) || 0,
       supported: Array.isArray(s.pollingRate.supported) ? s.pollingRate.supported : []
     } : null,
+    hits: s.hits ? {
+      left: parseHitsButton(s.hits.left),
+      right: parseHitsButton(s.hits.right),
+      maxActuation: Number(s.hits.maxActuation) || 0,
+      maxRapidTrigger: Number(s.hits.maxRapidTrigger) || 0,
+      maxHaptics: Number(s.hits.maxHaptics) || 0,
+      step: Number(s.hits.step) || 1
+    } : null,
     errors: Array.isArray(s.errors) ? s.errors.map(function (e) {
       return safeText(e, "", 256)
     }) : []
+  }
+}
+
+function parseHitsButton(raw) {
+  var b = raw || {}
+  return {
+    actuation: Number(b.actuation) || 0,
+    rapidTrigger: Number(b.rapidTrigger) || 0,
+    haptics: Number(b.haptics) || 0
   }
 }
 
@@ -166,12 +183,15 @@ function tooltip(state) {
 /// way the support table does.
 var CATEGORY_ORDER = ["mouse", "keyboard", "headset"]
 
+/// Section headings are main titles, so they are set in caps. Everything
+/// below one — capability names, group headings, status words — is a subtitle
+/// and is set in Title Case.
 function categoryLabel(category) {
   switch (category) {
-  case "mouse": return "Mice"
-  case "keyboard": return "Keyboards"
-  case "headset": return "Headsets"
-  default: return "Other"
+  case "mouse": return "MICE"
+  case "keyboard": return "KEYBOARDS"
+  case "headset": return "HEADSETS"
+  default: return "OTHER"
   }
 }
 
@@ -201,6 +221,28 @@ function groups(devices) {
   return out
 }
 
+/// How a device's controls are grouped into tabs. A group appears only if the
+/// device has something in it, so a keyboard that only reports battery never
+/// grows a tab strip it does not need.
+///
+/// Battery is deliberately absent: it lives in the card header, visible
+/// whichever tab is open.
+var TAB_GROUPS = [
+  { id: "sensor", label: "Sensor", capabilities: ["dpi", "polling-rate", "onboard-profile"] },
+  { id: "triggers", label: "Triggers", capabilities: ["hits"] }
+]
+
+function deviceTabs(device) {
+  if (!device) return []
+  return TAB_GROUPS.filter(function (group) {
+    return group.capabilities.some(function (capability) {
+      return device.capabilities.indexOf(capability) !== -1
+    })
+  }).map(function (group) {
+    return { id: group.id, label: group.label }
+  })
+}
+
 function capabilityLabel(capability) {
   switch (capability) {
   case "battery": return "Battery"
@@ -218,7 +260,7 @@ function capabilityLabel(capability) {
 /// hiding it would make the mouse look less capable than it is.
 function unsupportedCapabilities(device) {
   if (!device) return []
-  var handled = ["battery", "dpi", "polling-rate", "onboard-profile"]
+  var handled = ["battery", "dpi", "polling-rate", "onboard-profile", "hits"]
   return device.capabilities.filter(function (c) {
     return handled.indexOf(c) === -1
   })
@@ -240,7 +282,7 @@ function batteryStatusLabel(battery) {
   switch (battery.status) {
   case "charging": return "Charging"
   case "full": return "Full"
-  case "discharging": return battery.level ? titleCase(battery.level) : "On battery"
+  case "discharging": return battery.level ? titleCase(battery.level) : "On Battery"
   default: return ""
   }
 }
@@ -265,8 +307,8 @@ function deviceSubtitle(device) {
 function supportLabel(support) {
   switch (support) {
   case "full": return ""
-  case "partial": return "Partial support"
-  case "planned": return "Not supported yet"
+  case "partial": return "Partial Support"
+  case "planned": return "Not Supported Yet"
   default: return ""
   }
 }

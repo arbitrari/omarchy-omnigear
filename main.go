@@ -151,15 +151,30 @@ func cmdSet(selector, key, value string) (reply, error) {
 	beforeState := driver.Read(device)
 	before, _ := beforeState.Reading(setting.Key)
 
-	if err := driver.Write(device, setting); err != nil {
+	// What the caller asked for, before the driver snaps it to something the
+	// device can actually hold.
+	requested := setting.Value
+	if err := driver.Write(device, &setting); err != nil {
 		return nil, err
 	}
+	effective := setting.Value
 
 	afterState := driver.Read(device)
 	after, known := afterState.Reading(setting.Key)
 
 	switch {
-	case known && after == setting.Value:
+	case known && after == effective:
+		if effective != requested {
+			// The device stores coarser than the request. It took the change;
+			// the caller just needs the real number.
+			return reply{
+				"ok": true, "schema": schema,
+				"requested": requested,
+				"applied":   after,
+				"note":      "value snapped to what the device can hold",
+				"device":    device.JSON(afterState),
+			}, nil
+		}
 		return reply{
 			"ok": true, "schema": schema,
 			"applied": after,

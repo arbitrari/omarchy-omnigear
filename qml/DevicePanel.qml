@@ -39,6 +39,22 @@ Panel {
     property string status: ""
     property bool statusIsError: false
 
+    // Which tab each device has open, by device id. Kept here because the
+    // panel outlives the cards: their Repeater rebuilds on every poll.
+    property var tabSelection: ({})
+
+    function tabFor(deviceId) {
+        return tabSelection[deviceId] || "";
+    }
+
+    function selectTab(deviceId, tabId) {
+        var next = {};
+        for (var id in tabSelection)
+            next[id] = tabSelection[id];
+        next[deviceId] = tabId;
+        tabSelection = next;
+    }
+
     function open() {
         root.controller.show();
         if (gear)
@@ -219,8 +235,12 @@ Panel {
                                     bar: root.bar
                                     busy: root.busy
                                     device: modelData
+                                    activeTab: root.tabFor(modelData.id)
                                     onSettingRequested: function (key, value) {
                                         root.applySetting(modelData.id, key, value);
+                                    }
+                                    onTabSelected: function (id) {
+                                        root.selectTab(modelData.id, id);
                                     }
                                 }
                             }

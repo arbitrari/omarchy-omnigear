@@ -33,6 +33,7 @@ Column {
 
     SettingHeader {
         bar: root.bar
+        group: true
         label: Model.capabilityLabel("polling-rate")
         value: root.pollingRate && root.pollingRate.current > 0
             ? root.pollingRate.current + " Hz"

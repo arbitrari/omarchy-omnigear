@@ -32,6 +32,7 @@ Column {
 
     SettingHeader {
         bar: root.bar
+        group: true
         label: Model.capabilityLabel("onboard-profile")
         value: Model.profileModeLabel(root.mode)
     }

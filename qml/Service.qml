@@ -36,20 +36,32 @@ Item {
     signal applied(string deviceId, string key, bool success, string message)
 
     function refresh() {
-        if (!listProcess.running)
-            listProcess.running = true;
+        if (listProcess.running)
+            return;
+        // Remember how many writes had landed when this read started, so a
+        // reply that was already in flight when one landed can be spotted.
+        internal.readGeneration = internal.writes;
+        listProcess.running = true;
     }
 
     // Ask the CLI to write a setting. It verifies against hardware and replies
     // with the device as it actually ended up, so the reply is the new truth
     // and there is no need to poll again behind it.
+    //
+    // A write already in flight does not cancel this one: moving two sliders
+    // in quick succession used to drop the second silently, which read exactly
+    // like the device refusing it. The newest request is held and sent when
+    // the current one finishes.
     function apply(deviceId, key, value) {
-        if (setProcess.running)
+        if (setProcess.running) {
+            internal.queued = {
+                deviceId: deviceId,
+                key: key,
+                value: String(value)
+            };
             return;
-        internal.pendingId = deviceId;
-        internal.pendingKey = key;
-        setProcess.command = [root.binary, "set", deviceId, key, String(value)];
-        setProcess.running = true;
+        }
+        internal.send(deviceId, key, value);
     }
 
     QtObject {
@@ -57,6 +69,31 @@ Item {
         property var state: Model.emptyState()
         property string pendingId: ""
         property string pendingKey: ""
+
+        // Counts completed writes. A read that started before a write finished
+        // is carrying pre-write values, and applying it would undo what the
+        // user just did.
+        property int writes: 0
+        property int readGeneration: 0
+
+        // At most one deferred write: if the user moves a slider three times
+        // while a write is out, only the last position is worth sending.
+        property var queued: null
+
+        function send(deviceId, key, value) {
+            pendingId = deviceId;
+            pendingKey = key;
+            setProcess.command = [root.binary, "set", deviceId, key, String(value)];
+            setProcess.running = true;
+        }
+
+        function sendQueued() {
+            if (!queued)
+                return;
+            var next = queued;
+            queued = null;
+            send(next.deviceId, next.key, next.value);
+        }
 
         // Replace one device in place, leaving the others alone. A `set` reply
         // carries only the device it wrote; the rest of the list is still good.
@@ -81,7 +118,16 @@ Item {
         stdout: StdioCollector {
             id: listOut
             waitForEnd: true
-            onStreamFinished: internal.state = Model.parse((listOut.text || "").trim())
+            onStreamFinished: {
+                if (internal.readGeneration !== internal.writes) {
+                    // A write landed while this read was out, so it is stale by
+                    // exactly the value the user just changed. Discard it and
+                    // read again rather than flickering back.
+                    Qt.callLater(root.refresh);
+                    return;
+                }
+                internal.state = Model.parse((listOut.text || "").trim());
+            }
         }
     }
 
@@ -96,6 +142,7 @@ Item {
                 var key = internal.pendingKey;
                 internal.pendingId = "";
                 internal.pendingKey = "";
+                internal.writes++;
 
                 if (reply.ok && reply.devices.length > 0) {
                     internal.merge(reply.devices[0]);
@@ -107,6 +154,8 @@ Item {
                     root.applied(deviceId, key, false, reply.error);
                     root.refresh();
                 }
+
+                internal.sendQueued();
             }
         }
     }

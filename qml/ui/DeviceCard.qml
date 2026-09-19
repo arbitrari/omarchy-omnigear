@@ -8,6 +8,10 @@ import "../Model.js" as Model
 // There is no per-model UI anywhere in this plugin and there should never be:
 // the card asks the device for its capability list and renders the matching
 // control from ui/. A new mouse is a catalog entry in Go and nothing here.
+//
+// Controls are grouped into tabs, and the tabs come from that same capability
+// list — a device with nothing to put in a group never grows that tab, and a
+// device with only one group never shows a strip at all.
 Rectangle {
     id: root
 
@@ -22,6 +26,27 @@ Rectangle {
     readonly property color foreground: bar ? bar.foreground : Color.foreground
     readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
     readonly property var unsupported: Model.unsupportedCapabilities(device)
+    readonly property var tabs: Model.deviceTabs(device)
+    readonly property bool showTabs: tabs.length > 1
+
+    // Which tab is open is owned by the panel, not by this card. The card is a
+    // Repeater delegate and every poll rebuilds the model, destroying and
+    // recreating it — state kept here would be reset on the next read, which
+    // looked like the tab switching itself back mid-edit.
+    property string activeTab: ""
+
+    signal tabSelected(string id)
+
+    // Falls back to the first tab when the panel has no preference yet, or
+    // when a remembered tab no longer exists because the device lost that
+    // capability.
+    readonly property string currentTab: {
+        for (var i = 0; i < tabs.length; i++) {
+            if (tabs[i].id === activeTab)
+                return activeTab;
+        }
+        return tabs.length > 0 ? tabs[0].id : "";
+    }
 
     width: parent ? parent.width : implicitWidth
     implicitHeight: body.implicitHeight + Style.space(20)
@@ -78,6 +103,8 @@ Rectangle {
                 }
             }
 
+            // Battery sits outside the tabs: it is the one reading you want
+            // regardless of which group of controls is open.
             BatteryRow {
                 id: battery
                 anchors.right: parent.right
@@ -88,43 +115,72 @@ Rectangle {
             }
         }
 
+        // With a tab strip present its rail is the divider; a separator
+        // directly above it would just be a second line.
         PanelSeparator {
             foreground: root.foreground
-            visible: dpi.visible || rate.visible || profile.visible
-                || unsupportedList.visible
+            visible: !root.showTabs && (root.tabs.length > 0 || unsupportedList.visible)
         }
 
-        // --- what it can do ------------------------------------------------
-        DpiControl {
-            id: dpi
+        // --- which group of controls ---------------------------------------
+        TabBar {
             bar: root.bar
-            busy: root.busy
-            dpi: root.device ? root.device.dpi : null
-            onRequested: function (value) {
-                root.settingRequested("dpi", String(value));
+            visible: root.showTabs
+            tabs: root.tabs
+            current: root.currentTab
+            onSelected: function (id) {
+                root.tabSelected(id);
             }
         }
 
-        PollingRateControl {
-            id: rate
-            bar: root.bar
-            busy: root.busy
-            pollingRate: root.device ? root.device.pollingRate : null
-            onRequested: function (hz) {
-                root.settingRequested("polling-rate", String(hz));
+        // --- sensor --------------------------------------------------------
+        Column {
+            width: parent.width
+            spacing: Style.space(10)
+            visible: root.currentTab === "sensor"
+
+            DpiControl {
+                bar: root.bar
+                busy: root.busy
+                dpi: root.device ? root.device.dpi : null
+                onRequested: function (value) {
+                    root.settingRequested("dpi", String(value));
+                }
+            }
+
+            PollingRateControl {
+                bar: root.bar
+                busy: root.busy
+                pollingRate: root.device ? root.device.pollingRate : null
+                onRequested: function (hz) {
+                    root.settingRequested("polling-rate", String(hz));
+                }
+            }
+
+            ProfileModeControl {
+                bar: root.bar
+                busy: root.busy
+                mode: root.device ? root.device.onboardProfile : ""
+                onRequested: function (mode) {
+                    root.settingRequested("profile-mode", mode);
+                }
             }
         }
 
-        ProfileModeControl {
-            id: profile
+        // --- triggers ------------------------------------------------------
+        HitsControl {
             bar: root.bar
             busy: root.busy
-            mode: root.device ? root.device.onboardProfile : ""
-            onRequested: function (mode) {
-                root.settingRequested("profile-mode", mode);
+            // A failed HITS read leaves the tab present but empty; guard so it
+            // does not draw bare "Left click" headings over nothing.
+            visible: root.currentTab === "triggers" && root.device && root.device.hits !== null
+            hits: root.device ? root.device.hits : null
+            onRequested: function (field, value) {
+                root.settingRequested("hits-" + field, String(value));
             }
         }
 
+        // --- declared, not driven ------------------------------------------
         Column {
             id: unsupportedList
             width: parent.width

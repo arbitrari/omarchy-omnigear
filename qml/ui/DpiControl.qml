@@ -36,6 +36,7 @@ Column {
 
     SettingHeader {
         bar: root.bar
+        group: true
         label: Model.capabilityLabel("dpi")
         value: root.dpi ? root.dpi.current + " DPI" : "--"
     }
