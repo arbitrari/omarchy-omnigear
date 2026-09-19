@@ -104,19 +104,64 @@ BarWidget {
         bar: root.bar
         active: root.opened
         useActiveColor: false
-        slotSize: Style.bar.iconSlot * (root.showPercentage && gear.primary ? 2.2 : 1.0)
+        slotSize: Style.bar.iconSlot * Model.barSlots(gear.primary, root.showPercentage)
         tooltipText: Model.tooltip(gear.state)
 
-        text: {
-            var device = gear.primary;
-            if (!device)
-                return Model.categoryIcon("");
+        // Drawn rather than set as text: the charging bolt is smaller than the
+        // device glyph beside it, and a plain string is one font size all the
+        // way through.
+        text: ""
+        iconComponent: Component {
+            Item {
+                anchors.fill: parent
 
-            var icon = Model.categoryIcon(device.category);
-            if (!root.showPercentage || !device.battery)
-                return icon;
+                Row {
+                    anchors.centerIn: parent
+                    spacing: Style.space(4)
 
-            return Model.batteryText(device.battery.percent) + " " + icon;
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: text !== ""
+                        text: Model.barCharge(gear.primary, root.showPercentage)
+                        textFormat: Text.PlainText
+                        color: button.foreground
+                        font.family: button.fontFamily
+                        font.pixelSize: button.fontSize
+                    }
+
+                    Item {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: glyph.implicitWidth + (bolt.visible ? bolt.implicitWidth : 0)
+                        height: glyph.implicitHeight
+
+                        Text {
+                            id: glyph
+                            anchors.left: parent.left
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: Model.barIcon(gear.primary)
+                            textFormat: Text.PlainText
+                            color: button.foreground
+                            font.family: button.fontFamily
+                            font.pixelSize: button.fontSize
+                        }
+
+                        Text {
+                            id: bolt
+                            anchors.left: glyph.right
+                            // Sits high against the glyph, the way a badge
+                            // does, rather than centred beside it.
+                            anchors.top: glyph.top
+                            anchors.topMargin: Math.round(button.fontSize * 0.1)
+                            visible: Model.isCharging(gear.primary)
+                            text: Model.CHARGING_BOLT
+                            textFormat: Text.PlainText
+                            color: button.foreground
+                            font.family: button.fontFamily
+                            font.pixelSize: Math.round(button.fontSize * 0.55)
+                        }
+                    }
+                }
+            }
         }
 
         onPressed: function (code) {

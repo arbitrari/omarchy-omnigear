@@ -188,6 +188,34 @@ function primary(devices, preferredId) {
   })
 }
 
+/// Whether a device is taking on charge right now.
+function isCharging(device) {
+  return !!device && !!device.battery && device.battery.status === "charging"
+}
+
+/// A bolt tucked against the device icon, for a device taking on charge.
+var CHARGING_BOLT = "\uF0E7"
+
+/// The charge reading for the bar, or "" when it should not be shown.
+function barCharge(device, showPercentage) {
+  if (!device || !device.battery || !showPercentage) return ""
+  return batteryText(device.battery.percent)
+}
+
+/// The device glyph for the bar.
+function barIcon(device) {
+  return device ? categoryIcon(device.category) : categoryIcon("")
+}
+
+/// How many icon slots the bar label needs, so the widget reserves the right
+/// width for whatever barCharge and barIcon are about to draw.
+function barSlots(device, showPercentage) {
+  var slots = 1.0
+  if (showPercentage && device && device.battery) slots += 1.2
+  if (isCharging(device)) slots += 0.5
+  return slots
+}
+
 function tooltip(state) {
   if (!state.ok) return "OmniGear: " + (state.error || "unavailable")
   if (state.devices.length === 0) return "OmniGear: no supported devices"
@@ -196,7 +224,9 @@ function tooltip(state) {
     if (!d.connected) return d.name + " · off"
     var parts = [d.name]
     if (d.battery && d.battery.percent !== UNKNOWN) {
-      parts.push(batteryText(d.battery.percent))
+      var charge = batteryText(d.battery.percent)
+      var state = batteryStatusLabel(d.battery)
+      parts.push(state ? charge + " " + state : charge)
     }
     if (d.dpi && d.dpi.current > 0) parts.push(d.dpi.current + " DPI")
     if (d.pollingRate && d.pollingRate.current > 0) parts.push(d.pollingRate.current + " Hz")
