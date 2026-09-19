@@ -25,7 +25,7 @@ Rectangle {
 
     width: parent ? parent.width : implicitWidth
     implicitHeight: body.implicitHeight + Style.space(20)
-    radius: Style.space(8)
+    radius: Style.space(0)
     color: Style.normalFill
 
     Column {
