@@ -313,6 +313,40 @@ function supportLabel(support) {
   }
 }
 
+/// Quick DPI buttons offered for every mouse.
+///
+/// A device only reports the stages its own DPI button cycles through, and
+/// some report none at all — an MX Master 3S gives a bare range, so it would
+/// get a slider and nothing else. This is the familiar ladder, offered
+/// wherever the device can actually reach the value.
+var DPI_QUICK_VALUES = [800, 1200, 2000, 4000, 8000]
+
+/// How many chips the row will hold before it starts wrapping awkwardly.
+var DPI_MAX_PRESETS = 6
+
+function dpiPresets(dpi) {
+  if (!dpi || dpi.max <= 0) return []
+
+  var inRange = function (value) {
+    return value >= dpi.min && value <= dpi.max
+  }
+
+  var values = DPI_QUICK_VALUES.filter(inRange)
+
+  // A stage the device cycles through is worth keeping even when it is not on
+  // the ladder — it is a value this mouse is known to use.
+  var stages = dpi.presets || []
+  for (var i = 0; i < stages.length; i++) {
+    if (inRange(stages[i]) && values.indexOf(stages[i]) === -1)
+      values.push(stages[i])
+  }
+
+  values.sort(function (a, b) {
+    return a - b
+  })
+  return values.slice(0, DPI_MAX_PRESETS)
+}
+
 /// A slider needs a step it can actually land on. Devices report the finest
 /// step of a range that gets coarser as it climbs, which would make a
 /// 100–44000 slider crawl, so widen it enough to cross the range in a sane

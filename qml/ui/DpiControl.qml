@@ -23,6 +23,7 @@ Column {
 
     readonly property color foreground: bar ? bar.foreground : Color.foreground
     readonly property bool adjustable: dpi !== null && dpi.max > dpi.min
+    readonly property var presetValues: Model.dpiPresets(dpi)
 
     width: parent ? parent.width : implicitWidth
     spacing: Style.space(6)
@@ -44,9 +45,9 @@ Column {
     ButtonGroup {
         id: presets
 
-        // A device with a stepped range reports no stages worth offering, and
-        // an empty chip row would just be a gap.
-        visible: root.dpi !== null && root.dpi.presets.length > 0
+        // Only absent when the device's range is too narrow to hold any of
+        // the quick values.
+        visible: root.presetValues.length > 0
         width: parent.width
         spacing: Style.space(4)
 
@@ -57,13 +58,12 @@ Column {
         fontSize: Style.font.bodySmall
         focusable: false
 
-        options: {
-            if (!root.dpi)
-                return [];
-            return root.dpi.presets.map(function (preset) {
-                return { value: String(preset), label: String(preset) };
-            });
-        }
+        options: root.presetValues.map(function (preset) {
+            return {
+                value: String(preset),
+                label: String(preset)
+            };
+        })
         value: root.dpi ? String(root.dpi.current) : ""
 
         onChanged: function (value) {
