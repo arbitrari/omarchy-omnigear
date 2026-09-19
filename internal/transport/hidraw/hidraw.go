@@ -25,13 +25,20 @@ const sysClass = "/sys/class/hidraw"
 var ErrTimeout = errors.New("timed out waiting for a report")
 
 // Link is how a device is attached to the machine. Some settings differ by
-// link: a Logitech mouse offers 8000 Hz polling on a cable and 1000 Hz on
-// Lightspeed.
+// link: a Logitech mouse offers 8000 Hz polling over a cable or its own dongle
+// but only 1000 Hz over Bluetooth.
 type Link string
 
 const (
-	Wired    Link = "wired"
-	Wireless Link = "wireless"
+	Wired     Link = "wired"
+	Wireless  Link = "wireless"
+	Bluetooth Link = "bluetooth"
+)
+
+// HID bus ids, as the kernel writes them into HID_ID.
+const (
+	busUSB       = 0x0003
+	busBluetooth = 0x0005
 )
 
 // Node is one /dev/hidrawN and what sysfs says about it.
@@ -44,6 +51,8 @@ type Node struct {
 	Driver string
 	// HID_UNIQ — a serial or MAC-ish string, when the device has one.
 	Uniq string
+	// Bus is the HID bus id: 0x0003 USB, 0x0005 Bluetooth.
+	Bus  uint16
 	Link Link
 }
 
@@ -85,7 +94,7 @@ func readNode(name string) (Node, bool) {
 		return Node{}, false
 	}
 
-	node := Node{Path: filepath.Join("/dev", name), Link: readLink(name)}
+	node := Node{Path: filepath.Join("/dev", name)}
 	haveUSB := false
 
 	for _, line := range strings.Split(string(raw), "\n") {
@@ -99,6 +108,9 @@ func readNode(name string) (Node, bool) {
 			parts := strings.Split(value, ":")
 			if len(parts) < 3 {
 				continue
+			}
+			if bus, err := strconv.ParseUint(parts[0], 16, 16); err == nil {
+				node.Bus = uint16(bus)
 			}
 			vendor, errV := strconv.ParseUint(parts[1], 16, 16)
 			product, errP := strconv.ParseUint(parts[2], 16, 16)
@@ -116,18 +128,23 @@ func readNode(name string) (Node, bool) {
 		}
 	}
 
+	node.Link = readLink(name, node.Bus)
 	return node, haveUSB
 }
 
-// readLink works out whether a node is reached over a cable or a dongle.
+// readLink works out how a node is attached.
 //
-// A device behind a dongle hangs off a receiver in sysfs:
+// Bluetooth announces itself in the HID bus id. Otherwise, a device behind a
+// dongle hangs off a receiver in sysfs:
 //
 //	…/0003:046D:C54D.0008/     logitech-djreceiver   <- the dongle
 //	  0003:046D:40BD.0009/     logitech-hidpp-device <- the mouse
 //
-// so the parent's uevent says which it is.
-func readLink(name string) Link {
+// so the parent's uevent separates a dongle from a plain cable.
+func readLink(name string, bus uint16) Link {
+	if bus == busBluetooth {
+		return Bluetooth
+	}
 	device, err := filepath.EvalSymlinks(filepath.Join(sysClass, name, "device"))
 	if err != nil {
 		return Wired

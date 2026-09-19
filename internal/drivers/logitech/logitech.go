@@ -330,10 +330,19 @@ func writeDPI(link *hidpp.Device, value uint32) error {
 // slowest bit first.
 var extendedRatesHz = [7]uint32{125, 250, 500, 1000, 2000, 4000, 8000}
 
-// connectionArg tells feature 0x8061 which link it is being asked about: a
-// SUPERSTRIKE offers 125–1000 Hz on Lightspeed and 125–8000 Hz on a cable.
+// connectionArg tells feature 0x8061 which link it is being asked about.
+//
+// A SUPERSTRIKE answers `00 0F` for 0 — 125–1000 Hz — and `00 7F` for 1, the
+// full 125–8000 Hz. Asked for the current rate it says index 3 (1000) for 0 and
+// index 4 (2000) for 1, and 2000 is what the mouse is really running on its
+// Lightspeed dongle. So 1 is the cable-or-dongle link and 0 is the slow one.
+//
+// Read as Bluetooth vs everything else that fits: BLE tops out at 1000 Hz,
+// while both a cable and a Lightspeed dongle reach 8000. That is an inference
+// from one device — if a Bluetooth Logitech mouse ever reports its rate from
+// the wrong list, this is the line to revisit.
 func connectionArg(node hidraw.Node) byte {
-	if node.Link == hidraw.Wireless {
+	if node.Link == hidraw.Bluetooth {
 		return 0x00
 	}
 	return 0x01
@@ -367,7 +376,9 @@ func readRate8061(link *hidpp.Device, index byte, node hidraw.Node) (*model.Poll
 	}
 	supported := decodeRateBitmap(at(caps, 1))
 
-	current, err := link.Call(index, 0x02)
+	// getReportRate is per-link too. Calling it bare reports connection 0's
+	// rate, which is not necessarily the one in use.
+	current, err := link.Call(index, 0x02, connectionArg(node))
 	if err != nil {
 		return nil, err
 	}
@@ -433,6 +444,10 @@ func writePollingRate(link *hidpp.Device, node hidraw.Node, hz uint32) error {
 		if slot < 0 {
 			return &hidpp.ProtocolError{Code: 0x03}
 		}
+		// setReportRate takes the index alone — no connection byte, unlike
+		// every other function on this feature. Passing one anyway is not
+		// refused: the device reads the first byte as the index and quietly
+		// sets the wrong rate.
 		_, err = link.Call(index, 0x03, byte(slot))
 		return err
 	}

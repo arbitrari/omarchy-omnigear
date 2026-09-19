@@ -111,8 +111,15 @@ source:
 
 - `setSensorDpi` rejects a lift-off distance of `0`. The write has to carry the
   device's current LOD, not a placeholder.
-- The polling rates on offer depend on the *link*: 125–1000 Hz on Lightspeed,
-  125–8000 Hz on a cable. `hidraw.Node.Link` reads that off the sysfs parent.
+- Feature 0x8061 is *per-link*. Every function but one takes a connection type,
+  and asking about the wrong one is not an error — it answers about the other
+  link. Reading connection 0 on a mouse running 2000 Hz on its dongle returns a
+  confident, wrong 1000, and caps the offered rates at 1000 so the real ones
+  look unsupported. `connectionArg` picks the link; `hidraw.Node.Bus` and
+  `.Link` decide which.
+- `setReportRate` is the exception: index only, no connection byte. Passing one
+  is not refused — the device takes the first byte as the index and sets a rate
+  nobody asked for.
 
 ## You are not the only one talking to the device
 
