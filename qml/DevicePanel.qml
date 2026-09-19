@@ -43,6 +43,17 @@ Panel {
     // panel outlives the cards: their Repeater rebuilds on every poll.
     property var tabSelection: ({})
 
+    // Which mouse the user picked to speak for the bar. Owned by the bar
+    // widget, because that is where the widget's settings live.
+    property string primaryMouseId: ""
+
+    readonly property int mouseCount: Model.devicesOfCategory(state.devices, "mouse").length
+
+    function choosePrimaryMouse(deviceId) {
+        if (hostWidget && typeof hostWidget.setPrimaryMouse === "function")
+            hostWidget.setPrimaryMouse(deviceId);
+    }
+
     function tabFor(deviceId) {
         return tabSelection[deviceId] || "";
     }
@@ -111,7 +122,8 @@ Panel {
         focusTarget: keys
         contentWidth: popup.fittedContentWidth(Style.space(400))
         contentHeight: popup.fittedContentHeight(
-            header.height + Style.space(12) + content.implicitHeight, Style.space(720))
+            header.height + Style.space(12) + content.implicitHeight
+            + (footer.visible ? footer.height + Style.space(12) : 0), Style.space(720))
 
         PanelKeyCatcher {
             id: keys
@@ -186,13 +198,59 @@ Panel {
                 }
             }
 
+            // --- which device speaks for the bar ------------------------
+            //
+            // A panel-level choice rather than a per-device one: it is a
+            // preference about the bar, not a setting on any mouse, so it
+            // lives once at the foot of the panel instead of repeating as an
+            // ornament on every card.
+            //
+            // One chooser per kind of device. Only mice report a battery to
+            // the bar today; a keyboard or headset that does will add its own
+            // chooser here rather than change this one.
+            Item {
+                id: footer
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                // Computed from the model, not from the chooser's own
+                // visibility: a parent whose visibility depends on its child's
+                // does not re-evaluate when that child's data arrives.
+                visible: root.mouseCount > 1
+                height: visible ? footerBody.implicitHeight : 0
+
+                Column {
+                    id: footerBody
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    spacing: Style.space(8)
+
+                    PanelSeparator {
+                        foreground: root.foreground
+                    }
+
+                    PrimaryChooser {
+                        id: mouseChooser
+                        bar: root.bar
+                        label: "Primary Mouse"
+                        devices: Model.devicesOfCategory(root.state.devices, "mouse")
+                        current: root.primaryMouseId
+                        onChosen: function (deviceId) {
+                            root.choosePrimaryMouse(deviceId);
+                        }
+                    }
+                }
+            }
+
             Flickable {
                 id: flick
                 anchors.top: header.bottom
                 anchors.topMargin: Style.space(12)
                 anchors.left: parent.left
                 anchors.right: parent.right
-                anchors.bottom: parent.bottom
+                anchors.bottom: footer.visible ? footer.top : parent.bottom
+                anchors.bottomMargin: footer.visible ? Style.space(12) : 0
                 contentWidth: width
                 contentHeight: content.implicitHeight
                 clip: true

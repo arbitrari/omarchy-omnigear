@@ -19,7 +19,8 @@
     "defaultSection": "right",
     "defaults": {
       "pollInterval": 20,
-      "showPercentage": true
+      "showPercentage": true,
+      "primaryMouse": ""
     },
     "schema": [
       {

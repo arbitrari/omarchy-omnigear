@@ -17,7 +17,15 @@ Item {
     readonly property var devices: internal.state.devices
     readonly property bool ok: internal.state.ok
     readonly property string error: internal.state.error
-    readonly property var primary: Model.primary(internal.state.devices)
+    readonly property var primary: Model.primary(internal.state.devices, root.preferredDeviceId)
+
+    // Which mouse the user picked to speak for the bar. Empty means "decide
+    // for me". Scoped per kind of device, so a keyboard or headset battery can
+    // be chosen independently once those are reported too.
+    readonly property string preferredDeviceId: {
+        var chosen = settings ? settings.primaryMouse : "";
+        return chosen ? String(chosen) : "";
+    }
     readonly property bool busy: listProcess.running || setProcess.running
 
     readonly property int pollIntervalSec: {

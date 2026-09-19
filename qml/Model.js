@@ -150,16 +150,25 @@ function batteryText(percent) {
   return (percent === UNKNOWN || percent < 0) ? "--" : String(percent) + "%"
 }
 
-/// The device the bar should speak for: the one with the lowest battery, so the
-/// thing about to die is the thing you see. A device that is switched off has
-/// nothing to report and never speaks for the bar.
-function primary(devices) {
+/// The device the bar should speak for.
+///
+/// A chosen device wins, as long as it is connected — a preference for a mouse
+/// that is switched off should not leave the bar blank, so it falls back to
+/// the default: the lowest battery among the devices that are answering, so
+/// the thing about to die is the thing you see.
+function primary(devices, preferredId) {
   if (!devices || devices.length === 0) return null
   var live = devices.filter(function (d) {
     return d.connected
   })
   if (live.length === 0) return null
   devices = live
+
+  if (preferredId) {
+    for (var i = 0; i < devices.length; i++) {
+      if (devices[i].id === preferredId) return devices[i]
+    }
+  }
 
   var withBattery = devices.filter(function (d) {
     return d.battery && d.battery.percent !== UNKNOWN
@@ -240,6 +249,14 @@ var TAB_GROUPS = [
   { id: "sensor", label: "Sensor", capabilities: ["dpi", "polling-rate", "onboard-profile"] },
   { id: "triggers", label: "Triggers", capabilities: ["hits"] }
 ]
+
+/// The devices of one kind. Each kind gets its own primary, because "the
+/// mouse" and "the keyboard" are separate questions.
+function devicesOfCategory(devices, category) {
+  return (devices || []).filter(function (device) {
+    return device.category === category
+  })
+}
 
 function deviceTabs(device) {
   if (!device) return []
