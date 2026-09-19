@@ -170,6 +170,41 @@ func (e *Entry) Matches(vendor, product uint16) bool {
 	return false
 }
 
+// Connection is how a device is attached, in terms a user recognises. A
+// wireless mouse is not just "wireless": which dongle it is paired to decides
+// what it can do, and the answer is on the box it came in.
+type Connection struct {
+	// Kind is machine-readable: wired, bluetooth, lightspeed, unifying, bolt,
+	// nano, 27mhz, or receiver for a dongle that is not in the table.
+	Kind string `json:"kind"`
+	// Label is what the UI prints.
+	Label string `json:"label"`
+}
+
+// ConnectionOf describes how node is attached.
+func ConnectionOf(node hidraw.Node) Connection {
+	switch node.Link {
+	case hidraw.Bluetooth:
+		return Connection{Kind: "bluetooth", Label: "Bluetooth"}
+
+	case hidraw.Wireless:
+		kind, known := hidraw.ReceiverKindOf(node.Receiver.Vendor, node.Receiver.Product)
+		if known {
+			return Connection{Kind: string(kind), Label: kind.Label()}
+		}
+		// Name the id so an unlisted dongle can be reported and added rather
+		// than silently flattened into "wireless".
+		return Connection{
+			Kind: string(kind),
+			Label: fmt.Sprintf("%s (%04x:%04x)", kind.Label(),
+				node.Receiver.Vendor, node.Receiver.Product),
+		}
+
+	default:
+		return Connection{Kind: "wired", Label: "Wired"}
+	}
+}
+
 // Device is a catalogued model that is actually plugged in right now.
 type Device struct {
 	Entry *Entry
@@ -329,6 +364,7 @@ type DeviceJSON struct {
 	Slug         string       `json:"slug"`
 	Support      Support      `json:"support"`
 	Capabilities []Capability `json:"capabilities"`
+	Connection   Connection   `json:"connection"`
 	Path         string       `json:"path"`
 	State        DeviceState  `json:"state"`
 }
@@ -343,6 +379,7 @@ func (d *Device) JSON(state DeviceState) DeviceJSON {
 		Slug:         d.Entry.Slug,
 		Support:      d.Entry.Support,
 		Capabilities: nonNilCapabilities(d.Entry.Capabilities),
+		Connection:   ConnectionOf(d.Node),
 		Path:         d.Node.Path,
 		State:        state,
 	}

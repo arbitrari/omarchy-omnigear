@@ -69,13 +69,7 @@ Rectangle {
                     }
 
                     Text {
-                        readonly property string support: root.device
-                            ? Model.supportLabel(root.device.support) : ""
-
-                        text: {
-                            var brand = root.device ? root.device.brand : "";
-                            return support === "" ? brand : brand + " · " + support;
-                        }
+                        text: Model.deviceSubtitle(root.device)
                         textFormat: Text.PlainText
                         color: Qt.darker(root.foreground, 1.5)
                         font.family: root.fontFamily

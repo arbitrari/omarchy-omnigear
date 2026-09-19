@@ -62,6 +62,7 @@ function parseDevice(raw) {
     brand: safeText(d.brandLabel, "", 32),
     category: safeText(d.category, "", 16),
     support: safeText(d.support, "planned", 16),
+    connection: parseConnection(d.connection),
     capabilities: Array.isArray(d.capabilities) ? d.capabilities : [],
     battery: parseBattery(s.battery),
     dpi: s.dpi ? {
@@ -78,6 +79,14 @@ function parseDevice(raw) {
     errors: Array.isArray(s.errors) ? s.errors.map(function (e) {
       return safeText(e, "", 256)
     }) : []
+  }
+}
+
+function parseConnection(raw) {
+  if (!raw) return { kind: "", label: "" }
+  return {
+    kind: safeText(raw.kind, "", 24),
+    label: safeText(raw.label, "", 48)
   }
 }
 
@@ -227,6 +236,18 @@ function batteryStatusLabel(battery) {
 function titleCase(text) {
   if (!text) return ""
   return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
+/// The line under a device's name: who made it, how it is attached, and how
+/// complete support for it is. Empty parts are dropped rather than leaving
+/// stray separators.
+function deviceSubtitle(device) {
+  if (!device) return ""
+  var parts = [device.brand]
+  if (device.connection && device.connection.label) parts.push(device.connection.label)
+  var support = supportLabel(device.support)
+  if (support) parts.push(support)
+  return parts.filter(function (p) { return !!p }).join(" · ")
 }
 
 function supportLabel(support) {

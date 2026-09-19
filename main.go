@@ -205,6 +205,7 @@ type nodeReport struct {
 	Driver     string          `json:"driver"`
 	Uniq       string          `json:"uniq"`
 	Link       hidraw.Link     `json:"link"`
+	Connection string          `json:"connection"`
 	OpenedBy   []hidraw.Holder `json:"openedBy"`
 	Catalogued string          `json:"catalogued,omitempty"`
 	DeviceIdx  *int            `json:"hidppDeviceIndex"`
@@ -244,15 +245,16 @@ func cmdProbe() (reply, error) {
 
 	for _, node := range nodes {
 		report := nodeReport{
-			Path:     node.Path,
-			Vendor:   fmt.Sprintf("0x%04X", node.Vendor),
-			Product:  fmt.Sprintf("0x%04X", node.Product),
-			Name:     node.Name,
-			Driver:   node.Driver,
-			Uniq:     node.Uniq,
-			Link:     node.Link,
-			OpenedBy: hidraw.OtherHolders(node.Path),
-			Features: []featureReport{},
+			Path:       node.Path,
+			Vendor:     fmt.Sprintf("0x%04X", node.Vendor),
+			Product:    fmt.Sprintf("0x%04X", node.Product),
+			Name:       node.Name,
+			Driver:     node.Driver,
+			Uniq:       node.Uniq,
+			Link:       node.Link,
+			Connection: model.ConnectionOf(node).Label,
+			OpenedBy:   hidraw.OtherHolders(node.Path),
+			Features:   []featureReport{},
 		}
 
 		if entry := catalog.FindByUSB(node.Vendor, node.Product); entry != nil {

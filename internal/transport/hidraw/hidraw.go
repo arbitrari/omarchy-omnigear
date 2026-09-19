@@ -54,7 +54,19 @@ type Node struct {
 	// Bus is the HID bus id: 0x0003 USB, 0x0005 Bluetooth.
 	Bus  uint16
 	Link Link
+	// Receiver identifies the dongle this device is paired to, when there is
+	// one. Zero vendor means the device is not behind a receiver.
+	Receiver ReceiverID
 }
+
+// ReceiverID is the USB identity of a dongle a device is paired to.
+type ReceiverID struct {
+	Vendor  uint16
+	Product uint16
+}
+
+// Present reports whether the device is reached through a dongle at all.
+func (r ReceiverID) Present() bool { return r.Vendor != 0 }
 
 // Enumerate returns every hidraw node currently present, in node order.
 func Enumerate() []Node {
@@ -128,11 +140,11 @@ func readNode(name string) (Node, bool) {
 		}
 	}
 
-	node.Link = readLink(name, node.Bus)
+	node.Link, node.Receiver = readLink(name, node.Bus)
 	return node, haveUSB
 }
 
-// readLink works out how a node is attached.
+// readLink works out how a node is attached, and to what.
 //
 // Bluetooth announces itself in the HID bus id. Otherwise, a device behind a
 // dongle hangs off a receiver in sysfs:
@@ -140,23 +152,48 @@ func readNode(name string) (Node, bool) {
 //	…/0003:046D:C54D.0008/     logitech-djreceiver   <- the dongle
 //	  0003:046D:40BD.0009/     logitech-hidpp-device <- the mouse
 //
-// so the parent's uevent separates a dongle from a plain cable.
-func readLink(name string, bus uint16) Link {
+// so the parent separates a dongle from a plain cable — and its own HID_ID
+// says which dongle, which is the only way to tell a Lightspeed receiver from
+// a Unifying one.
+func readLink(name string, bus uint16) (Link, ReceiverID) {
 	if bus == busBluetooth {
-		return Bluetooth
+		return Bluetooth, ReceiverID{}
 	}
 	device, err := filepath.EvalSymlinks(filepath.Join(sysClass, name, "device"))
 	if err != nil {
-		return Wired
+		return Wired, ReceiverID{}
 	}
-	uevent, err := os.ReadFile(filepath.Join(filepath.Dir(device), "uevent"))
+	raw, err := os.ReadFile(filepath.Join(filepath.Dir(device), "uevent"))
 	if err != nil {
-		return Wired
+		return Wired, ReceiverID{}
 	}
-	if strings.Contains(string(uevent), "receiver") {
-		return Wireless
+	uevent := string(raw)
+	if !strings.Contains(uevent, "receiver") {
+		return Wired, ReceiverID{}
 	}
-	return Wired
+
+	return Wireless, parentReceiverID(uevent)
+}
+
+// parentReceiverID pulls the dongle's USB identity out of the parent's
+// HID_ID=bus:vendor:product line.
+func parentReceiverID(uevent string) ReceiverID {
+	for _, line := range strings.Split(uevent, "\n") {
+		key, value, found := strings.Cut(line, "=")
+		if !found || key != "HID_ID" {
+			continue
+		}
+		parts := strings.Split(value, ":")
+		if len(parts) < 3 {
+			continue
+		}
+		vendor, errV := strconv.ParseUint(parts[1], 16, 16)
+		product, errP := strconv.ParseUint(parts[2], 16, 16)
+		if errV == nil && errP == nil {
+			return ReceiverID{Vendor: uint16(vendor), Product: uint16(product)}
+		}
+	}
+	return ReceiverID{}
 }
 
 // Open opens the node for reading and writing. The caller closes it.
