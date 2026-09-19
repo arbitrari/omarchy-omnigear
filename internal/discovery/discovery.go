@@ -45,7 +45,53 @@ func Devices() []model.Device {
 			Node:  choose(groups[id]),
 		})
 	}
+
+	return append(found, behindReceivers()...)
+}
+
+// behindReceivers finds devices that have no hidraw node of their own.
+//
+// When the kernel recognises a dongle it expands it into one node per paired
+// device, and those are matched by USB id like anything else. When it does not
+// — a Logi Bolt on a kernel whose hid-logitech-dj has no entry for its product
+// id — the dongle stays a single node and the devices behind it are invisible
+// to a USB-id match. They are reachable only by index on the receiver's own
+// node, and identify themselves by name rather than by id.
+//
+// Only unexpanded receivers are scanned. Scanning one the kernel already
+// expanded would find the same device twice, once under each identity.
+func behindReceivers() []model.Device {
+	var found []model.Device
+
+	for _, node := range hidraw.Enumerate() {
+		if _, isReceiver := hidraw.ReceiverKindOf(node.Vendor, node.Product); !isReceiver {
+			continue
+		}
+		if expandedByKernel(node) || !hidpp.Speaks(node) {
+			continue
+		}
+
+		for _, paired := range hidpp.PairedDevices(node) {
+			entry := catalog.FindByName(paired.Name)
+			if entry == nil {
+				continue
+			}
+			found = append(found, model.Device{
+				Entry: entry,
+				ID:    deviceID(entry, node.Uniq),
+				Node:  node,
+				Index: paired.Index,
+			})
+		}
+	}
+
 	return found
+}
+
+// expandedByKernel reports whether the kernel has already turned a receiver's
+// paired devices into hidraw nodes of their own.
+func expandedByKernel(node hidraw.Node) bool {
+	return strings.Contains(node.Driver, "djreceiver")
 }
 
 // deviceID is "<category>/<brand>/<slug>", plus "#<serial>" when the kernel

@@ -143,6 +143,36 @@ Nodes are grouped by serial, not by USB id, and the serial is normalised first:
 the same mouse reports `5f-ba-c9-65` through its dongle and `5FBAC965` over
 USB. Without that, plugging in a cable would split one mouse into two devices.
 
+## Devices with no node of their own
+
+A dongle the kernel recognises is expanded into one hidraw node per paired
+device, and those are matched by USB id like anything else. A dongle it does
+not recognise stays a single node, and the devices behind it are invisible to a
+USB-id match — a Logi Bolt (`046d:c548`) is exactly this case, because
+`hid-logitech-dj` has no entry for that product id and `hid-generic` binds
+instead.
+
+`discovery.behindReceivers` covers them:
+
+- only receivers the kernel did **not** expand are scanned, since scanning an
+  expanded one would find the same device twice under two identities;
+- the slots are probed **concurrently** — an empty one costs the whole wake
+  timeout, and waiting out five in series to find the sixth device would make
+  every poll crawl;
+- the receiver's own count (HID++ 1.0 register `0x02`) ends the scan early once
+  that many have answered. It is an optimisation, not a gate: a receiver that
+  answers strangely falls back to scanning every slot.
+
+Such a device identifies itself by **name** rather than by USB id, so its
+catalog entry carries `Names` instead of `USB`, and `model.Device.Index`
+addresses it on the receiver's node.
+
+**Sleeping devices need a long first word.** A sleeping MX Master 3S took over
+half a second to answer its first ping — the ordinary 600ms call timeout
+reported it as absent, and the 150ms probe timeout never stood a chance. The
+wake window is 2.5s, and only for that first ping; once awake it answers in
+milliseconds.
+
 ## Onboard mode refuses writes
 
 Feature 0x8100 says who owns a device's settings. In **onboard** mode it runs

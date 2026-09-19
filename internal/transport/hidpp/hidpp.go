@@ -320,3 +320,126 @@ func (d *Device) Name() (string, error) {
 	}
 	return strings.TrimSpace(text), nil
 }
+
+// --- devices behind a receiver ----------------------------------------------
+//
+// A dongle the kernel understands is expanded into one hidraw node per paired
+// device, and those are found by USB id like anything else. A dongle it does
+// not — a Logi Bolt on a kernel whose hid-logitech-dj has no entry for it —
+// stays a single node, and the devices behind it are reachable only by their
+// index on that node. This is how they are found.
+
+// wakeTimeout is the window for the first word with a device behind a
+// receiver. A sleeping MX Master 3S took over half a second to answer its
+// first ping, so the ordinary call timeout reports it as absent; once awake it
+// replies in milliseconds.
+const wakeTimeout = 2500 * time.Millisecond
+
+// maxPairedDevices is how many slots a receiver can hold.
+const maxPairedDevices = 6
+
+// Paired is one device reachable through a receiver.
+type Paired struct {
+	Index byte
+	Name  string
+}
+
+// OpenAt opens a conversation with one specific device index, rather than
+// searching for whichever answers. A receiver with two devices paired needs
+// the caller to say which one it means.
+func OpenAt(node hidraw.Node, index byte) (*Device, error) {
+	handle, err := node.Open()
+	if err != nil {
+		return nil, err
+	}
+
+	device := &Device{handle: handle, index: index, timeout: wakeTimeout}
+	if err := device.Ping(); err != nil {
+		handle.Close()
+		return nil, err
+	}
+	device.timeout = callTimeout
+	return device, nil
+}
+
+// PairedDevices lists what is reachable through a receiver node, by index.
+//
+// The slots are probed at once rather than in turn: an empty one costs the
+// whole wake timeout, and waiting out five of them in series to find the sixth
+// device would make every poll crawl. The receiver's own count, when it gives
+// one, ends the scan as soon as that many have answered.
+func PairedDevices(node hidraw.Node) []Paired {
+	expected := pairedCount(node)
+	if expected == 0 {
+		return nil
+	}
+
+	type result struct {
+		paired Paired
+		ok     bool
+	}
+	results := make(chan result, maxPairedDevices)
+
+	for index := byte(1); index <= maxPairedDevices; index++ {
+		go func(index byte) {
+			device, err := OpenAt(node, index)
+			if err != nil {
+				results <- result{}
+				return
+			}
+			defer device.Close()
+
+			name, err := device.Name()
+			if err != nil {
+				results <- result{}
+				return
+			}
+			results <- result{paired: Paired{Index: index, Name: name}, ok: true}
+		}(index)
+	}
+
+	var found []Paired
+	for i := 0; i < maxPairedDevices; i++ {
+		if r := <-results; r.ok {
+			found = append(found, r.paired)
+			if expected > 0 && len(found) >= expected {
+				break
+			}
+		}
+	}
+	return found
+}
+
+// pairedCount asks the receiver how many devices it holds, in HID++ 1.0:
+//
+//	request [0x10, 0xFF, 0x81, 0x02, 0, 0, 0]
+//	reply   [0x10, 0xFF, 0x81, 0x02, _, count, _]
+//
+// It is an optimisation, not a gate. A receiver that refuses or answers
+// strangely falls back to scanning every slot, which is slower but complete;
+// only a zero is taken at its word.
+func pairedCount(node hidraw.Node) int {
+	handle, err := node.Open()
+	if err != nil {
+		return maxPairedDevices
+	}
+	defer handle.Close()
+
+	if err := handle.Write([]byte{reportShort, 0xFF, 0x81, 0x02, 0x00, 0x00, 0x00}); err != nil {
+		return maxPairedDevices
+	}
+
+	deadline := time.Now().Add(callTimeout)
+	for time.Now().Before(deadline) {
+		reply, err := handle.Read(callTimeout)
+		if err != nil {
+			break
+		}
+		// 0x8F is the HID++ 1.0 error reply; anything else addressed to the
+		// receiver with our register is the answer.
+		if len(reply) >= 6 && reply[1] == 0xFF && reply[2] == 0x81 && reply[3] == 0x02 {
+			return int(reply[5])
+		}
+	}
+	return maxPairedDevices
+}

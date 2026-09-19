@@ -47,7 +47,25 @@ var Entries = []model.Entry{
 	planned("G309 LIGHTSPEED", "g309-lightspeed"),
 	planned("G305", "g305"),
 	planned("MX Master 4", "mx-master-4"),
-	planned("MX Master 3S", "mx-master-3s"),
+	{
+		Model:    "MX Master 3S",
+		Slug:     "mx-master-3s",
+		Brand:    model.Logitech,
+		Category: model.Mouse,
+		// Reached through a Logi Bolt receiver, which this kernel leaves
+		// unexpanded, so there is no USB id of its own to match — it is
+		// identified by the name it reports over HID++ instead.
+		Names: []string{"MX Master 3S"},
+		// Battery and DPI are what it exposes of what this project models. It
+		// has more that is not modelled yet — SmartShift, gestures,
+		// reprogrammable buttons — so support is partial rather than full.
+		Support: model.SupportPartial,
+		Capabilities: []model.Capability{
+			model.CapBattery,
+			model.CapDPI,
+		},
+		Driver: driver.HIDPP,
+	},
 	planned("MX Master 3", "mx-master-3"),
 	planned("MX Master 2", "mx-master-2"),
 	planned("MX Master", "mx-master"),

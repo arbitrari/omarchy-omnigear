@@ -25,6 +25,18 @@ func FindByUSB(vendor, product uint16) *model.Entry {
 	return nil
 }
 
+// FindByName returns the entry for a device that calls itself `name` over the
+// wire, or nil. Used for devices behind a receiver, which have no USB id of
+// their own to match on.
+func FindByName(name string) *model.Entry {
+	for i := range entries {
+		if entries[i].MatchesName(name) {
+			return &entries[i]
+		}
+	}
+	return nil
+}
+
 // Resolve matches a user-typed selector against discovered devices.
 //
 // It accepts the full id (mouse/logitech/pro-x2-superstrike#5f-ba-c9-65), the

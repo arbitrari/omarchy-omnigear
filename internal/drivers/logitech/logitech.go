@@ -30,10 +30,20 @@ type driver struct{}
 
 func (driver) Name() string { return "logitech-hidpp" }
 
+// connect opens the conversation, addressing the device explicitly when it
+// sits behind a receiver. Letting the transport search for whichever index
+// answers would pick the wrong device when two are paired to one dongle.
+func connect(device *model.Device) (*hidpp.Device, error) {
+	if device.Index != 0 {
+		return hidpp.OpenAt(device.Node, device.Index)
+	}
+	return hidpp.Open(device.Node)
+}
+
 func (driver) Read(device *model.Device) model.DeviceState {
 	state := model.NewDeviceState()
 
-	link, err := hidpp.Open(device.Node)
+	link, err := connect(device)
 	if err != nil {
 		state.Errors = append(state.Errors, fmt.Sprintf("connect: %v", err))
 		return state
@@ -85,7 +95,7 @@ func (driver) Read(device *model.Device) model.DeviceState {
 }
 
 func (driver) Write(device *model.Device, setting *model.Setting) error {
-	link, err := hidpp.Open(device.Node)
+	link, err := connect(device)
 	if err != nil {
 		return fmt.Errorf("connect: %w", err)
 	}

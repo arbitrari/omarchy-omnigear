@@ -8,6 +8,7 @@ package model
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/arbitrari/omarchy-omnigear/internal/transport/hidraw"
 )
@@ -147,10 +148,14 @@ type Entry struct {
 	// Model is the name exactly as the README prints it.
 	Model string
 	// Slug is the stable identifier used in device ids and CLI arguments.
-	Slug         string
-	Brand        Brand
-	Category     Category
-	USB          []USBID
+	Slug     string
+	Brand    Brand
+	Category Category
+	USB      []USBID
+	// Names matches a device reported over HID++ rather than by USB id, for
+	// devices behind a receiver the kernel did not expand into its own node.
+	// Compared case-insensitively against feature 0x0005's answer.
+	Names        []string
 	Support      Support
 	Capabilities []Capability
 	// Driver is nil for a planned model: it is listed, and nothing more.
@@ -160,6 +165,16 @@ type Entry struct {
 func (e *Entry) Has(capability Capability) bool {
 	for _, c := range e.Capabilities {
 		if c == capability {
+			return true
+		}
+	}
+	return false
+}
+
+// MatchesName reports whether a device calling itself `name` is this model.
+func (e *Entry) MatchesName(name string) bool {
+	for _, candidate := range e.Names {
+		if strings.EqualFold(candidate, name) {
 			return true
 		}
 	}
@@ -188,6 +203,13 @@ type Connection struct {
 
 // ConnectionOf describes how node is attached.
 func ConnectionOf(node hidraw.Node) Connection {
+	// The node may itself be a receiver, when the device behind it has no node
+	// of its own. Then the link is that dongle — not the USB cable the dongle
+	// happens to be plugged in with, which is what the sysfs tree would say.
+	if kind, known := hidraw.ReceiverKindOf(node.Vendor, node.Product); known {
+		return Connection{Kind: string(kind), Label: kind.Label()}
+	}
+
 	switch node.Link {
 	case hidraw.Bluetooth:
 		return Connection{Kind: "bluetooth", Label: "Bluetooth"}
@@ -219,6 +241,9 @@ type Device struct {
 	ID string
 	// Node is the hidraw node that answered.
 	Node hidraw.Node
+	// Index addresses the device behind a receiver. Zero means the node
+	// speaks for the device directly and the driver can find the index itself.
+	Index byte
 }
 
 // --- state -----------------------------------------------------------------
