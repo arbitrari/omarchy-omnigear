@@ -54,9 +54,16 @@ const callTimeout = 600 * time.Millisecond
 // over to find that out would stall every poll.
 const probeTimeout = 150 * time.Millisecond
 
-// A reply can be preceded by unrelated notifications (battery, connection).
-// Drain a bounded number of them before giving up.
-const maxSkippedReports = 16
+// maxSkippedReports only guards against an endless stream; the real limit on
+// waiting for a reply is the timeout.
+//
+// A count alone is not enough. On a connection where HID++ shares a node with
+// the device's ordinary input — Bluetooth, where movement reports and replies
+// arrive on the same stream — a mouse in use produces well over a hundred
+// reports a second, and a reply sitting behind sixteen of them is a reply
+// thrown away. That reads as the device being absent while it is in fact
+// answering.
+const maxSkippedReports = 4096
 
 // Well-known HID++ 2.0 feature ids used by this project.
 const (
@@ -127,6 +134,27 @@ type Device struct {
 	handle  *hidraw.Handle
 	index   byte
 	timeout time.Duration
+	// alwaysLong is set for a node that carries only the long report. Sending
+	// a short one there is not refused — it simply goes nowhere.
+	alwaysLong bool
+}
+
+// reports says which HID++ report sizes a node carries, read off its HID
+// report descriptor.
+//
+// The pairing is not guaranteed. An MX Master 3S on its dongle carries both;
+// the same mouse over Bluetooth carries only the long one, and a short request
+// to it vanishes without an error — the device simply never answers, which
+// looks exactly like absence.
+func reports(node hidraw.Node) (short, long bool) {
+	descriptor, err := node.ReportDescriptor()
+	if err != nil {
+		// Unreadable: assume the usual pair rather than rule the node out.
+		return true, true
+	}
+	// 0x85 is the HID "Report ID" item; the byte after it is the id.
+	return bytes.Contains(descriptor, []byte{0x85, reportShort}),
+		bytes.Contains(descriptor, []byte{0x85, reportLong})
 }
 
 // Speaks reports whether a node carries HID++ at all, by looking for the short
@@ -135,14 +163,10 @@ type Device struct {
 // This is what separates a mouse's HID++ interface from its plain input ones:
 // of the four nodes a wired PRO X2 SUPERSTRIKE owns, exactly one declares both.
 func Speaks(node hidraw.Node) bool {
-	descriptor, err := node.ReportDescriptor()
-	if err != nil {
-		// Unreadable: do not rule the node out on the strength of a guess.
-		return true
-	}
-	// 0x85 is the HID "Report ID" item; the byte after it is the id.
-	return bytes.Contains(descriptor, []byte{0x85, reportShort}) &&
-		bytes.Contains(descriptor, []byte{0x85, reportLong})
+	// The long report is the one every HID++ device carries; the short one is
+	// an optimisation some connections leave out.
+	_, long := reports(node)
+	return long
 }
 
 // Responds reports whether a device is actually reachable on this node.
@@ -150,8 +174,8 @@ func Speaks(node hidraw.Node) bool {
 // A node outlives the device behind it: unplug a mouse from its dongle and
 // pair it over USB, and the dongle's node stays, answering nothing. Only a
 // ping can tell the two apart.
-func Responds(node hidraw.Node) bool {
-	device, err := openWith(node, probeTimeout)
+func Responds(node hidraw.Node, within time.Duration) bool {
+	device, err := openWith(node, within, within)
 	if err != nil {
 		return false
 	}
@@ -159,26 +183,53 @@ func Responds(node hidraw.Node) bool {
 	return true
 }
 
+// ProbeTimeout is the quick budget for asking whether a node is live at all,
+// and WakeTimeout the patient one for a device that may be asleep.
+const (
+	ProbeTimeout = probeTimeout
+	WakeTimeout  = wakeTimeout
+)
+
 // Open opens node and finds the device index that answers a ping.
 //
 // A device reached through its own hidraw node answers on 0xFF; one reached
 // through a receiver answers on its paired slot. Trying both keeps drivers
 // from having to care which node they were handed.
 func Open(node hidraw.Node) (*Device, error) {
-	return openWith(node, callTimeout)
+	// Two passes over the indexes. The device usually answers on the first or
+	// second one, and a quick sweep finds it without paying the wake budget
+	// for every index that does not reply — a mouse that answers on index 1
+	// would otherwise spend the whole wake window discovering that 0xFF is
+	// silent, on every single read.
+	//
+	// Only when nothing answers at all is the patient sweep worth it, because
+	// then the device may be asleep rather than absent.
+	if device, err := openWith(node, probeTimeout, callTimeout); err == nil {
+		return device, nil
+	}
+	return openWith(node, wakeTimeout, callTimeout)
 }
 
-func openWith(node hidraw.Node, timeout time.Duration) (*Device, error) {
+// openWith searches the indexes for one that answers.
+//
+// The two budgets are separate on purpose. Finding the device is allowed the
+// wake window, because a sleeping one is slow to say its first word; talking
+// to it afterwards is held to the ordinary call timeout, because a device
+// that is awake and still silent is a device with a problem.
+func openWith(node hidraw.Node, ping, call time.Duration) (*Device, error) {
 	handle, err := node.Open()
 	if err != nil {
 		return nil, err
 	}
 
-	device := &Device{handle: handle, timeout: timeout}
+	short, _ := reports(node)
+	device := &Device{handle: handle, timeout: ping, alwaysLong: !short}
+
 	var last error = ErrTimeout
 	for _, index := range []byte{0xFF, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06} {
 		device.index = index
 		if err := device.Ping(); err == nil {
+			device.timeout = call
 			return device, nil
 		} else {
 			last = err
@@ -228,7 +279,7 @@ func (d *Device) Call(featureIndex, function byte, params ...byte) ([]byte, erro
 
 	length := lenLong
 	reportID := byte(reportLong)
-	if len(params) <= lenShort-4 {
+	if !d.alwaysLong && len(params) <= lenShort-4 {
 		length = lenShort
 		reportID = reportShort
 	}
@@ -244,8 +295,13 @@ func (d *Device) Call(featureIndex, function byte, params ...byte) ([]byte, erro
 		return nil, err
 	}
 
+	deadline := time.Now().Add(d.timeout)
 	for i := 0; i < maxSkippedReports; i++ {
-		reply, err := d.handle.Read(d.timeout)
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return nil, ErrTimeout
+		}
+		reply, err := d.handle.Read(remaining)
 		if err != nil {
 			if errors.Is(err, hidraw.ErrTimeout) {
 				return nil, ErrTimeout
@@ -353,7 +409,8 @@ func OpenAt(node hidraw.Node, index byte) (*Device, error) {
 		return nil, err
 	}
 
-	device := &Device{handle: handle, index: index, timeout: wakeTimeout}
+	short, _ := reports(node)
+	device := &Device{handle: handle, index: index, timeout: wakeTimeout, alwaysLong: !short}
 	if err := device.Ping(); err != nil {
 		handle.Close()
 		return nil, err

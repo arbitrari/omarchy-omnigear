@@ -52,9 +52,11 @@ var Entries = []model.Entry{
 		Slug:     "mx-master-3s",
 		Brand:    model.Logitech,
 		Category: model.Mouse,
-		// Reached through a Logi Bolt receiver, which this kernel leaves
-		// unexpanded, so there is no USB id of its own to match — it is
-		// identified by the name it reports over HID++ instead.
+		// Over Bluetooth it enumerates with its own product id. Through a Logi
+		// Bolt receiver this kernel leaves unexpanded it has no id of its own,
+		// and is identified by the name it reports over HID++ instead. Both
+		// routes are listed so it is found either way.
+		USB:   []model.USBID{{Vendor: vendor, Product: MXMaster3SBluetooth}},
 		Names: []string{"MX Master 3S"},
 		// Battery and DPI are what it exposes of what this project models. It
 		// has more that is not modelled yet — SmartShift, gestures,

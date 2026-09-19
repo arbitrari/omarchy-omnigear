@@ -167,11 +167,44 @@ Such a device identifies itself by **name** rather than by USB id, so its
 catalog entry carries `Names` instead of `USB`, and `model.Device.Index`
 addresses it on the receiver's node.
 
+## The same mouse is a different animal on each connection
+
+An MX Master 3S is three devices as far as this code is concerned, and the
+differences are not cosmetic:
+
+| | dongle | Bluetooth |
+|---|---|---|
+| node | none of its own | its own, product `046d:b034` |
+| identified by | the name it reports | USB id |
+| HID++ reports | short **and** long | **long only** |
+| shares the node with mouse input | no | yes |
+
+Three things follow, each of which looked like "the device is not there":
+
+- **A short report goes nowhere.** Over Bluetooth the descriptor declares only
+  report id `0x11`; a short `0x10` request is not refused, it is simply never
+  delivered. `hidpp.reports` reads the descriptor and the conversation falls
+  back to long reports for the whole exchange.
+- **A reply can be buried.** Where HID++ shares a node with the device's
+  ordinary input, a mouse in use emits well over a hundred movement reports a
+  second. Waiting for a reply is bounded by *time*, not by a count of reports
+  to skip, or the answer is discarded while the device is answering perfectly.
+- **`Speaks` requires only the long report.** Requiring both would rule out
+  every Bluetooth device.
+
 **Sleeping devices need a long first word.** A sleeping MX Master 3S took over
 half a second to answer its first ping — the ordinary 600ms call timeout
 reported it as absent, and the 150ms probe timeout never stood a chance. The
 wake window is 2.5s, and only for that first ping; once awake it answers in
-milliseconds.
+milliseconds. A too-short window does not only lose the device — it can return
+*garbled* data, which is worse; a SUPERSTRIKE once reported its name as
+`YYYYYYYY` under the short budget.
+
+Paying that budget on every index would be its own bug: a mouse answering on
+index 1 would spend the whole wake window discovering that `0xFF` is silent, on
+every read. `Open` sweeps the indexes quickly first and only repeats the sweep
+patiently when nothing at all answered. `discovery.choose` does the same when
+picking between nodes.
 
 ## Onboard mode refuses writes
 

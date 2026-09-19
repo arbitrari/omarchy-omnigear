@@ -4,6 +4,7 @@ package discovery
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/arbitrari/omarchy-omnigear/internal/catalog"
 	"github.com/arbitrari/omarchy-omnigear/internal/model"
@@ -154,24 +155,39 @@ func choose(nodes []hidraw.Node) hidraw.Node {
 	}
 
 	// Ask them all at once and take the first answer: a live device replies in
-	// milliseconds, while a stale node costs the whole probe budget, and there
-	// is no reason to spend that serially.
-	type answer struct {
-		node hidraw.Node
-		ok   bool
+	// milliseconds, while a stale node costs the whole budget, and there is no
+	// reason to spend that serially.
+	//
+	// Two passes. The quick one settles the common case without making every
+	// poll wait on a dead node. Only if nothing at all answers is it worth the
+	// wake budget, because then the device may simply be asleep rather than
+	// gone.
+	if node, ok := firstToAnswer(speaking, hidpp.ProbeTimeout); ok {
+		return node
 	}
-	replies := make(chan answer, len(speaking))
-	for _, node := range speaking {
-		go func(n hidraw.Node) {
-			replies <- answer{node: n, ok: hidpp.Responds(n)}
-		}(node)
-	}
-	for range speaking {
-		if reply := <-replies; reply.ok {
-			return reply.node
-		}
+	if node, ok := firstToAnswer(speaking, hidpp.WakeTimeout); ok {
+		return node
 	}
 
 	// None answered. Keep the first so the caller sees a connect failure.
 	return speaking[0]
+}
+
+func firstToAnswer(nodes []hidraw.Node, within time.Duration) (hidraw.Node, bool) {
+	type answer struct {
+		node hidraw.Node
+		ok   bool
+	}
+	replies := make(chan answer, len(nodes))
+	for _, node := range nodes {
+		go func(n hidraw.Node) {
+			replies <- answer{node: n, ok: hidpp.Responds(n, within)}
+		}(node)
+	}
+	for range nodes {
+		if reply := <-replies; reply.ok {
+			return reply.node, true
+		}
+	}
+	return hidraw.Node{}, false
 }
