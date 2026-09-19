@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Effects
 import Quickshell
 import qs.Commons
 import qs.Ui
@@ -93,7 +94,8 @@ Panel {
         open: root.opened
         focusTarget: keys
         contentWidth: popup.fittedContentWidth(Style.space(400))
-        contentHeight: popup.fittedContentHeight(content.implicitHeight, Style.space(720))
+        contentHeight: popup.fittedContentHeight(
+            header.height + Style.space(12) + content.implicitHeight, Style.space(720))
 
         PanelKeyCatcher {
             id: keys
@@ -103,9 +105,78 @@ Panel {
                 root.switchPanel(direction);
             }
 
+            // --- title ------------------------------------------------
+            //
+            // Outside the Flickable on purpose. The wordmark is pulled left so
+            // its letters line up with the cards, which puts its shade ramp at
+            // a negative x — inside the scroller that gets clipped away, out
+            // here it bleeds harmlessly into the popup's padding.
+            Item {
+                id: header
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: wordmark.height
+
+                // The wordmark is block art on a 62.5 x 10 grid of square
+                // pixels, so a height that is a multiple of 10 lands every
+                // block on whole device pixels. 20 gives 2px blocks and
+                // letters about as tall as the text this replaced.
+                Item {
+                    id: wordmark
+
+                    // The artwork carries its own padding: in the 625x100
+                    // viewBox the first letter pixel sits 35 units in, with
+                    // the shade ramp starting at 20. Pull the mark left by the
+                    // letter inset so the O lines up with the cards below.
+                    readonly property real letterInset: 35
+                    readonly property real unitPx: height / 100
+
+                    anchors.left: parent.left
+                    anchors.leftMargin: -Math.round(letterInset * unitPx)
+                    height: Style.space(20)
+                    width: Math.round(height * (625 / 100))
+
+                    // Drawn from the white artwork and tinted, so the wordmark
+                    // follows the theme instead of being fixed black or white.
+                    // Hidden behind the effect, which samples it as a texture.
+                    Image {
+                        id: wordmarkArt
+                        anchors.fill: parent
+                        source: Qt.resolvedUrl("../assets/omnigear-logo-white.svg")
+                        sourceSize.width: Math.round(width * Screen.devicePixelRatio)
+                        sourceSize.height: Math.round(height * Screen.devicePixelRatio)
+                        fillMode: Image.PreserveAspectFit
+                        visible: false
+                        layer.enabled: true
+                    }
+
+                    MultiEffect {
+                        anchors.fill: wordmarkArt
+                        source: wordmarkArt
+                        colorization: 1.0
+                        colorizationColor: root.foreground
+                    }
+                }
+
+                Text {
+                    anchors.right: parent.right
+                    anchors.verticalCenter: wordmark.verticalCenter
+                    text: root.busy ? "reading…" : ""
+                    textFormat: Text.PlainText
+                    color: Qt.darker(root.foreground, 1.6)
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                }
+            }
+
             Flickable {
                 id: flick
-                anchors.fill: parent
+                anchors.top: header.bottom
+                anchors.topMargin: Style.space(12)
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
                 contentWidth: width
                 contentHeight: content.implicitHeight
                 clip: true
@@ -120,33 +191,6 @@ Panel {
                     id: content
                     width: flick.width - (flick.interactive ? Style.space(8) : 0)
                     spacing: Style.space(12)
-
-                    // --- title ---------------------------------------------
-                    Item {
-                        width: parent.width
-                        implicitHeight: title.implicitHeight
-
-                        Text {
-                            id: title
-                            anchors.left: parent.left
-                            text: "OMNIGEAR"
-                            textFormat: Text.PlainText
-                            color: root.foreground
-                            font.family: root.fontFamily
-                            font.pixelSize: Style.font.subtitle
-                            font.bold: true
-                        }
-
-                        Text {
-                            anchors.right: parent.right
-                            anchors.verticalCenter: title.verticalCenter
-                            text: root.busy ? "reading…" : ""
-                            textFormat: Text.PlainText
-                            color: Qt.darker(root.foreground, 1.6)
-                            font.family: root.fontFamily
-                            font.pixelSize: Style.font.caption
-                        }
-                    }
 
                     // --- the devices ---------------------------------------
                     Repeater {
