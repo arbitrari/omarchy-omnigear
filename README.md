@@ -1,5 +1,13 @@
-# OmniGear
-An Omarchy Plugin that lets you manage all* of your peripherals in one place.
+
+<picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/omnigear-logo-white.png">
+    <source media="(prefers-color-scheme: light)" srcset="assets/omnigear-logo-black.png">
+    <img src="assets/omnigear-logo-black.png" alt="OmniGear" width="350" style="margin-left: -16px">
+</picture>
+
+___
+
+An Omarchy Plugin for monitoring and configuring your peripherals in a brand-agnostic way. No longer do you need a seperate plugin for your mouse, keyboard, and headsets; OmniGear handles them all.
 
 ## Installation
 
