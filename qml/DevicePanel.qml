@@ -58,6 +58,23 @@ Panel {
         return tabSelection[deviceId] || "";
     }
 
+    // Which devices are folded down to their header, by device id. Kept here
+    // for the same reason as the tab selection: the cards are rebuilt on every
+    // poll, so state held in them does not survive.
+    property var collapsed: ({})
+
+    function isCollapsed(deviceId) {
+        return collapsed[deviceId] === true;
+    }
+
+    function toggleCollapsed(deviceId) {
+        var next = {};
+        for (var id in collapsed)
+            next[id] = collapsed[id];
+        next[deviceId] = !next[deviceId];
+        collapsed = next;
+    }
+
     function selectTab(deviceId, tabId) {
         var next = {};
         for (var id in tabSelection)
@@ -294,6 +311,8 @@ Panel {
                                     busy: root.busy
                                     device: modelData
                                     activeTab: root.tabFor(modelData.id)
+                                    collapsed: root.isCollapsed(modelData.id)
+                                    onCollapseToggled: root.toggleCollapsed(modelData.id)
                                     onSettingRequested: function (key, value) {
                                         root.applySetting(modelData.id, key, value);
                                     }

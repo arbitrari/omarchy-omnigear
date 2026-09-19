@@ -23,10 +23,20 @@ Rectangle {
     // hardware itself — the panel owns the service.
     signal settingRequested(string key, string value)
 
+    // Asks the panel to fold this card down to its header. The state lives
+    // there, not here: this card is a Repeater delegate and every poll
+    // rebuilds it, so anything remembered here would spring back open.
+    signal collapseToggled()
+
+    property bool collapsed: false
+
     readonly property color foreground: bar ? bar.foreground : Color.foreground
     readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
     readonly property var unsupported: Model.unsupportedCapabilities(device)
     readonly property bool connected: device ? device.connected : false
+    // Nothing to fold away on a device that is off, or one with no controls.
+    readonly property bool expandable: connected && tabs.length > 0
+    readonly property bool showingDetail: expandable && !collapsed
     // A device that is not answering has nothing to show and nothing to set.
     readonly property var tabs: connected ? Model.deviceTabs(device) : []
     readonly property bool showTabs: tabs.length > 1
@@ -68,11 +78,34 @@ Rectangle {
             width: parent.width
             implicitHeight: Math.max(identity.implicitHeight, battery.implicitHeight)
 
+            // The whole header is the control, so there is no separate button
+            // competing with the reading beside it.
+            MouseArea {
+                anchors.fill: parent
+                enabled: root.expandable
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.collapseToggled()
+            }
+
             Row {
                 id: identity
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: Style.space(8)
+
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: root.expandable
+                    // The full-size triangles, not U+25B8/U+25BE: those are
+                    // Unicode's "small" variants and render about a third of
+                    // the em, which is almost invisible next to the device
+                    // name.
+                    text: root.collapsed ? "\u25B6" : "\u25BC"
+                    color: Qt.darker(root.foreground, 1.3)
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.title
+                }
 
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
@@ -122,13 +155,14 @@ Rectangle {
         // directly above it would just be a second line.
         PanelSeparator {
             foreground: root.foreground
-            visible: !root.showTabs && (root.tabs.length > 0 || unsupportedList.visible)
+            visible: !root.showTabs
+                && (root.showingDetail || (!root.collapsed && unsupportedList.visible))
         }
 
         // --- which group of controls ---------------------------------------
         TabBar {
             bar: root.bar
-            visible: root.showTabs
+            visible: root.showTabs && root.showingDetail
             tabs: root.tabs
             current: root.currentTab
             onSelected: function (id) {
@@ -140,7 +174,7 @@ Rectangle {
         Column {
             width: parent.width
             spacing: Style.space(10)
-            visible: root.connected && root.currentTab === "sensor"
+            visible: root.showingDetail && root.currentTab === "sensor"
 
             DpiControl {
                 bar: root.bar
@@ -176,7 +210,7 @@ Rectangle {
             busy: root.busy
             // A failed HITS read leaves the tab present but empty; guard so it
             // does not draw bare "Left click" headings over nothing.
-            visible: root.connected && root.currentTab === "triggers"
+            visible: root.showingDetail && root.currentTab === "triggers"
                 && root.device && root.device.hits !== null
             hits: root.device ? root.device.hits : null
             onRequested: function (field, value) {
@@ -189,7 +223,7 @@ Rectangle {
             id: unsupportedList
             width: parent.width
             spacing: Style.space(4)
-            visible: root.unsupported.length > 0
+            visible: !root.collapsed && root.unsupported.length > 0
 
             Repeater {
                 model: root.unsupported
@@ -205,7 +239,7 @@ Rectangle {
         Column {
             width: parent.width
             spacing: Style.space(4)
-            visible: root.device && root.device.errors.length > 0
+            visible: !root.collapsed && root.device && root.device.errors.length > 0
 
             Repeater {
                 model: root.device ? root.device.errors : []
