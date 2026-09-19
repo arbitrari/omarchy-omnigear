@@ -213,14 +213,39 @@ Panel {
                     }
                 }
 
-                Text {
+                // Reads devices again on demand, rather than waiting out
+                // the poll interval — useful the moment a mouse is switched on
+                // or moved to another connection.
+                //
+                // It also stands in for the old "reading…" label: the shared
+                // Button spins its icon while a read is out, which says the
+                // same thing in the space the button already occupies.
+                Button {
+                    id: refresh
                     anchors.right: parent.right
                     anchors.verticalCenter: wordmark.verticalCenter
-                    text: root.busy ? "reading…" : ""
-                    textFormat: Text.PlainText
-                    color: Qt.darker(root.foreground, 1.6)
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.caption
+
+                    // Square: the button pads an icon more generously across
+                    // than down, so take the larger of the two for both.
+                    readonly property real side: Math.max(implicitWidth, implicitHeight)
+                    width: side
+                    height: side
+
+                    bordered: true
+                    iconText: "󰑐"
+                    // The icon font, as every other glyph here uses: the
+                    // theme's text font need not carry Nerd Font glyphs.
+                    fontFamily: "monospace"
+                    // The icon token rather than a text size: it is the one
+                    // themes tune for glyphs, and it sizes the square with it.
+                    iconSize: Style.font.icon
+                    foreground: root.foreground
+                    background: root.bar ? root.bar.background : Color.background
+                    accent: Color.accent
+                    tooltipText: "Read devices again"
+                    iconSpinning: root.busy
+
+                    onClicked: if (root.gear) root.gear.refresh()
                 }
             }
 
