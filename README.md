@@ -7,18 +7,32 @@
 
 ___
 
-An Omarchy Plugin for monitoring and configuring your peripherals in a brand-agnostic way. No longer do you need a seperate plugin for your mouse, keyboard, and headsets; OmniGear handles them all.
+An [Omarchy](https://omarchy/org) Plugin for monitoring and configuring your peripherals in a brand-agnostic way. No longer do you need a seperate plugin for your mouse, keyboard, and headsets; OmniGear handles them all.
 
 ## Installation
 
+`omarchy plugin add omni.arbirtari.dev --enable`
+
+## Updates
+
+Updates can be done directly in the plugin.
+
+**OR**
+
+`omarchy plugin update io.github.arbitrari.omnigear`
+
 ## Supported Devices
 
-🟩 = Fully Supported   
-🟨 = Partially Supported   
-🟥 = Not Supported, but Planned
+> [!NOTE]   
+> 🟩 = Fully Supported   
+> 🟨 = Partially Supported   
+> 🟥 = Not Supported, but Planned
 
 ### Mice
-#### Logitech
+
+<details>
+<summary><b>Logitech</b></summary>
+
 |  | Name | Battery | DPI | Polling | HITS* | Notes 
 |------|-----|-----|-----|-----|-----|-----|
 | 🟥 | PRO X2 SUPERSTRIKE  | | | | | |
@@ -36,7 +50,11 @@ An Omarchy Plugin for monitoring and configuring your peripherals in a brand-agn
  
 ***Haptic Inductive Trigger System:** configurable actuation points and haptic feedback for left and right click 
 
-#### Razer
+</details>
+
+<details>
+<summary><b>Razer</b></summary>
+
 |  | Name | Battery | DPI | Polling | Notes 
 |------|-----|-----|-----|-----|-----|
 | 🟥 | DeathAdder V4 Pro  | | | | |
@@ -52,24 +70,121 @@ An Omarchy Plugin for monitoring and configuring your peripherals in a brand-agn
 | 🟥 | Naga V2 HS   | | | | N/A |
 | 🟥 | Basilisk V3 Pro   | | | | N/A |
 
+</details>
+
+<details>
+<summary><b>Corsair</b></summary>
+</details>
+
+<details>
+<summary><b>Glorious</b></summary>
+</details>
+
+<details>
+<summary><b>FinalMouse</b></summary>
+</details>
+
 ### Keyboards
-#### Logitech
 
-#### Razer
+<details>
+<summary><b>Logitech</b></summary>
+</details>
 
-#### Keychron
+<details>
+<summary><b>Razer</b></summary>
+</details>
+
+<details>
+<summary><b>Wooting</b></summary>
+</details>
+
+<details>
+<summary><b>Keychron</b></summary>
+</details>
+
+<details>
+<summary><b>Steelseries</b></summary>
+</details>
+
+<details>
+<summary><b>ASUS ROG</b></summary>
+</details>
+
+<details>
+<summary><b>Pulsar</b></summary>
+</details>
+
+<details>
+<summary><b>Glorious</b></summary>
+</details>
+
+<details>
+<summary><b>Lofree</b></summary>
+</details>
+
+<details>
+<summary><b>HyperX</b></summary>
+</details>
+
+<details>
+<summary><b>8BitDo</b></summary>
+</details>
 
 ### Headsets / Headphones
-#### Steelseries
-#### Logitech
-#### Razer
-#### Sony
-#### Apple
-#### Google
-#### Nothing
-#### OnePlus
+
+<details>
+<summary><b>Steelseries</b></summary>
+</details>
+
+<details>
+<summary><b>Logitech</b></summary>
+</details>
+
+<details>
+<summary><b>Razer</b></summary>
+</details>
+
+<details>
+<summary><b>HyperX</b></summary>
+</details>
+
+<details>
+<summary><b>Turtle Beach</b></summary>
+</details>
+
+<details>
+<summary><b>Sony</b></summary>
+</details>
+
+<details>
+<summary><b>Sennheizer</b></summary>
+</details>
+
+<details>
+<summary><b>Audio-Technica</b></summary>
+</details>
+
+<details>
+<summary><b>Apple</b></summary>
+</details>
+
+<details>
+<summary><b>Google</b></summary>
+</details>
+
+<details>
+<summary><b>Nothing</b></summary>
+</details>
+
+<details>
+<summary><b>OnePlus</b></summary>
+</details>
 
 ## Contribute
+
+Is your device not currently supported? Feel free to submit a Pull Request to add support for it!
+
+Use of Agents such as Claude Code, Codex, Cursor, Grok, Opencode, etc is encouraged. That said, _please_ make sure to keep PRs concise. Also, _please_ test all changes made as the maintainers most likely do not have the same device to test it themselves.
 
 ## Disclaimer
 OmniGear is not officially affiliated with the Omarchy Foundation nor any of the brands mentioned in this README or source code. This product is developed in open-source and is provided for free by volunteer contributors. If a brand has an issue with their product(s) being supported, please reach out in an GitHub Issue and it can be taken care of.
