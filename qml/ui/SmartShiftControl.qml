@@ -115,7 +115,7 @@ Column {
             Text {
                 id: low
                 anchors.left: parent.left
-                text: "Flick lightly"
+                text: "Flick Lightly"
                 textFormat: Text.PlainText
                 color: Qt.darker(root.foreground, 1.6)
                 font.family: root.bar ? root.bar.fontFamily : Style.font.family
@@ -124,7 +124,7 @@ Column {
 
             Text {
                 anchors.right: parent.right
-                text: "Flick hard"
+                text: "Flick Hard"
                 textFormat: Text.PlainText
                 color: Qt.darker(root.foreground, 1.6)
                 font.family: root.bar ? root.bar.fontFamily : Style.font.family
