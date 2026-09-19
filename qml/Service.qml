@@ -28,6 +28,10 @@ Item {
     }
     readonly property bool busy: listProcess.running || setProcess.running
 
+    // What the binary was built from. Fixed for the life of the process, so it
+    // is asked once at startup rather than riding along on every poll.
+    readonly property var build: internal.build
+
     readonly property int pollIntervalSec: {
         var configured = settings ? Number(settings.pollInterval) : NaN;
         return Math.max(5, configured || 20);
@@ -75,6 +79,7 @@ Item {
     QtObject {
         id: internal
         property var state: Model.emptyState()
+        property var build: ({ branch: "", commit: "", label: "" })
         property string pendingId: ""
         property string pendingKey: ""
 
@@ -117,6 +122,19 @@ Item {
                 error: state.error,
                 note: state.note
             };
+        }
+    }
+
+    Process {
+        id: versionProcess
+        command: [root.binary, "version"]
+        running: true
+        stdout: StdioCollector {
+            id: versionOut
+            waitForEnd: true
+            onStreamFinished: {
+                internal.build = Model.parseBuild((versionOut.text || "").trim());
+            }
         }
     }
 

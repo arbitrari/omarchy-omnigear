@@ -53,6 +53,47 @@ function parse(raw) {
   return state
 }
 
+/// Branches whose name means "this is the mainline". Naming both spellings
+/// rather than one means a repo that renames master to main keeps working
+/// without the panel needing to be told.
+var MAINLINE = ["master", "main"]
+
+/// What the panel should say about the build, from a `version` reply.
+///
+/// Off the mainline, that is the checkout: which branch is running, and at
+/// which commit, is the thing worth knowing about a work in progress. On the
+/// mainline — or on a binary carrying no stamp at all, which is what a release
+/// built outside a checkout looks like — the branch would say nothing the
+/// version does not, so the version is what shows.
+///
+/// `label` is empty only when the CLI offered neither, which means the reply
+/// was unusable.
+function parseBuild(raw) {
+  var none = { branch: "", commit: "", version: "", label: "" }
+  if (typeof raw !== "string" || raw === "" || raw.length > MAX_REPLY) return none
+
+  var data
+  try {
+    data = JSON.parse(raw)
+  } catch (e) {
+    return none
+  }
+  if (!data || data.ok !== true) return none
+
+  var branch = safeText(data.branch, "", 64)
+  var commit = safeText(data.commit, "", 40)
+  var version = safeText(data.version, "", 32)
+
+  var build = { branch: branch, commit: commit, version: version, label: "" }
+  if (branch !== "" && MAINLINE.indexOf(branch) === -1) {
+    // The same separator the device cards use for their own trail of facts.
+    build.label = commit ? branch + " \u00b7 " + commit : branch
+  } else if (version !== "") {
+    build.label = "v" + version
+  }
+  return build
+}
+
 function parseDevice(raw) {
   var d = raw || {}
   var s = d.state || {}

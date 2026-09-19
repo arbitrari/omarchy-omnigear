@@ -22,6 +22,16 @@ import (
 // version is the CLI's own version. Kept in step with manifest.json.
 const version = "0.1.0"
 
+// branch and commit name the source this binary was built from, stamped at
+// link time with -X. They are deliberately not discovered at runtime: the
+// installed plugin is a copy of the repo with .git stripped, so there is no
+// checkout left to ask. A binary built outside one reports neither rather than
+// guessing, and the panel then says nothing.
+var (
+	branch string
+	commit string
+)
+
 // schema is bumped when the JSON shape changes in a way that would break a
 // reader.
 const schema = 1
@@ -69,7 +79,7 @@ func main() {
 func run(args []string) (reply, error) {
 	switch args[0] {
 	case "version", "-V", "--version":
-		return reply{"ok": true, "version": version}, nil
+		return reply{"ok": true, "version": version, "branch": branch, "commit": commit}, nil
 	case "list":
 		return cmdList()
 	case "get":

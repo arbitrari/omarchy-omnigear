@@ -19,7 +19,14 @@ ID=$(jq -r '.id' manifest.json)
 TARGET="$HOME/.config/omarchy/plugins/$ID"
 
 echo "building omnigear..."
-mise exec -- go build -ldflags="-s -w" -o bin/omnigear .
+# Stamp the checkout in, so the panel can warn that what is running is not the
+# mainline. The install below strips .git, so this is the only chance to record
+# it. Both are left empty outside a checkout rather than failing the build.
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+COMMIT=$(git rev-parse --short HEAD 2>/dev/null || true)
+mise exec -- go build \
+  -ldflags="-s -w -X main.branch=$BRANCH -X main.commit=$COMMIT" \
+  -o bin/omnigear .
 
 echo "installing $ID -> $TARGET"
 mkdir -p "$TARGET"

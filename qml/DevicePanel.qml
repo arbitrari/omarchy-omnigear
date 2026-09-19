@@ -32,6 +32,7 @@ Panel {
     readonly property var state: gear ? gear.state : Model.emptyState()
     readonly property var groups: Model.groups(state.devices)
     readonly property bool busy: gear ? gear.busy : false
+    readonly property var build: gear ? gear.build : ({ label: "" })
 
     // The last write's outcome, shown until the next one starts. A failed
     // write is the interesting case: the device can accept a change and keep
@@ -147,7 +148,8 @@ Panel {
         focusTarget: keys
         contentWidth: popup.fittedContentWidth(Style.space(400))
         contentHeight: popup.fittedContentHeight(
-            header.height + Style.space(12) + content.implicitHeight
+            header.height - header.inkTop + content.anchors.topMargin
+            + content.implicitHeight
             + (footer.visible ? footer.height + Style.space(12) : 0), Style.space(720))
 
         PanelKeyCatcher {
@@ -167,10 +169,27 @@ Panel {
             Item {
                 id: header
                 anchors.top: parent.top
+                // Hang the letters, not the artwork's blank strip, off the top
+                // of the panel.
+                anchors.topMargin: -header.inkTop
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.rightMargin: root.gutter
-                height: wordmark.height
+                height: Math.max(header.inkBottom, refresh.y + refresh.height)
+
+                // Where the ink starts and stops, as opposed to where the
+                // items do. The artwork is a fifth empty beyond its ink at
+                // each end, and the build line's descent is leading rather
+                // than anything drawn, so neither belongs in the block the
+                // rest of the header is measured and aligned against.
+                readonly property real inkTop: wordmark.inkPadding * wordmark.unitPx
+                readonly property real inkBottom: buildLine.visible
+                    ? buildLine.y + buildMetrics.ascent
+                    : wordmark.height - header.inkTop
+
+                // What the build line needs to come up by to sit against the
+                // letters, leaving a hair.
+                readonly property real buildOffset: Style.space(1) - header.inkTop
 
                 // The wordmark is block art on a 62.5 x 10 grid of square
                 // pixels, so a height that is a multiple of 10 lands every
@@ -186,8 +205,15 @@ Panel {
                     readonly property real letterInset: 35
                     readonly property real unitPx: height / 100
 
+                    // The same padding vertically: the ink runs from y 20
+                    // to y 80 of the 100-unit viewBox, so a fifth of the
+                    // item's height is blank above the letters and a fifth
+                    // below them.
+                    readonly property real inkPadding: 20
+
                     anchors.left: parent.left
                     anchors.leftMargin: -Math.round(letterInset * unitPx)
+                    anchors.top: parent.top
                     height: Style.space(20)
                     width: Math.round(height * (625 / 100))
 
@@ -223,13 +249,16 @@ Panel {
                 Button {
                     id: refresh
                     anchors.right: parent.right
-                    anchors.verticalCenter: wordmark.verticalCenter
 
-                    // Square: the button pads an icon more generously across
-                    // than down, so take the larger of the two for both.
-                    readonly property real side: Math.max(implicitWidth, implicitHeight)
-                    width: side
-                    height: side
+                    // Centred on the letters and the line beneath them taken
+                    // together, which is what reads as the title now — not on
+                    // the wordmark alone, which left it sitting high.
+                    y: Math.round((header.inkTop + header.inkBottom - height) / 2)
+
+                    // Square on the button's own height, which for a lone
+                    // icon is the larger of the two implicit sizes anyway.
+                    width: height
+                    height: implicitHeight
 
                     bordered: true
                     iconText: "󰑐"
@@ -246,6 +275,35 @@ Panel {
                     iconSpinning: root.busy
 
                     onClicked: if (root.gear) root.gear.refresh()
+                }
+
+                // What this copy is: its version, or — off the mainline — the
+                // branch and commit it was built from, so a panel running a
+                // work in progress says so rather than passing for a release.
+                //
+                // Aligned to the header's own left edge, which is where the
+                // cards start: the wordmark above is pulled further left by its
+                // artwork padding, and matching that would put this out past
+                // everything else.
+                Text {
+                    id: buildLine
+                    anchors.top: wordmark.bottom
+                    anchors.topMargin: header.buildOffset
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+
+                    text: root.build ? root.build.label : ""
+                    visible: text !== ""
+                    textFormat: Text.PlainText
+                    elide: Text.ElideRight
+                    color: Qt.darker(root.foreground, 1.7)
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                }
+
+                FontMetrics {
+                    id: buildMetrics
+                    font: buildLine.font
                 }
             }
 
@@ -298,7 +356,7 @@ Panel {
             Flickable {
                 id: flick
                 anchors.top: header.bottom
-                anchors.topMargin: Style.space(12)
+                anchors.topMargin: Style.space(buildLine.visible ? 5 : 12)
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.bottom: footer.visible ? footer.top : parent.bottom
