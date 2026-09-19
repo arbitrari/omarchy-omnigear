@@ -66,6 +66,7 @@ var Entries = []model.Entry{
 			model.CapBattery,
 			model.CapDPI,
 			model.CapSmartShift,
+			model.CapHiResWheel,
 		},
 		Driver: driver.HIDPP,
 	},

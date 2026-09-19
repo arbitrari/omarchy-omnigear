@@ -78,6 +78,10 @@ function parseDevice(raw) {
       current: Number(s.pollingRate.current) || 0,
       supported: Array.isArray(s.pollingRate.supported) ? s.pollingRate.supported : []
     } : null,
+    hiResWheel: s.hiResWheel ? {
+      hiRes: s.hiResWheel.hiRes === true,
+      inverted: s.hiResWheel.inverted === true
+    } : null,
     smartShift: s.smartShift ? {
       mode: safeText(s.smartShift.mode, "", 16),
       threshold: Number(s.smartShift.threshold) || 0,
@@ -252,7 +256,7 @@ function groups(devices) {
 /// whichever tab is open.
 var TAB_GROUPS = [
   { id: "sensor", label: "Sensor", capabilities: ["dpi", "polling-rate", "onboard-profile"] },
-  { id: "wheel", label: "Wheel", capabilities: ["smart-shift"] },
+  { id: "wheel", label: "Wheel", capabilities: ["smart-shift", "hi-res-wheel"] },
   { id: "triggers", label: "Triggers", capabilities: ["hits"] }
 ]
 
@@ -282,6 +286,7 @@ function capabilityLabel(capability) {
   case "polling-rate": return "Polling Rate"
   case "hits": return "Haptic Triggers"
   case "smart-shift": return "Smart Shift"
+  case "hi-res-wheel": return "Scrolling"
   case "lod": return "Lift-Off Distance"
   case "onboard-profile": return "Profile Storage"
   default: return capability
@@ -294,7 +299,7 @@ function capabilityLabel(capability) {
 function unsupportedCapabilities(device) {
   if (!device) return []
   var handled = ["battery", "dpi", "polling-rate", "onboard-profile", "hits",
-                 "smart-shift"]
+                 "smart-shift", "hi-res-wheel"]
   return device.capabilities.filter(function (c) {
     return handled.indexOf(c) === -1
   })

@@ -81,6 +81,14 @@ func (driver) Read(device *model.Device) model.DeviceState {
 			state.SmartShift = shift
 		}
 	}
+	if device.Entry.Has(model.CapHiResWheel) {
+		wheel, err := readHiResWheel(link)
+		if err != nil {
+			state.Fail(model.CapHiResWheel, err)
+		} else {
+			state.HiResWheel = wheel
+		}
+	}
 	if device.Entry.Has(model.CapOnboardProfile) {
 		mode, err := readOnboardMode(link)
 		if err != nil {
@@ -124,6 +132,10 @@ func (driver) Write(device *model.Device, setting *model.Setting) error {
 	case model.SettingPollingRate:
 		if err := writePollingRate(link, device.Node, setting.Value); err != nil {
 			return fmt.Errorf("polling-rate: %w", err)
+		}
+	case model.SettingWheelHiRes, model.SettingWheelInvert:
+		if err := writeHiResWheel(link, setting); err != nil {
+			return fmt.Errorf("%s: %w", setting.Key, err)
 		}
 	case model.SettingSmartShiftMode, model.SettingSmartShiftThreshold:
 		if err := writeSmartShift(link, setting); err != nil {
@@ -359,6 +371,65 @@ func snapHITS(value uint32, min, max uint8) uint8 {
 		snapped = uint32(min)
 	}
 	return uint8(snapped)
+}
+
+// --- hi-res wheel ----------------------------------------------------------
+//
+// Feature 0x2121, one byte of mode flags.
+//
+//	fn 1 getWheelMode  → [flags]
+//	fn 2 setWheelMode(flags), echoing what it applied
+//
+//	bit 0  target      where wheel movement is sent
+//	bit 1  resolution  0 low, 1 high
+//	bit 2  invert      0 normal, 1 inverted
+//
+// Bit 0 is never touched. Setting it diverts wheel movement from ordinary HID
+// scroll events to HID++ notifications, which no part of this project reads —
+// the wheel would simply stop scrolling until something set it back.
+const (
+	wheelTargetBit     = 1 << 0
+	wheelResolutionBit = 1 << 1
+	wheelInvertBit     = 1 << 2
+)
+
+func readHiResWheel(link *hidpp.Device) (*model.HiResWheel, error) {
+	reply, err := link.CallFeature(hidpp.FeatureHiResWheel, 0x01)
+	if err != nil {
+		return nil, err
+	}
+	flags := at(reply, 0)
+	return &model.HiResWheel{
+		HiRes:    flags&wheelResolutionBit != 0,
+		Inverted: flags&wheelInvertBit != 0,
+	}, nil
+}
+
+func writeHiResWheel(link *hidpp.Device, setting *model.Setting) error {
+	index, err := link.FeatureIndex(hidpp.FeatureHiResWheel)
+	if err != nil {
+		return err
+	}
+	current, err := link.Call(index, 0x01)
+	if err != nil {
+		return err
+	}
+
+	// Read, modify, write — so the target bit is carried over exactly as
+	// found rather than cleared by accident.
+	flags := at(current, 0)
+	bit := byte(wheelResolutionBit)
+	if setting.Key == model.SettingWheelInvert {
+		bit = wheelInvertBit
+	}
+	if setting.Value != 0 {
+		flags |= bit
+	} else {
+		flags &^= bit
+	}
+
+	_, err = link.Call(index, 0x02, flags)
+	return err
 }
 
 // --- smart shift -----------------------------------------------------------

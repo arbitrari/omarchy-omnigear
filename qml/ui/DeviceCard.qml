@@ -205,17 +205,33 @@ Rectangle {
         }
 
         // --- wheel ---------------------------------------------------------
-        SmartShiftControl {
-            bar: root.bar
-            busy: root.busy
+        Column {
+            width: parent.width
+            spacing: Style.space(10)
             visible: root.showingDetail && root.currentTab === "wheel"
-                && root.device && root.device.smartShift !== null
-            smartShift: root.device ? root.device.smartShift : null
-            onModeRequested: function (mode) {
-                root.settingRequested("smart-shift-mode", mode);
+
+            SmartShiftControl {
+                bar: root.bar
+                busy: root.busy
+                smartShift: root.device ? root.device.smartShift : null
+                onModeRequested: function (mode) {
+                    root.settingRequested("smart-shift-mode", mode);
+                }
+                onThresholdRequested: function (threshold) {
+                    root.settingRequested("smart-shift-threshold", String(threshold));
+                }
             }
-            onThresholdRequested: function (threshold) {
-                root.settingRequested("smart-shift-threshold", String(threshold));
+
+            HiResWheelControl {
+                bar: root.bar
+                busy: root.busy
+                hiResWheel: root.device ? root.device.hiResWheel : null
+                onHiResRequested: function (on) {
+                    root.settingRequested("wheel-hi-res", on ? "on" : "off");
+                }
+                onInvertRequested: function (on) {
+                    root.settingRequested("wheel-invert", on ? "on" : "off");
+                }
             }
         }
 

@@ -106,6 +106,8 @@ const (
 	// CapSmartShift — the ratcheting scroll wheel: whether it clicks or spins
 	// free, and how fast it must be flicked to break into a free spin.
 	CapSmartShift Capability = "smart-shift"
+	// CapHiResWheel — scroll resolution and direction.
+	CapHiResWheel Capability = "hi-res-wheel"
 	// CapLOD — lift-off distance.
 	CapLOD Capability = "lod"
 	// CapOnboardProfile — onboard vs host profile storage.
@@ -324,6 +326,15 @@ func WheelModeValue(name string) (uint32, bool) {
 	}
 }
 
+// HiResWheel is how the scroll wheel reports movement.
+type HiResWheel struct {
+	// HiRes is finer-grained scrolling: more, smaller steps per notch.
+	HiRes bool `json:"hiRes"`
+	// Inverted flips the scroll direction in the hardware itself, so it
+	// applies before anything the desktop does.
+	Inverted bool `json:"inverted"`
+}
+
 type HITSButton struct {
 	Actuation    uint8 `json:"actuation"`
 	RapidTrigger uint8 `json:"rapidTrigger"`
@@ -358,6 +369,7 @@ type DeviceState struct {
 	PollingRate    *PollingRate `json:"pollingRate"`
 	HITS           *HITS        `json:"hits"`
 	SmartShift     *SmartShift  `json:"smartShift"`
+	HiResWheel     *HiResWheel  `json:"hiResWheel"`
 	LOD            *string      `json:"lod"`
 	OnboardProfile *string      `json:"onboardProfile"`
 	// Errors holds non-fatal problems, one per capability that could not be
@@ -381,6 +393,9 @@ const (
 	SettingDPI         SettingKey = "dpi"
 	SettingPollingRate SettingKey = "polling-rate"
 	SettingProfileMode SettingKey = "profile-mode"
+
+	SettingWheelHiRes  SettingKey = "wheel-hi-res"
+	SettingWheelInvert SettingKey = "wheel-invert"
 
 	SettingSmartShiftMode      SettingKey = "smart-shift-mode"
 	SettingSmartShiftThreshold SettingKey = "smart-shift-threshold"
@@ -452,6 +467,12 @@ func ParseSetting(key, value string) (Setting, error) {
 		settingKey = SettingDPI
 	case "polling-rate", "rate":
 		settingKey = SettingPollingRate
+	case "wheel-hi-res", "wheel-invert":
+		on, ok := parseSwitch(value)
+		if !ok {
+			return Setting{}, fmt.Errorf("%q is not on or off", value)
+		}
+		return Setting{Key: SettingKey(key), Value: on}, nil
 	case "smart-shift-mode", "wheel-mode":
 		mode, ok := WheelModeValue(value)
 		if !ok {
@@ -475,6 +496,7 @@ func ParseSetting(key, value string) (Setting, error) {
 		}
 		return Setting{}, fmt.Errorf("unknown setting %q (expected one of: dpi, "+
 			"polling-rate, profile-mode, smart-shift-mode, smart-shift-threshold, "+
+			"wheel-hi-res, wheel-invert, "+
 			"hits-{left,right}-{actuation,rapid-trigger,haptics})", key)
 	}
 
@@ -483,6 +505,25 @@ func ParseSetting(key, value string) (Setting, error) {
 		return Setting{}, fmt.Errorf("%q is not a whole number", value)
 	}
 	return Setting{Key: settingKey, Value: uint32(number)}, nil
+}
+
+// parseSwitch reads the words people actually type for a two-state setting.
+func parseSwitch(value string) (uint32, bool) {
+	switch strings.ToLower(value) {
+	case "on", "true", "yes", "1", "high", "inverted":
+		return 1, true
+	case "off", "false", "no", "0", "low", "standard", "normal":
+		return 0, true
+	default:
+		return 0, false
+	}
+}
+
+func boolToValue(on bool) uint32 {
+	if on {
+		return 1
+	}
+	return 0
 }
 
 // Reading pulls the one number a setting is about back out of a fresh read.
@@ -502,6 +543,16 @@ func (s *DeviceState) Reading(key SettingKey) (uint32, bool) {
 			if value, ok := ProfileModeValue(*s.OnboardProfile); ok {
 				return value, true
 			}
+		}
+
+	case SettingWheelHiRes:
+		if s.HiResWheel != nil {
+			return boolToValue(s.HiResWheel.HiRes), true
+		}
+
+	case SettingWheelInvert:
+		if s.HiResWheel != nil {
+			return boolToValue(s.HiResWheel.Inverted), true
 		}
 
 	case SettingSmartShiftMode:
