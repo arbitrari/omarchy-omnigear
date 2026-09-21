@@ -15,8 +15,10 @@ Row {
     readonly property color foreground: bar ? bar.foreground : Color.foreground
     readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
-    readonly property int percent: battery ? battery.percent : Model.UNKNOWN
-    readonly property bool low: percent >= 0 && percent <= 20
+    // Scored rather than read straight off the percentage: a device that
+    // only counts steps has no percentage, and "Low" still needs to look low.
+    readonly property int score: Model.batteryScore(battery)
+    readonly property bool low: score >= 0 && score <= 20
 
     width: parent ? parent.width : implicitWidth
     spacing: Style.space(6)
@@ -24,7 +26,7 @@ Row {
 
     Text {
         anchors.verticalCenter: parent.verticalCenter
-        text: Model.batteryIcon(root.percent, root.battery ? root.battery.status : "unknown")
+        text: Model.batteryIcon(root.battery)
         color: root.low ? (root.bar ? root.bar.urgent : Color.urgent) : root.foreground
         font.family: "monospace"
         font.pixelSize: Style.font.title
@@ -32,7 +34,7 @@ Row {
 
     Text {
         anchors.verticalCenter: parent.verticalCenter
-        text: Model.batteryText(root.percent)
+        text: Model.batteryReading(root.battery)
         textFormat: Text.PlainText
         color: root.low ? (root.bar ? root.bar.urgent : Color.urgent) : root.foreground
         font.family: root.fontFamily

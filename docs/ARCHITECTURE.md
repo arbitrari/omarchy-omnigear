@@ -276,6 +276,42 @@ OmniGear's own processes are filtered out. The CLI is re-run on every poll, so
 a hand-run command overlapping the bar's would otherwise have the panel
 warning about OmniGear.
 
+## Not every device measures its battery
+
+Some report which of a handful of steps they are on, and the number attached
+to a step is a boundary rather than a reading. An MX Master 3 says `20` when
+it means the third of its four levels; printing that as "20%" invents
+precision the hardware never had.
+
+Which kind a device is comes from the device, not from a list of models:
+
+```
+0x1004 fn 0 getCapabilities → [supportedLevels, flags, …]
+                              flag bit 0 set: it measures a state of charge
+0x1000 fn 1 getCapability   → [levels, flags, …, criticalLevel]
+                              a handful of levels means steps, not percent
+```
+
+Read off the two mice this was written against:
+
+```
+PRO X2 SUPERSTRIKE  0x1004 fn0 → 0F 0F 02        flags 0x0F, bit 0 set
+MX Master 3         0x1000 fn1 → 04 04 C0 78 05  four levels, critical at 5
+MX Master 3         0x1000 fn0 → 14 05 00        on level 20, next step 5
+```
+
+A device that measures gets `percent`; one that steps gets `level` and no
+percentage at all, and the UI shows the word. The device's own critical point
+anchors the bottom of the mapping rather than a constant.
+
+Everything downstream had assumed a percentage, so it all keys off
+`batteryScore` now — a real percentage where there is one, an approximate
+rank for a step otherwise. That is used to pick the icon, to decide which
+device is lowest and speaks for the bar, and to size the bar label, which is
+measured from the reading rather than assumed to be three characters wide:
+"Critical" is not the width of "91%". The score is never displayed. Showing
+it would be the fiction being avoided.
+
 ## Polling is not free: it wakes the mouse
 
 A poll is a conversation. A wireless mouse has to power its radio and

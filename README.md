@@ -61,7 +61,7 @@ Updates can be done directly in the plugin.
 | 🟥 | G305                | | | |⬛| | | | | | |
 | 🟥 | MX Master 4         | | | |⬛| | | | | | |
 | 🟩 | MX Master 3S        |🟩|🟩|⬛|⬛|🟩|🟩|🟩|🟩|🟩| |
-| 🟩 | MX Master 3         |🟩|🟩|⬛|⬛|🟩|🟩|🟩|🟩|🟨|No host names or pairing status; every slot is offered|
+| 🟩 | MX Master 3         |🟨|🟩|⬛|⬛|🟩|🟩|🟩|🟩|🟨|Battery is four levels, not a percentage; no host names or pairing status|
 | 🟥 | MX Master 2         | | | |⬛| | | | | | |
 | 🟥 | MX Master           | | | |⬛| | | | | | |
  

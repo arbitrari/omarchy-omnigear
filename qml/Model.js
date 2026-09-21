@@ -235,19 +235,52 @@ function categoryIcon(category) {
   }
 }
 
-function batteryIcon(percent, status) {
+/// Not every device measures its charge. Some report which of a handful of
+/// steps they are on, and the number attached to a step is a boundary rather
+/// than a reading: an MX Master 3 says 20 when it means the third of four
+/// levels. The driver leaves the percentage unset for those, and everything
+/// here falls back to the word.
+///
+/// A rough percentage for a step, used only for ranking and for choosing an
+/// icon. Never shown — showing it is the fiction being avoided.
+function levelRank(level) {
+  switch (level) {
+  case "critical": return 5
+  case "low": return 20
+  case "good": return 55
+  case "full": return 95
+  default: return UNKNOWN
+  }
+}
+
+/// What to compare by, so "lowest battery speaks for the bar" still works
+/// across devices that report differently.
+function batteryScore(battery) {
+  if (!battery) return UNKNOWN
+  if (battery.percent !== UNKNOWN && battery.percent >= 0) return battery.percent
+  return levelRank(battery.level)
+}
+
+function batteryIcon(battery) {
   var charging = ["󰢜", "󰂆", "󰂇", "󰂈", "󰢝", "󰂉", "󰢞", "󰂊", "󰂋", "󰂅"]
   var idle = ["󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"]
 
-  if (percent === UNKNOWN || percent < 0) return "󰁽"
-  var slot = Math.max(0, Math.min(9, Math.floor(percent / 10)))
+  var score = batteryScore(battery)
+  if (score === UNKNOWN || score < 0) return "󰁽"
+  var status = battery ? battery.status : "unknown"
+  var slot = Math.max(0, Math.min(9, Math.floor(score / 10)))
   if (status === "charging") return charging[slot]
   if (status === "full") return "󰂅"
   return idle[slot]
 }
 
-function batteryText(percent) {
-  return (percent === UNKNOWN || percent < 0) ? "--" : String(percent) + "%"
+/// The charge as a number when the device measures one, as a word when it
+/// only counts steps, and "--" when it says nothing at all.
+function batteryReading(battery) {
+  if (!battery) return "--"
+  if (battery.percent !== UNKNOWN && battery.percent >= 0)
+    return String(battery.percent) + "%"
+  return titleCase(battery.level) || "--"
 }
 
 /// The device the bar should speak for.
@@ -271,11 +304,11 @@ function primary(devices, preferredId) {
   }
 
   var withBattery = devices.filter(function (d) {
-    return d.battery && d.battery.percent !== UNKNOWN
+    return batteryScore(d.battery) !== UNKNOWN
   })
   if (withBattery.length === 0) return devices[0]
   return withBattery.reduce(function (lowest, d) {
-    return d.battery.percent < lowest.battery.percent ? d : lowest
+    return batteryScore(d.battery) < batteryScore(lowest.battery) ? d : lowest
   })
 }
 
@@ -290,14 +323,19 @@ var CHARGING_BOLT = "\uF0E7"
 /// The charge reading for the bar, or "" when it should not be shown.
 function barCharge(device, showPercentage) {
   if (!device || !device.battery || !showPercentage) return ""
-  return batteryText(device.battery.percent)
+  return batteryReading(device.battery)
 }
 
 /// How many icon slots the bar label needs, so the widget reserves the right
 /// width for the charge reading and the device icon beside it.
 function barSlots(device, showPercentage) {
   var slots = 1.0
-  if (showPercentage && device && device.battery) slots += 1.2
+  if (showPercentage && device && device.battery) {
+    // Sized from the reading itself rather than assumed to be three
+    // characters: a device that reports steps instead of a percentage shows
+    // a word, and "Critical" is not the width of "91%".
+    slots += 0.4 * barCharge(device, showPercentage).length
+  }
   if (isCharging(device)) slots += 0.5
   return slots
 }
@@ -309,8 +347,8 @@ function tooltip(state) {
   return state.devices.map(function (d) {
     if (!d.connected) return d.name + " · off"
     var parts = [d.name]
-    if (d.battery && d.battery.percent !== UNKNOWN) {
-      var charge = batteryText(d.battery.percent)
+    if (batteryScore(d.battery) !== UNKNOWN) {
+      var charge = batteryReading(d.battery)
       var state = batteryStatusLabel(d.battery)
       parts.push(state ? charge + " " + state : charge)
     }
@@ -483,10 +521,11 @@ function profileModeLabel(mode) {
 
 /// The word beside the percentage, and only when it adds something.
 ///
-/// A discharging device gets no word at all. The device's own coarse level is
-/// not worth printing: an MX Master 3S reports "full" alongside 65%, so the
-/// two readings contradict each other on screen. The percentage is the honest
-/// one, and it is already there.
+/// A discharging device gets no word at all. Where the device measures a
+/// percentage, its own coarse level is not worth printing beside it: an MX
+/// Master 3S reports "full" alongside 65%, so the two contradict each other
+/// on screen, and the percentage is the honest one. Where there is no
+/// percentage the level *is* the reading, and batteryReading shows it.
 function batteryStatusLabel(battery) {
   if (!battery) return ""
   switch (battery.status) {

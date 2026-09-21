@@ -210,6 +210,29 @@ func (driver) Write(device *model.Device, setting *model.Setting) error {
 
 // --- battery ---------------------------------------------------------------
 
+// Not every device measures its battery. Some report a handful of steps and
+// nothing finer, and the number they give for a step is a boundary rather
+// than a reading — an MX Master 3 says "20" when it means the third of four
+// levels. Printing that as "20%" invents precision the hardware never had, so
+// a device that cannot state a charge is shown as a word instead.
+//
+// Which it is comes from the device:
+//
+//	0x1004 fn 0 getCapabilities  → [supportedLevels, flags, …]
+//	                               flag bit 0 set means a real state of charge
+//	0x1000 fn 1 getCapability    → [levels, flags, …, criticalLevel]
+//	                               a handful of levels means steps, not percent
+//
+// Read off the two mice this was written against:
+//
+//	PRO X2 SUPERSTRIKE  0x1004 fn0 → 0F 0F 02   flags 0x0F, bit 0 set: real
+//	MX Master 3         0x1000 fn1 → 04 04 C0 78 05   four levels, critical 5
+//	MX Master 3         0x1000 fn0 → 14 05 00   at level 20, next step 5
+
+// percentLevels is the point above which a device claiming that many steps is
+// really just reporting a percentage.
+const percentLevels = 100
+
 // readBattery uses feature 0x1004 function 1, which replies
 // [stateOfCharge%, levelBits, chargingStatus, …].
 func readBattery(link *hidpp.Device) (*model.Battery, error) {
@@ -222,7 +245,7 @@ func readBattery(link *hidpp.Device) (*model.Battery, error) {
 	}
 
 	battery := &model.Battery{Status: "unknown"}
-	if len(reply) > 0 && reply[0] <= 100 {
+	if len(reply) > 0 && reply[0] <= 100 && measuresCharge(link) {
 		percent := int(reply[0])
 		battery.Percent = &percent
 	}
@@ -251,18 +274,40 @@ func readBattery(link *hidpp.Device) (*model.Battery, error) {
 	return battery, nil
 }
 
+// measuresCharge reports whether an 0x1004 device actually measures its
+// charge, rather than only knowing which of a few levels it is on.
+func measuresCharge(link *hidpp.Device) bool {
+	reply, err := link.CallFeature(hidpp.FeatureUnifiedBattery, 0x00)
+	if err != nil || len(reply) < 2 {
+		// No answer either way. The reading is the only thing in hand, so it
+		// is taken at face value rather than thrown away.
+		return true
+	}
+	const stateOfCharge = 0x01
+	return reply[1]&stateOfCharge != 0
+}
+
 // readBatteryLegacy uses feature 0x1000 function 0, the pre-unified report:
-// [level%, nextLevel%, status].
+// [level, nextLevel, status].
+//
+// The level is a step, not a measurement, unless the device says it has
+// enough steps to amount to one.
 func readBatteryLegacy(link *hidpp.Device) (*model.Battery, error) {
 	reply, err := link.CallFeature(hidpp.FeatureBatteryStatus, 0x00)
 	if err != nil {
 		return nil, err
 	}
 
+	levels, critical := legacyBatterySteps(link)
+
 	battery := &model.Battery{Status: "unknown"}
 	if len(reply) > 0 && reply[0] <= 100 {
-		percent := int(reply[0])
-		battery.Percent = &percent
+		if levels >= percentLevels {
+			percent := int(reply[0])
+			battery.Percent = &percent
+		} else {
+			battery.Level = legacyLevelWord(reply[0], critical)
+		}
 	}
 	if len(reply) > 2 {
 		switch reply[2] {
@@ -1311,4 +1356,42 @@ func allZero(bytes []byte) bool {
 		}
 	}
 	return true
+}
+
+// legacyBatterySteps asks an 0x1000 device how many levels it distinguishes
+// and where it considers itself critical.
+//
+//	fn 1 getBatteryCapability → [levels, flags, nominalLife(2), criticalLevel]
+//
+// A device that will not say is assumed to be stepped rather than measured,
+// which is the safer way round: it shows a word where a number might have
+// been available, instead of a number the hardware never meant.
+func legacyBatterySteps(link *hidpp.Device) (levels, critical byte) {
+	reply, err := link.CallFeature(hidpp.FeatureBatteryStatus, 0x01)
+	if err != nil {
+		return 0, 5
+	}
+	critical = at(reply, 4)
+	if critical == 0 {
+		critical = 5
+	}
+	return at(reply, 0), critical
+}
+
+// legacyLevelWord turns a step into the word for it.
+//
+// The device's own critical point anchors the bottom; the rest are the
+// boundaries a four-step device lands on — an MX Master 3 steps through
+// 100, 50, 20 and 5.
+func legacyLevelWord(level, critical byte) string {
+	switch {
+	case level <= critical:
+		return "critical"
+	case level < 40:
+		return "low"
+	case level < 80:
+		return "good"
+	default:
+		return "full"
+	}
 }
