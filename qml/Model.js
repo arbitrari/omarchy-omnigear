@@ -130,6 +130,7 @@ function parseDevice(raw) {
       threshold: Number(s.smartShift.threshold) || 0,
       max: Number(s.smartShift.max) || 1
     } : null,
+    buttons: (Array.isArray(s.buttons) ? s.buttons : []).map(parseButton),
     thumbwheel: s.thumbwheel ? {
       mode: safeText(s.thumbwheel.mode, "", 16)
     } : null,
@@ -157,6 +158,22 @@ function parseHitsButton(raw) {
     actuation: Number(b.actuation) || 0,
     rapidTrigger: Number(b.rapidTrigger) || 0,
     haptics: Number(b.haptics) || 0
+  }
+}
+
+function parseButton(raw) {
+  var b = raw || {}
+  return {
+    slug: safeText(b.slug, "", 32),
+    label: safeText(b.label, "Button", 32),
+    mappedTo: safeText(b.mappedTo, "", 32),
+    isDefault: b.default === true,
+    targets: (Array.isArray(b.targets) ? b.targets : []).map(function (t) {
+      return {
+        slug: safeText(t.slug, "", 32),
+        label: safeText(t.label, "Button", 32)
+      }
+    })
   }
 }
 
@@ -352,6 +369,7 @@ var TAB_GROUPS = [
   { id: "sensor", label: "Sensor", capabilities: ["dpi", "polling-rate", "onboard-profile"] },
   { id: "wheel", label: "Wheel", capabilities: ["smart-shift", "hi-res-wheel", "thumbwheel"] },
   { id: "triggers", label: "Triggers", capabilities: ["hits"] },
+  { id: "buttons", label: "Buttons", capabilities: ["buttons"] },
   { id: "hosts", label: "Hosts", capabilities: ["host"] }
 ]
 
@@ -386,6 +404,7 @@ function capabilityLabel(capability) {
   case "onboard-profile": return "Profile Storage"
   case "host": return "Easy-Switch"
   case "thumbwheel": return "Thumbwheel"
+  case "buttons": return "Buttons"
   default: return capability
   }
 }
@@ -405,7 +424,7 @@ function hostLabel(host) {
 function unsupportedCapabilities(device) {
   if (!device) return []
   var handled = ["battery", "dpi", "polling-rate", "onboard-profile", "hits",
-                 "smart-shift", "hi-res-wheel", "host", "thumbwheel"]
+                 "smart-shift", "hi-res-wheel", "host", "thumbwheel", "buttons"]
   return device.capabilities.filter(function (c) {
     return handled.indexOf(c) === -1
   })
@@ -575,4 +594,20 @@ function conflictSummary(devices) {
 function conflictLine(conflict) {
   return conflict.label + " (pid " + conflict.pid + ") \u2014 "
     + conflict.devices.join(", ")
+}
+
+
+/// What a button is currently set to do, for the line above its picker.
+/// A button doing its own job says so rather than repeating its own name.
+function buttonAssignment(button) {
+  if (!button) return ""
+  return button.isDefault ? "Default" : buttonTargetLabel(button, button.mappedTo)
+}
+
+function buttonTargetLabel(button, slug) {
+  var targets = (button && button.targets) || []
+  for (var i = 0; i < targets.length; i++) {
+    if (targets[i].slug === slug) return targets[i].label
+  }
+  return slug
 }

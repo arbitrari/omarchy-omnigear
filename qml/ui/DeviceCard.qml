@@ -257,6 +257,17 @@ Rectangle {
             }
         }
 
+        // --- buttons -------------------------------------------------------
+        ButtonsControl {
+            bar: root.bar
+            busy: root.busy
+            visible: root.showingDetail && root.currentTab === "buttons"
+            buttons: root.device ? root.device.buttons : []
+            onRequested: function (slug, target) {
+                root.settingRequested("button-" + slug, target);
+            }
+        }
+
         // --- hosts ---------------------------------------------------------
         HostControl {
             bar: root.bar

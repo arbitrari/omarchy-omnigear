@@ -118,6 +118,8 @@ const (
 	// CapThumbwheel — the horizontal wheel under the thumb: whether it
 	// scrolls or has been handed to other software.
 	CapThumbwheel Capability = "thumbwheel"
+	// CapButtons — reassigning what the device's buttons do, in hardware.
+	CapButtons Capability = "buttons"
 )
 
 // USBID is a vendor/product pair a model shows up as. A model that enumerates
@@ -444,6 +446,7 @@ type DeviceState struct {
 	OnboardProfile *string      `json:"onboardProfile"`
 	Hosts          *Hosts       `json:"hosts"`
 	Thumbwheel     *Thumbwheel  `json:"thumbwheel"`
+	Buttons        []Button     `json:"buttons"`
 	// Errors holds non-fatal problems, one per capability that could not be
 	// read. Never nil, so it marshals as [] rather than null.
 	Errors []string `json:"errors"`
@@ -580,9 +583,24 @@ func ParseSetting(key, value string) (Setting, error) {
 			settingKey = SettingKey(key)
 			break
 		}
+		if slug, ok := ButtonSlugOf(SettingKey(key)); ok {
+			// The value is the button it should act as, by name. "default" is
+			// resolved to the button's own id here rather than in the driver,
+			// so what was asked for and what gets written are the same number
+			// and a plain reset does not report itself as a snapped value.
+			target, ok := ButtonCID(value)
+			if strings.EqualFold(value, "default") {
+				target, ok = ButtonCID(slug)
+			}
+			if !ok {
+				return Setting{}, fmt.Errorf("%q is not a button (expected one of: "+
+					"left, right, middle, back, forward, gesture, wheel-mode, default)", value)
+			}
+			return Setting{Key: SettingKey(key), Value: uint32(target)}, nil
+		}
 		return Setting{}, fmt.Errorf("unknown setting %q (expected one of: dpi, "+
 			"polling-rate, profile-mode, smart-shift-mode, smart-shift-threshold, "+
-			"wheel-hi-res, wheel-invert, host, thumbwheel, "+
+			"wheel-hi-res, wheel-invert, host, thumbwheel, button-<name>, "+
 			"hits-{left,right}-{actuation,rapid-trigger,haptics})", key)
 	}
 
@@ -692,6 +710,21 @@ func (s *DeviceState) Reading(key SettingKey) (uint32, bool) {
 			return uint32(button.RapidTrigger), true
 		default:
 			return uint32(button.Haptics), true
+		}
+	}
+
+	// Button keys are per-device rather than from a fixed list, so they are
+	// resolved by name against what the device reported.
+	if slug, ok := ButtonSlugOf(key); ok {
+		for _, button := range s.Buttons {
+			if button.Slug != slug {
+				continue
+			}
+			target, ok := ButtonCID(button.MappedTo)
+			if !ok {
+				return 0, false
+			}
+			return uint32(target), true
 		}
 	}
 	return 0, false

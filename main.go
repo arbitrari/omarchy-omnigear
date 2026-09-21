@@ -176,6 +176,20 @@ func cmdSet(selector, key, value string) (reply, error) {
 	beforeState := driver.Read(device)
 	before, _ := beforeState.Reading(setting.Key)
 
+	// Buttons are the one setting whose valid keys and values come from the
+	// device rather than from a fixed list, so they are checked against the
+	// read that just happened instead of being sent blind.
+	if slug, ok := model.ButtonSlugOf(setting.Key); ok {
+		button := beforeState.Button(slug)
+		switch {
+		case button == nil:
+			return nil, fmt.Errorf("%s has no reassignable button %q (it has: %s)",
+				device.Entry.Model, slug, strings.Join(beforeState.ButtonSlugs(), ", "))
+		case !button.Accepts(uint16(setting.Value)):
+			return nil, fmt.Errorf("%s cannot be reassigned to that", button.Label)
+		}
+	}
+
 	// What the caller asked for, before the driver snaps it to something the
 	// device can actually hold.
 	requested := setting.Value

@@ -98,6 +98,14 @@ func (driver) Read(device *model.Device) model.DeviceState {
 			state.OnboardProfile = &mode
 		}
 	}
+	if device.Entry.Has(model.CapButtons) {
+		buttons, err := readButtons(link)
+		if err != nil {
+			state.Fail(model.CapButtons, err)
+		} else {
+			state.Buttons = buttons
+		}
+	}
 	if device.Entry.Has(model.CapThumbwheel) {
 		wheel, err := readThumbwheel(link)
 		if err != nil {
@@ -171,6 +179,12 @@ func (driver) Write(device *model.Device, setting *model.Setting) error {
 			return fmt.Errorf("host: %w", err)
 		}
 	default:
+		if _, ok := model.ButtonSlugOf(setting.Key); ok {
+			if err := writeButton(link, setting); err != nil {
+				return fmt.Errorf("%s: %w", setting.Key, err)
+			}
+			return nil
+		}
 		if err := writeHITSSetting(link, setting); err != nil {
 			return fmt.Errorf("%s: %w", setting.Key, err)
 		}
@@ -528,6 +542,158 @@ func clampThreshold(value uint32) uint8 {
 		return smartShiftMax
 	}
 	return uint8(value)
+}
+
+// --- reprogrammable buttons ------------------------------------------------
+//
+// Feature 0x1B04, reassigning what a button does at the device.
+//
+//	fn 0 getCount                 → [count]
+//	fn 1 getCidInfo(index)        → [cid(2), task(2), flags, pos, group, gmask]
+//	fn 2 getCidReporting(cid)     → [cid(2), flags, remap(2)]
+//	fn 3 setCidReporting(cid, flags, remap(2)), echoing what it applied
+//
+// The eight controls an MX Master 3S reports, read off the device:
+//
+//	cid 0x0050 left          flags 0x01  group 1  gmask 0x01
+//	cid 0x0051 right         flags 0x01  group 1  gmask 0x01
+//	cid 0x0052 middle        flags 0x31  group 2  gmask 0x03
+//	cid 0x0053 back          flags 0x31  group 2  gmask 0x03
+//	cid 0x0056 forward       flags 0x31  group 2  gmask 0x03
+//	cid 0x00C3 gesture       flags 0x31  group 2  gmask 0x03
+//	cid 0x00C4 wheel mode    flags 0x31  group 2  gmask 0x03
+//	cid 0x00D7 virtual gest. flags 0xA0  group 3  gmask 0x00
+//
+// Left and right are not reprogrammable — no 0x10 bit — which is the reason
+// a mouse cannot be rendered unclickable from here however the rest is set.
+//
+// Three things established on hardware:
+//
+//   - **Remap means what it says.** Forward set to 0x0052 middle-clicks, at
+//     the device, before the desktop sees anything.
+//   - **A remap of zero is ignored.** Writing remap 0x0000 to put a button
+//     back is accepted and does nothing; the button keeps its last mapping.
+//     The reset is to remap the control *to itself*, which is what
+//     writeButton sends for ButtonDefault. A device that has never been
+//     touched still *reads* 0x0000, so both spellings count as default.
+//   - **Flags are left at zero on write.** For a set, the divert and persist
+//     bits are each paired with a "change this" bit, and with those clear the
+//     device leaves both alone. Sending zero is therefore a read-modify-write
+//     for free, and it cannot divert a button by accident — which would stop
+//     the button working at all, exactly as it does on the thumbwheel.
+const (
+	ctrlReprogrammable = 1 << 4
+)
+
+// control is one entry of the device's control table.
+type control struct {
+	cid   uint16
+	flags byte
+	group byte
+	gmask byte
+}
+
+func readButtons(link *hidpp.Device) ([]model.Button, error) {
+	index, err := link.FeatureIndex(hidpp.FeatureReprogrammableKeys)
+	if err != nil {
+		return nil, err
+	}
+	count, err := link.Call(index, 0x00)
+	if err != nil {
+		return nil, err
+	}
+
+	controls := make([]control, 0, at(count, 0))
+	for i := byte(0); i < at(count, 0); i++ {
+		info, err := link.Call(index, 0x01, i)
+		if err != nil {
+			return nil, err
+		}
+		controls = append(controls, control{
+			cid:   uint16(be16(info, 0)),
+			flags: at(info, 4),
+			group: at(info, 6),
+			gmask: at(info, 7),
+		})
+	}
+
+	buttons := make([]model.Button, 0, len(controls))
+	for _, source := range controls {
+		if source.flags&ctrlReprogrammable == 0 {
+			continue
+		}
+		reporting, err := link.Call(index, 0x02, byte(source.cid>>8), byte(source.cid))
+		if err != nil {
+			return nil, err
+		}
+
+		slug, label := model.ButtonName(source.cid)
+		mapped := uint16(be16(reporting, 3))
+		// A pristine control reports no mapping at all; one reset by hand
+		// reports itself. Both mean the button does its own job.
+		if mapped == 0 {
+			mapped = source.cid
+		}
+		mappedSlug, _ := model.ButtonName(mapped)
+
+		buttons = append(buttons, model.Button{
+			Slug:     slug,
+			Label:    label,
+			CID:      int(source.cid),
+			MappedTo: mappedSlug,
+			Default:  mapped == source.cid,
+			Targets:  targetsFor(source, controls),
+		})
+	}
+	return buttons, nil
+}
+
+// targetsFor is what a control may be reassigned to: the controls whose group
+// the source's group mask admits. Asking the device rather than assuming is
+// what keeps this working on a mouse with a different button layout.
+func targetsFor(source control, controls []control) []model.ButtonTarget {
+	targets := make([]model.ButtonTarget, 0, len(controls))
+	for _, candidate := range controls {
+		if candidate.group == 0 || source.gmask&(1<<(candidate.group-1)) == 0 {
+			continue
+		}
+		slug, label := model.ButtonName(candidate.cid)
+		targets = append(targets, model.ButtonTarget{
+			Slug:  slug,
+			Label: label,
+			CID:   int(candidate.cid),
+		})
+	}
+	return targets
+}
+
+// writeButton reassigns one button. The setting carries the target; the key
+// says which button is being changed.
+func writeButton(link *hidpp.Device, setting *model.Setting) error {
+	slug, ok := model.ButtonSlugOf(setting.Key)
+	if !ok {
+		return fmt.Errorf("not a button setting")
+	}
+	source, ok := model.ButtonCID(slug)
+	if !ok {
+		return fmt.Errorf("unknown button %q", slug)
+	}
+
+	// Zero is not a reset — the device ignores it and keeps the last mapping.
+	// "default" is turned into the button's own id back in ParseSetting, so
+	// reaching here with zero means a caller invented it.
+	target := uint16(setting.Value)
+	if target == 0 {
+		return fmt.Errorf("no target button; to reset, map %s to itself", slug)
+	}
+
+	index, err := link.FeatureIndex(hidpp.FeatureReprogrammableKeys)
+	if err != nil {
+		return err
+	}
+	_, err = link.Call(index, 0x03,
+		byte(source>>8), byte(source), 0x00, byte(target>>8), byte(target))
+	return err
 }
 
 // --- thumbwheel ------------------------------------------------------------

@@ -60,9 +60,11 @@ var Entries = []model.Entry{
 		// routes are listed so it is found either way.
 		USB:   []model.USBID{{Vendor: vendor, Product: MXMaster3SBluetooth}},
 		Names: []string{"MX Master 3S"},
-		// Gestures (0x2251) and reprogrammable buttons (0x1B04) are the two
-		// things it implements that this project does not model yet, so
-		// support is partial rather than full.
+		// Gestures (0x2251) are the last thing it implements that this
+		// project does not model yet, so support is partial rather than full.
+		// The id is not in any public list this project has found; it sits
+		// beside 0x2250 AnalyticsData and the mouse has both a gesture button
+		// and a virtual one, which is suggestive and not evidence.
 		Support: model.SupportPartial,
 		Capabilities: []model.Capability{
 			model.CapBattery,
@@ -70,6 +72,7 @@ var Entries = []model.Entry{
 			model.CapSmartShift,
 			model.CapHiResWheel,
 			model.CapThumbwheel,
+			model.CapButtons,
 			model.CapHost,
 		},
 		Driver: driver.HIDPP,

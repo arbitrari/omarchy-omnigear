@@ -316,6 +316,43 @@ marks it, `cmdSet` stops at "the device accepted it", and the QML side treats
 an `ok` reply carrying no device as a cue to re-read rather than as a failure.
 Any future write with the same shape belongs there too; nothing else does.
 
+## Reassigning buttons
+
+Feature `0x1B04`. The device holds a table of controls, each with a control id,
+a group, and a mask of the groups it will accept a mapping from. Both the list
+of reprogrammable buttons and the list of what each may become are read off
+the device rather than hardcoded, so a mouse with a different button layout
+needs no code.
+
+An MX Master 3S reports eight controls, five of them reprogrammable: middle,
+back, forward, gesture, wheel mode. Left and right carry no reprogrammable
+bit, which is the structural reason nothing set here can leave a mouse unable
+to click.
+
+Three things learned on hardware, all of them non-obvious:
+
+- **A remap of zero is ignored.** Writing `remap = 0x0000` to put a button
+  back is accepted and does nothing. The reset is to map the control *to
+  itself*. A device that has never been touched still reads `0x0000`, so both
+  spellings count as default on the way in. `ParseSetting` turns the word
+  `default` into the button's own id, so what is asked for and what is written
+  are the same number and a reset is not reported as a snapped value.
+- **The flags byte is left at zero on write.** For a set, divert and persist
+  are each paired with a "change this" bit, and with those clear the device
+  leaves both alone — a read-modify-write for free. It also cannot divert a
+  button by accident, which would stop the button working entirely, exactly as
+  a diverted thumbwheel does.
+- **The keys are per-device, not from a fixed list.** `button-<slug>` is the
+  only setting whose valid keys and values come from the hardware, so `cmdSet`
+  checks both against the read it already did rather than sending them blind.
+  Asking for a button the device will not reassign names the ones it will.
+
+It costs about 170ms of the poll: one `getCount`, one `getCidInfo` per control,
+and one `getCidReporting` per reprogrammable one — fourteen round trips on this
+mouse. That is the price of asking the device instead of assuming, and it is
+paid on every read because the CLI is a fresh process each time with nowhere
+to cache it.
+
 ## A diverted wheel is a dead wheel
 
 Both wheel features can hand their movement to HID++ notifications instead of
