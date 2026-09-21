@@ -341,7 +341,7 @@ function barSlots(device, showPercentage) {
 }
 
 function tooltip(state) {
-  if (!state.ok) return "OmniGear: " + (state.error || "unavailable")
+  if (!state.ok) return "OmniGear: " + (state.error.split("\n")[0] || "unavailable")
   if (state.devices.length === 0) return "OmniGear: no supported devices"
 
   return state.devices.map(function (d) {
@@ -786,4 +786,21 @@ function mergeBattery(device, reading) {
   for (var key in device) next[key] = device[key]
   next.battery = merged
   return next
+}
+
+
+/// What to show when the CLI has not been built.
+///
+/// The plugin ships its source, so a clone has the panel and no program
+/// behind it. That failure otherwise looks identical to a device that stopped
+/// answering, which is the one thing this panel exists to report, so it says
+/// which it is and how to fix it.
+function missingBinaryState(pluginDir) {
+  var state = emptyState()
+  state.error = "omnigear has not been built.\n\n"
+    + "This plugin ships its source and the binary is compiled from it, so a "
+    + "fresh clone has no program to run. Build it with:\n\n"
+    + "cd " + pluginDir + "\n"
+    + "mise exec -- go build -ldflags=\"-s -w\" -o bin/omnigear ."
+  return state
 }

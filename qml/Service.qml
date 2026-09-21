@@ -59,9 +59,64 @@ Item {
         return url.indexOf("file://") === 0 ? url.substring(7) : url;
     }
 
+    // Where the plugin is installed, for the build instruction.
+    readonly property string pluginDir: {
+        var bin = "/bin/omnigear";
+        return binary.lastIndexOf(bin) === binary.length - bin.length
+            ? binary.substring(0, binary.length - bin.length)
+            : binary;
+    }
+
+    // Whether the CLI has actually been built.
+    //
+    // The plugin ships its source and the binary is compiled from it, so a
+    // fresh clone has the panel and nothing behind it. Without this the
+    // symptom is a process that produces no output, which reads exactly like
+    // a device that stopped answering — the one thing this panel exists to
+    // report. Better to say which of the two it is.
+    property bool binaryMissing: false
+
+    // Nothing is polled until that question is settled, so the first read
+    // cannot report "no reply" about a binary that was never there.
+    property bool binaryChecked: false
+
+    Process {
+        id: binaryCheck
+        command: ["test", "-x", root.binary]
+        running: true
+
+        onExited: function (exitCode) {
+            root.binaryMissing = exitCode !== 0;
+            if (root.binaryMissing) {
+                // Said here rather than downstream of a read: a process that
+                // cannot start produces no stdout, so every handler hanging
+                // off the output is dead in exactly the case being reported.
+                internal.state = Model.missingBinaryState(root.pluginDir);
+            } else if (root.binaryChecked) {
+                // It was built since the last look.
+                root.refresh();
+            }
+        }
+
+        // Settled when the check stops running, however it stopped. Keying
+        // this off the exit alone would mean a check that never ran at all
+        // held back every poll forever, which is a worse failure than the one
+        // being diagnosed.
+        onRunningChanged: if (!running) {
+            root.binaryChecked = true;
+        }
+    }
+
     signal applied(string deviceId, string key, bool success, string message)
 
     function refresh() {
+        if (root.binaryMissing) {
+            // Nothing to read from until it exists. Asking again is the point
+            // of a refresh, so the check runs instead of the read.
+            if (!binaryCheck.running)
+                binaryCheck.running = true;
+            return;
+        }
         if (listProcess.running)
             return;
         // Remember how many writes had landed when this read started, so a
@@ -287,7 +342,7 @@ Item {
     // A full read still happens occasionally, for what the kernel cannot say.
     Timer {
         interval: root.pollIntervalSec * 1000
-        running: true
+        running: root.binaryChecked && !root.binaryMissing
         repeat: true
         triggeredOnStart: true
         onTriggered: {
