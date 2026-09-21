@@ -30,13 +30,31 @@ func (h Holder) String() string {
 // Only processes owned by the same user are visible; anything else is skipped
 // silently, so an empty result means "nothing found", not "nothing there".
 func OtherHolders(path string) []Holder {
-	entries, err := os.ReadDir("/proc")
-	if err != nil {
-		return nil
+	return Holders(path)[path]
+}
+
+// Holders answers the same question as OtherHolders for several paths at once,
+// walking /proc a single time.
+//
+// The walk is the expensive part — every pid, every open descriptor — and the
+// bar asks this on every poll. Doing it once per device would multiply that by
+// the number of devices for an answer that comes out of the same scan.
+func Holders(paths ...string) map[string][]Holder {
+	found := make(map[string][]Holder, len(paths))
+	if len(paths) == 0 {
+		return found
 	}
 
+	wanted := make(map[string]bool, len(paths))
+	for _, path := range paths {
+		wanted[path] = true
+	}
+
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return found
+	}
 	self := os.Getpid()
-	var holders []Holder
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -46,26 +64,38 @@ func OtherHolders(path string) []Holder {
 		if err != nil || pid == self {
 			continue
 		}
-		if holdsPath(pid, path) {
-			holders = append(holders, Holder{PID: pid, Name: processName(pid)})
+		held := heldPaths(pid, wanted)
+		if len(held) == 0 {
+			continue
+		}
+		// One name lookup per process, not per path it holds.
+		holder := Holder{PID: pid, Name: processName(pid)}
+		for _, path := range held {
+			found[path] = append(found[path], holder)
 		}
 	}
-	return holders
+	return found
 }
 
-func holdsPath(pid int, path string) bool {
+// heldPaths returns which of the wanted paths this process has open.
+func heldPaths(pid int, wanted map[string]bool) []string {
 	fdDir := filepath.Join("/proc", strconv.Itoa(pid), "fd")
 	fds, err := os.ReadDir(fdDir)
 	if err != nil {
 		// Another user's process, or it exited while we looked. Not ours to see.
-		return false
+		return nil
 	}
+	var held []string
+	seen := make(map[string]bool)
 	for _, fd := range fds {
-		if target, err := os.Readlink(filepath.Join(fdDir, fd.Name())); err == nil && target == path {
-			return true
+		target, err := os.Readlink(filepath.Join(fdDir, fd.Name()))
+		if err != nil || !wanted[target] || seen[target] {
+			continue
 		}
+		seen[target] = true
+		held = append(held, target)
 	}
-	return false
+	return held
 }
 
 func processName(pid int) string {

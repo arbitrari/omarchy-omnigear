@@ -248,7 +248,33 @@ device accepted the change but kept 4000 — solaar (pid 1234) also has
 ```
 
 Only same-user processes are visible through `/proc`, so an empty list means
-"nothing found", not "nothing there".
+"nothing found", not "nothing there". The panel says nothing at all when the
+list is empty, for exactly that reason: silence here is not a clean bill of
+health, and a green "no conflicts" badge would be claiming more than is known.
+
+Since neither `probe` nor a failed write is something a user reads unprompted,
+every device in `list` and `get` also carries a `conflicts` array, and the
+panel puts a red banner above the cards naming what it found:
+
+```jsonc
+"conflicts": [{ "pid": 1625, "process": "solaar", "label": "Solaar", "known": true }]
+```
+
+Three things about how it is gathered:
+
+- **One `/proc` walk, not one per device.** `hidraw.Holders` takes every path
+  at once. The bar polls this on a timer, and the walk — every pid, every open
+  descriptor — is the whole cost of the answer.
+- **Known programs are named properly.** `contenderLabels` maps a process to
+  what a user would call it, so the banner says "Solaar" rather than "solaar".
+  The kernel caps `comm` at 15 characters, so longer names are keyed by their
+  truncation: `openrazer-daemon` arrives as `openrazer-daemo`.
+- **An unrecognised holder is still reported**, with `known: false` and its
+  process name. Whatever it is, it is still sharing every reply.
+
+OmniGear's own processes are filtered out. The CLI is re-run on every poll, so
+a hand-run command overlapping the bar's would otherwise have the panel
+warning about OmniGear.
 
 ## A device that is off still has a node
 

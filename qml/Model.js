@@ -108,6 +108,7 @@ function parseDevice(raw) {
     icon: safeText(d.icon, "", 32),
     onboardProfile: safeText(s.onboardProfile, "", 16),
     capabilities: Array.isArray(d.capabilities) ? d.capabilities : [],
+    conflicts: (Array.isArray(d.conflicts) ? d.conflicts : []).map(parseConflict),
     battery: parseBattery(s.battery),
     dpi: s.dpi ? {
       current: Number(s.dpi.current) || 0,
@@ -156,6 +157,15 @@ function parseHitsButton(raw) {
     actuation: Number(b.actuation) || 0,
     rapidTrigger: Number(b.rapidTrigger) || 0,
     haptics: Number(b.haptics) || 0
+  }
+}
+
+function parseConflict(raw) {
+  var c = raw || {}
+  return {
+    pid: Number(c.pid) || 0,
+    label: safeText(c.label, "another program", 48),
+    known: c.known === true
   }
 }
 
@@ -533,4 +543,36 @@ function sliderStep(dpi) {
     if (steps[i] >= target) return Math.max(steps[i], dpi.step || 1)
   }
   return steps[steps.length - 1]
+}
+
+
+/// Programs holding any device's node, gathered across the whole reply.
+///
+/// Grouped by process rather than by device, because the usual case is one
+/// daemon sitting on every mouse in the machine — three cards each repeating
+/// "Solaar has this open" says it worse than one line naming all three.
+function conflictSummary(devices) {
+  var byPid = {}
+  var order = []
+
+  ;(devices || []).forEach(function (device) {
+    (device.conflicts || []).forEach(function (conflict) {
+      var key = String(conflict.pid)
+      if (!byPid[key]) {
+        byPid[key] = { pid: conflict.pid, label: conflict.label,
+                       known: conflict.known, devices: [] }
+        order.push(key)
+      }
+      if (byPid[key].devices.indexOf(device.name) === -1)
+        byPid[key].devices.push(device.name)
+    })
+  })
+
+  return order.map(function (key) { return byPid[key] })
+}
+
+/// One line per contending program: who it is, and what it has hold of.
+function conflictLine(conflict) {
+  return conflict.label + " (pid " + conflict.pid + ") \u2014 "
+    + conflict.devices.join(", ")
 }

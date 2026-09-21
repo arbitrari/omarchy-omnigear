@@ -738,7 +738,10 @@ type DeviceJSON struct {
 	Icon         string       `json:"icon,omitempty"`
 	Connection   Connection   `json:"connection"`
 	Path         string       `json:"path"`
-	State        DeviceState  `json:"state"`
+	// Conflicts are other programs holding this device's node. Never nil, so
+	// it marshals as [] rather than null.
+	Conflicts []Contender `json:"conflicts"`
+	State     DeviceState `json:"state"`
 }
 
 func (d *Device) JSON(state DeviceState) DeviceJSON {
@@ -754,6 +757,7 @@ func (d *Device) JSON(state DeviceState) DeviceJSON {
 		Icon:         d.Entry.Icon,
 		Connection:   ConnectionOf(d.Node),
 		Path:         d.Node.Path,
+		Conflicts:    []Contender{},
 		State:        state,
 	}
 }

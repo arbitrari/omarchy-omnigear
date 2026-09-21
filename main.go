@@ -121,9 +121,20 @@ func emit(value reply) {
 
 func cmdList() (reply, error) {
 	found := discovery.Devices()
+
+	// One /proc walk for every device, rather than one per device: the bar
+	// asks for this list on every poll.
+	paths := make([]string, 0, len(found))
+	for i := range found {
+		paths = append(paths, found[i].Node.Path)
+	}
+	holders := hidraw.Holders(paths...)
+
 	devices := make([]model.DeviceJSON, 0, len(found))
 	for i := range found {
-		devices = append(devices, readDevice(&found[i]))
+		entry := readDevice(&found[i])
+		entry.Conflicts = model.Contenders(holders[found[i].Node.Path])
+		devices = append(devices, entry)
 	}
 	return reply{"ok": true, "schema": schema, "devices": devices}, nil
 }
@@ -134,7 +145,9 @@ func cmdGet(selector string) (reply, error) {
 	if err != nil {
 		return nil, err
 	}
-	return reply{"ok": true, "schema": schema, "device": readDevice(device)}, nil
+	entry := readDevice(device)
+	entry.Conflicts = model.Contenders(hidraw.OtherHolders(device.Node.Path))
+	return reply{"ok": true, "schema": schema, "device": entry}, nil
 }
 
 // cmdSet applies a setting, then reads the device back and says what actually

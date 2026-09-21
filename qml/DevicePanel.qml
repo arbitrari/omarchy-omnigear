@@ -31,6 +31,7 @@ Panel {
 
     readonly property var state: gear ? gear.state : Model.emptyState()
     readonly property var groups: Model.groups(state.devices)
+    readonly property var conflicts: Model.conflictSummary(state.devices)
     readonly property bool busy: gear ? gear.busy : false
     readonly property var build: gear ? gear.build : ({ label: "" })
 
@@ -375,6 +376,17 @@ Panel {
                     id: content
                     width: flick.width - root.gutter
                     spacing: Style.space(12)
+
+                    // --- something else is driving these devices -----------
+                    //
+                    // Top of the panel, above the cards, because it explains
+                    // the cards: a setting that will not stick has no other
+                    // visible cause, and the device reports no error for it.
+                    ConflictCard {
+                        bar: root.bar
+                        conflicts: root.conflicts
+                        visible: root.conflicts.length > 0
+                    }
 
                     // --- the devices ---------------------------------------
                     Repeater {
