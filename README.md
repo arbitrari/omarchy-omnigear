@@ -189,6 +189,42 @@ Is your device not currently supported? Feel free to submit a Pull Request to ad
 
 Use of Agents such as Claude Code, Codex, Cursor, Grok, Opencode, etc is encouraged. That said, _please_ make sure to keep PRs concise. Also, _please_ test all changes made as the maintainers most likely do not have the same device to test it themselves.
 
+### Getting Started
+
+You need [mise](https://mise.jdx.dev) (it pulls in Go) and the device you are adding. Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) first. It explains where a model lives in the tree, why a capability list is all the UI needs, and the hardware quirks that otherwise cost you an evening.
+
+### Testing Changes
+
+As you make frequent changes, you will want to build the plugin. To make this easy, run the following in terminal:
+
+```
+./scripts/dev-install
+```
+That will build the plugin and load it into the current shell
+
+### Adding a Device
+
+Most mice are one catalog entry and no new code, since the driver for the family already exists.
+
+1. Plug the device in and run `./bin/omnigear probe`. It lists every hidraw node and which HID++ features actually answered. Never copy a USB id off the internet. A wrong one binds a driver to somebody else's hardware.
+2. Add a `model.Entry` to `internal/devices/<category>/<brand>/<brand>.go`, with the ids you observed and only the capabilities you have seen work.
+3. Set `Support` honestly. `SupportPartial` until every capability it claims works.
+4. Update the table in this README to match.
+
+A model that behaves unlike the rest of its family gets its own file next to the catalog. A brand that speaks a protocol nothing else here speaks needs a `transport/` package and a `drivers/` package as well, and that is a much bigger PR. Say so in the description and it can be reviewed in pieces.
+
+### Reporting a Bug
+
+Open an Issue with the output of `probe` and `list`, taken with the device connected. The binary ships inside the installed plugin:
+
+```
+cd ~/.config/omarchy/plugins/io.github.arbitrari.omnigear
+./bin/omnigear probe
+./bin/omnigear list
+```
+
+Serials are in that output, so scrub them if you would rather not publish them. The rest is what makes the report fixable.
+
 ## Disclaimer
 OmniGear is not officially affiliated with the Omarchy Foundation nor any of the brands mentioned in this README or source code. This product is developed in open-source and is provided for free by volunteer contributors. If a brand has an issue with their product(s) being supported, please reach out in an GitHub Issue and it can be taken care of.
 
