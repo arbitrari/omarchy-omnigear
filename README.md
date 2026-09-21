@@ -11,23 +11,22 @@ An [Omarchy](https://omarchy/org) Plugin for monitoring and configuring your per
 
 ## Installation
 
-`omarchy plugin add omni.arbirtari.dev --enable`
+```sh
+omarchy plugin add https://omni.arbitrari.dev --enable
+```
 
-### Device permissions
+### Device Permissions
 
 HID devices are root-only until a udev rule says otherwise, so OmniGear needs
-one installed before it can read anything. Without it a device is simply
-invisible: it enumerates, the kernel drives it as a mouse, and the plugin
-cannot open it to ask it anything.
+one installed before it can read anything. Without it, a device is simply
+invisible and OmniGear cannot open it to ask it anything.
 
-```
+```sh
 sudo cp ~/.config/omarchy/plugins/io.github.arbitrari.omnigear/udev/60-omnigear.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
-
-A device already plugged in keeps the permissions it was given when it was
-added, so replug anything that was connected before the reload. The panel says
-so when it finds a device it cannot open.
+> [!IMPORTANT]
+> You must disconnect and reconnect your peripherals after adding this udev rule or else OmniGear still will not see your device
 
 ## Updates
 
