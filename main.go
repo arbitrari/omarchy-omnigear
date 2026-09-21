@@ -48,6 +48,8 @@ USAGE:
                                                         this machine)
     omnigear catalog                       the support matrix, hardware or not
     omnigear probe                         diagnostics: hidraw nodes and what answered
+    omnigear report [device]               write up a device to request support;
+                                           with no device, every node on the machine
     omnigear call <device> <feature> <fn> [byte...]
                                            raw HID++ call, for driver development
     omnigear version
@@ -98,6 +100,14 @@ func run(args []string) (reply, error) {
 		return cmdCatalog()
 	case "probe":
 		return cmdProbe()
+	case "report":
+		if len(args) > 2 {
+			return nil, fmt.Errorf("usage: omnigear report [device]")
+		}
+		if len(args) == 2 {
+			return cmdReport(args[1])
+		}
+		return cmdReport("")
 	case "call":
 		if len(args) < 4 {
 			return nil, fmt.Errorf("usage: omnigear call <device> <feature> <fn> [byte...]")
@@ -120,7 +130,10 @@ func emit(value reply) {
 // --- commands --------------------------------------------------------------
 
 func cmdList() (reply, error) {
-	found := discovery.Devices()
+	// Uncatalogued devices are listed alongside the rest rather than behind a
+	// flag: a mouse the plugin does not know about is still the mouse on the
+	// desk, and hiding it is how a user concludes the plugin is broken.
+	found := append(discovery.Devices(), discovery.Unknown()...)
 
 	// One /proc walk for every device, rather than one per device: the bar
 	// asks for this list on every poll.
@@ -136,11 +149,17 @@ func cmdList() (reply, error) {
 		entry.Conflicts = model.Contenders(holders[found[i].Node.Path])
 		devices = append(devices, entry)
 	}
-	return reply{"ok": true, "schema": schema, "devices": devices}, nil
+	// A node we can see but cannot open is the one failure that would
+	// otherwise be completely silent: the device just never appears.
+	return reply{
+		"ok": true, "schema": schema,
+		"devices":    devices,
+		"unreadable": discovery.Unreadable(),
+	}, nil
 }
 
 func cmdGet(selector string) (reply, error) {
-	found := discovery.Devices()
+	found := append(discovery.Devices(), discovery.Unknown()...)
 	device, err := catalog.Resolve(found, selector)
 	if err != nil {
 		return nil, err
@@ -163,7 +182,7 @@ func cmdSet(selector, key, value string) (reply, error) {
 		return nil, err
 	}
 
-	found := discovery.Devices()
+	found := append(discovery.Devices(), discovery.Unknown()...)
 	device, err := catalog.Resolve(found, selector)
 	if err != nil {
 		return nil, err
@@ -330,6 +349,12 @@ func cmdProbe() (reply, error) {
 
 		if entry := catalog.FindByUSB(node.Vendor, node.Product); entry != nil {
 			report.Catalogued = entry.Model
+		}
+		// Interrogate anything that speaks the protocol, catalogued or not.
+		// Restricting this to known devices made probe useless for the one
+		// job it exists for: working out why an unknown device is not
+		// showing up.
+		if hidpp.Speaks(node) {
 			if link, err := hidpp.Open(node); err == nil {
 				index := int(link.Index())
 				report.DeviceIdx = &index
@@ -381,7 +406,7 @@ func cmdCall(selector, feature, function string, params []string) (reply, error)
 		bytes = append(bytes, byte(b))
 	}
 
-	found := discovery.Devices()
+	found := append(discovery.Devices(), discovery.Unknown()...)
 	device, err := catalog.Resolve(found, selector)
 	if err != nil {
 		return nil, err

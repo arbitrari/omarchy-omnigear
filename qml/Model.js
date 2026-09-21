@@ -11,7 +11,7 @@ var UNKNOWN = -1
 var MAX_REPLY = 65536
 
 function emptyState() {
-  return { ok: false, devices: [], error: "", note: "" }
+  return { ok: false, devices: [], error: "", note: "", unreadable: [] }
 }
 
 /// Strip control characters and anything that could be read as markup, then
@@ -48,6 +48,8 @@ function parse(raw) {
   var devices = Array.isArray(data.devices) ? data.devices
               : (data.device ? [data.device] : [])
   state.devices = devices.map(parseDevice)
+  state.unreadable = (Array.isArray(data.unreadable) ? data.unreadable : [])
+    .map(function (path) { return safeText(path, "", 64) })
   state.note = safeText(data.note, "", 128)
   state.ok = true
   return state
@@ -103,6 +105,7 @@ function parseDevice(raw) {
     brand: safeText(d.brandLabel, "", 32),
     category: safeText(d.category, "", 16),
     support: safeText(d.support, "planned", 16),
+    usbLabel: safeText(d.usbLabel, "", 16),
     connected: s.connected !== false,
     connection: parseConnection(d.connection),
     icon: safeText(d.icon, "", 32),
@@ -136,6 +139,7 @@ function parseDevice(raw) {
     } : null,
     hosts: s.hosts ? {
       current: Number(s.hosts.current) || 0,
+      pairingKnown: s.hosts.pairingKnown === true,
       slots: (Array.isArray(s.hosts.slots) ? s.hosts.slots : []).map(parseHost)
     } : null,
     hits: s.hits ? {
@@ -337,9 +341,14 @@ function categoryLabel(category) {
 /// categories. One section per "###" heading in the README.
 function groups(devices) {
   var out = []
+  var all = devices || []
+
+  // By what kind of thing it is, supported or not. An uncatalogued mouse asks
+  // the device for its type, so it lands under MICE with everything else
+  // rather than in a ghetto of its own; the card says what it is.
   for (var i = 0; i < CATEGORY_ORDER.length; i++) {
     var category = CATEGORY_ORDER[i]
-    var members = (devices || []).filter(function (d) {
+    var members = all.filter(function (d) {
       return d.category === category
     })
     if (members.length > 0) {
@@ -348,9 +357,10 @@ function groups(devices) {
   }
 
   // Anything with an unrecognised category still gets shown rather than
-  // silently dropped — a device the UI cannot name is still a device.
+  // silently dropped — a device the UI cannot name is still a device. This is
+  // where a discovered device lands when it will not say what kind it is.
   var known = CATEGORY_ORDER.join(",")
-  var rest = (devices || []).filter(function (d) {
+  var rest = all.filter(function (d) {
     return known.indexOf(d.category) === -1
   })
   if (rest.length > 0) {
@@ -412,8 +422,11 @@ function capabilityLabel(capability) {
 /// What to call a host slot. The stored name is whatever the machine called
 /// itself when it paired, and a slot can be paired with no name at all, so
 /// the number is always there to fall back on.
-function hostLabel(host) {
+function hostLabel(host, pairingKnown) {
   if (!host) return ""
+  // A device that cannot describe its slots says nothing about them, so the
+  // slot is named by its number rather than called empty.
+  if (pairingKnown === false) return "Slot " + host.slot
   if (!host.paired) return "Slot " + host.slot + " · empty"
   return host.name !== "" ? host.name : "Slot " + host.slot
 }
@@ -511,6 +524,8 @@ function supportLabel(support) {
   case "full": return ""
   case "partial": return "Partial Support"
   case "planned": return "Not Supported Yet"
+  // "unsupported" is deliberately absent: the card prints that word itself,
+  // in the urgent colour, and a plain-text copy beside it would say it twice.
   default: return ""
   }
 }
@@ -610,4 +625,62 @@ function buttonTargetLabel(button, slug) {
     if (targets[i].slug === slug) return targets[i].label
   }
   return slug
+}
+
+
+/// A `report` reply: the prefilled issue link, and the text behind it.
+///
+/// The URL is checked rather than trusted. It is built by our own CLI, but it
+/// ends up at Qt.openUrlExternally, and that is not a place to hand anything
+/// that has not been looked at.
+function parseReport(raw) {
+  var none = { url: "", title: "", error: "" }
+  if (typeof raw !== "string" || raw === "" || raw.length > MAX_REPLY)
+    return { url: "", title: "", error: "No reply from omnigear" }
+
+  var data
+  try {
+    data = JSON.parse(raw)
+  } catch (e) {
+    return { url: "", title: "", error: "Unreadable reply from omnigear" }
+  }
+  if (!data || data.ok !== true)
+    return { url: "", title: "", error: safeText(data && data.error, "omnigear reported a failure", 256) }
+
+  var url = String(data.url || "")
+  if (url.indexOf("https://github.com/") !== 0)
+    return { url: "", title: "", error: "Report link was not a GitHub URL" }
+
+  return { url: url, title: safeText(data.title, "", 128), error: "" }
+}
+
+
+/// Whether this device is one the plugin knows, or one it merely found.
+///
+/// An unsupported device is driven entirely on the strength of the features
+/// it advertises: nobody has confirmed any of it against this model. That is
+/// worth saying on the card rather than letting it pass for a tested device.
+function isUnsupported(device) {
+  return !!device && device.support === "unsupported"
+}
+
+/// The line under an unsupported device's name, in place of the usual
+/// brand-and-connection subtitle facts it has no catalog entry to supply.
+function unsupportedNote(device) {
+  if (!device) return ""
+  var caps = device.capabilities.length
+  if (caps === 0)
+    return "Not supported yet. Nothing here could be read from it."
+  return "Not supported yet. The " + caps + " control"
+    + (caps === 1 ? "" : "s") + " below were detected, not tested."
+}
+
+
+/// The line for the permissions card: how many devices are locked away.
+function unreadableSummary(paths) {
+  var n = (paths || []).length
+  if (n === 0) return ""
+  return n === 1
+    ? "1 device is connected but cannot be opened."
+    : n + " devices are connected but cannot be opened."
 }

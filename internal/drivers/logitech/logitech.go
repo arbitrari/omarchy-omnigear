@@ -816,17 +816,29 @@ func readHosts(link *hidpp.Device) (*model.Hosts, error) {
 		return nil, fmt.Errorf("device reports no host slots")
 	}
 
-	hosts := &model.Hosts{Current: int(current) + 1}
+	// 0x1815 is what describes the slots, and a device can switch hosts
+	// without having it. Asked once rather than per slot, so a device without
+	// it does not pay for a refusal on every slot.
+	_, err = link.FeatureIndex(hidpp.FeatureHostsInfo)
+	detailed := err == nil
+	if err != nil && !hidpp.Unsupported(err) {
+		return nil, err
+	}
+
+	hosts := &model.Hosts{Current: int(current) + 1, PairingKnown: detailed}
 	for slot := byte(0); slot < count; slot++ {
 		host := model.Host{Slot: int(slot) + 1, Active: slot == current}
 
-		// A slot that will not describe itself is reported as unpaired rather
-		// than failing the whole read: the current slot is the useful part,
-		// and it is already in hand.
-		if info, err := link.CallFeature(hidpp.FeatureHostsInfo, 0x01, slot); err == nil {
-			host.Paired = at(info, hostStatusByte) != 0
-			if host.Paired {
-				host.Name = hostName(link, slot, at(info, hostNameRoomByte))
+		// Without 0x1815 nothing is known about the slot beyond its existing,
+		// so it is left alone rather than being reported as empty.
+		if detailed {
+			// A slot that will not describe itself is left as it is: the
+			// current slot is the useful part and is already in hand.
+			if info, err := link.CallFeature(hidpp.FeatureHostsInfo, 0x01, slot); err == nil {
+				host.Paired = at(info, hostStatusByte) != 0
+				if host.Paired {
+					host.Name = hostName(link, slot, at(info, hostNameRoomByte))
+				}
 			}
 		}
 		hosts.Slots = append(hosts.Slots, host)

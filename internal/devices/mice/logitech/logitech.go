@@ -85,7 +85,31 @@ var Entries = []model.Entry{
 		},
 		Driver: driver.HIDPP,
 	},
-	planned("MX Master 3", "mx-master-3"),
+	{
+		Model:    "MX Master 3",
+		Slug:     "mx-master-3",
+		Brand:    model.Logitech,
+		Category: model.Mouse,
+		// Its own node when the kernel expands the receiver it is paired to,
+		// and its reported name for when it does not.
+		USB:   []model.USBID{{Vendor: vendor, Product: MXMaster3Unifying}},
+		Names: []string{MXMaster3Name},
+		// Full: everything it exposes that is a setting is driven. What is
+		// left of its 35 features is 17 the firmware flags hidden, telemetry
+		// counters (0x2250, 0x2251), notifications (0x1D4B), firmware update
+		// (0x00C2), and names and ids the transport already uses.
+		Support: model.SupportFull,
+		Capabilities: []model.Capability{
+			model.CapBattery,
+			model.CapDPI,
+			model.CapSmartShift,
+			model.CapHiResWheel,
+			model.CapThumbwheel,
+			model.CapButtons,
+			model.CapHost,
+		},
+		Driver: driver.HIDPP,
+	},
 	planned("MX Master 2", "mx-master-2"),
 	planned("MX Master", "mx-master"),
 }

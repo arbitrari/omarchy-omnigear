@@ -383,6 +383,44 @@ func (d *Device) CallFeature(feature uint16, function byte, params ...byte) ([]b
 }
 
 // Name reads feature 0x0005, the device's own marketing name.
+// Device type codes as feature 0x0005 function 2 reports them.
+//
+// Mouse is confirmed on hardware: a PRO X2 SUPERSTRIKE and an MX Master 3
+// both answer 0x03. The rest are the published enumeration and are not
+// claimed to be tested — anything unrecognised is reported as unknown rather
+// than guessed at, which is what the UI wants anyway.
+const (
+	DeviceTypeKeyboard  = 0x00
+	DeviceTypeNumpad    = 0x02
+	DeviceTypeMouse     = 0x03
+	DeviceTypeTouchpad  = 0x04
+	DeviceTypeTrackball = 0x05
+	DeviceTypeHeadset   = 0x08
+)
+
+// DeviceType asks the device what kind of thing it is.
+//
+// This is the one trustworthy answer to "is this a mouse". Neither the HID
+// report descriptor nor the kernel's input capabilities can be believed: a
+// Keychron Q3 keyboard publishes a mouse collection and an input device named
+// "… Mouse" because it has mouse-keys, and a Logitech mouse publishes
+// keyboard capabilities because it has media keys. Both tests get both
+// devices wrong. The device's own answer gets both right.
+func (d *Device) DeviceType() (byte, error) {
+	index, err := d.FeatureIndex(FeatureDeviceName)
+	if err != nil {
+		return 0, err
+	}
+	reply, err := d.Call(index, 0x02)
+	if err != nil {
+		return 0, err
+	}
+	if len(reply) == 0 {
+		return 0, &UnsupportedError{Feature: FeatureDeviceName}
+	}
+	return reply[0], nil
+}
+
 func (d *Device) Name() (string, error) {
 	index, err := d.FeatureIndex(FeatureDeviceName)
 	if err != nil {

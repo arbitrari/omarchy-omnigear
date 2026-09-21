@@ -33,6 +33,10 @@ Rectangle {
     readonly property color foreground: bar ? bar.foreground : Color.foreground
     readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
     readonly property var unsupported: Model.unsupportedCapabilities(device)
+    // A device the plugin found rather than knows. Everything offered for it
+    // is inferred from the features it advertises, so the card says so and is
+    // tinted to keep it visually apart from a tested one.
+    readonly property bool unknownDevice: Model.isUnsupported(device)
     readonly property bool connected: device ? device.connected : false
     // Nothing to fold away on a device that is off, or one with no controls.
     readonly property bool expandable: connected && tabs.length > 0
@@ -49,6 +53,9 @@ Rectangle {
 
     signal tabSelected(string id)
 
+    // Asks the panel to write this device up as a support request.
+    signal reportRequested()
+
     // Falls back to the first tab when the panel has no preference yet, or
     // when a remembered tab no longer exists because the device lost that
     // capability.
@@ -63,7 +70,9 @@ Rectangle {
     width: parent ? parent.width : implicitWidth
     implicitHeight: body.implicitHeight + Style.space(20)
     radius: Style.space(0)
-    color: Style.normalFill
+    color: root.unknownDevice
+        ? Util.alpha(root.bar ? root.bar.urgent : Color.urgent, Style.normalFillAlpha * 2)
+        : Style.normalFill
 
     Column {
         id: body
@@ -118,6 +127,9 @@ Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: Style.space(2)
 
+                    // No "unsupported" badge here: the section heading above
+                    // already says it, and repeating it on every card is
+                    // noise. The tinted fill is the card's own reminder.
                     Text {
                         text: root.device ? root.device.name : ""
                         textFormat: Text.PlainText
@@ -127,12 +139,33 @@ Rectangle {
                         font.bold: true
                     }
 
-                    Text {
-                        text: Model.deviceSubtitle(root.device)
-                        textFormat: Text.PlainText
-                        color: Qt.darker(root.foreground, 1.5)
-                        font.family: root.fontFamily
-                        font.pixelSize: Style.font.caption
+                    // The subtitle's trail of facts, with the one that is not
+                    // a fact about the hardware picked out in the urgent
+                    // colour. Two Texts rather than rich text: everything on
+                    // this card comes off the wire and is rendered as plain
+                    // text on purpose.
+                    Row {
+                        spacing: Style.space(4)
+
+                        Text {
+                            anchors.baseline: subtitle.baseline
+                            visible: root.unknownDevice
+                            text: "UNSUPPORTED ·"
+                            textFormat: Text.PlainText
+                            color: root.bar ? root.bar.urgent : Color.urgent
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
+                            font.bold: true
+                        }
+
+                        Text {
+                            id: subtitle
+                            text: Model.deviceSubtitle(root.device)
+                            textFormat: Text.PlainText
+                            color: Qt.darker(root.foreground, 1.5)
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
+                        }
                     }
                 }
             }
@@ -276,6 +309,49 @@ Rectangle {
             hosts: root.device ? root.device.hosts : null
             onRequested: function (slot) {
                 root.settingRequested("host", String(slot));
+            }
+        }
+
+        // --- not supported, and what to do about it ------------------------
+        //
+        // Sits above the errors so the offer to report it is the last word on
+        // the card rather than something under a stack of failures.
+        Column {
+            width: parent.width
+            spacing: Style.space(8)
+            visible: root.unknownDevice && !root.collapsed
+
+            Text {
+                width: parent.width
+                text: Model.unsupportedNote(root.device)
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+                color: Qt.darker(root.foreground, 1.4)
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+            }
+
+            Text {
+                width: parent.width
+                visible: root.device && root.device.usbLabel !== ""
+                text: "Reported as " + (root.device ? root.device.name : "")
+                    + " · " + (root.device ? root.device.usbLabel : "")
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+                color: Qt.darker(root.foreground, 1.6)
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+            }
+
+            Button {
+                text: "Request support for this device"
+                foreground: root.foreground
+                background: root.bar ? root.bar.background : Color.background
+                accent: Color.accent
+                fontFamily: root.fontFamily
+                fontSize: Style.font.bodySmall
+                focusable: false
+                onClicked: root.reportRequested()
             }
         }
 

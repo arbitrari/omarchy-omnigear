@@ -86,9 +86,15 @@ Column {
     Text {
         width: parent.width
         visible: root.paired.length > 1
-        text: "Switching hands the mouse to that computer. It disappears from "
-            + "this one until you switch back, which you do with the button "
-            + "underneath the mouse."
+        text: {
+            var base = "Switching hands the mouse to that computer. It "
+                + "disappears from this one until you switch back, which you "
+                + "do with the button underneath the mouse.";
+            return root.pairingKnown
+                ? base
+                : base + " This device does not report which slots are "
+                    + "paired, so all of them are offered.";
+        }
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
         color: Qt.darker(root.foreground, 1.7)

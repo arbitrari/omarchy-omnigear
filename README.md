@@ -13,6 +13,22 @@ An [Omarchy](https://omarchy/org) Plugin for monitoring and configuring your per
 
 `omarchy plugin add omni.arbirtari.dev --enable`
 
+### Device permissions
+
+HID devices are root-only until a udev rule says otherwise, so OmniGear needs
+one installed before it can read anything. Without it a device is simply
+invisible: it enumerates, the kernel drives it as a mouse, and the plugin
+cannot open it to ask it anything.
+
+```
+sudo cp ~/.config/omarchy/plugins/io.github.arbitrari.omnigear/udev/60-omnigear.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules && sudo udevadm trigger
+```
+
+A device already plugged in keeps the permissions it was given when it was
+added, so replug anything that was connected before the reload. The panel says
+so when it finds a device it cannot open.
+
 ## Updates
 
 Updates can be done directly in the plugin.
@@ -45,7 +61,7 @@ Updates can be done directly in the plugin.
 | 🟥 | G305                | | | |⬛| | | | | | |
 | 🟥 | MX Master 4         | | | |⬛| | | | | | |
 | 🟩 | MX Master 3S        |🟩|🟩|⬛|⬛|🟩|🟩|🟩|🟩|🟩| |
-| 🟥 | MX Master 3         | | | |⬛| | | | | | |
+| 🟩 | MX Master 3         |🟩|🟩|⬛|⬛|🟩|🟩|🟩|🟩|🟨|No host names or pairing status; every slot is offered|
 | 🟥 | MX Master 2         | | | |⬛| | | | | | |
 | 🟥 | MX Master           | | | |⬛| | | | | | |
  

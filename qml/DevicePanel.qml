@@ -64,6 +64,13 @@ Panel {
             hostWidget.setPrimaryMouse(deviceId);
     }
 
+    // Hands a device to the CLI to be written up, and opens the prefilled
+    // issue in the browser. The panel stays open behind it.
+    function requestReport(deviceId) {
+        if (gear)
+            gear.report(deviceId);
+    }
+
     function tabFor(deviceId) {
         return tabSelection[deviceId] || "";
     }
@@ -126,6 +133,14 @@ Panel {
         function onApplied(deviceId, key, success, message) {
             root.statusIsError = !success;
             root.status = success ? "" : (message || "The device refused the change");
+        }
+
+        // A report that cannot be written is worth saying out loud: the user
+        // clicked a button and a browser did not open, which otherwise looks
+        // like the button being broken.
+        function onReportFailed(message) {
+            root.statusIsError = true;
+            root.status = message;
         }
     }
 
@@ -377,6 +392,13 @@ Panel {
                     width: flick.width - root.gutter
                     spacing: Style.space(12)
 
+                    // --- present, but we cannot open it --------------------
+                    AccessCard {
+                        bar: root.bar
+                        paths: root.state.unreadable || []
+                        visible: (root.state.unreadable || []).length > 0
+                    }
+
                     // --- something else is driving these devices -----------
                     //
                     // Top of the panel, above the cards, because it explains
@@ -423,6 +445,9 @@ Panel {
                                     }
                                     onTabSelected: function (id) {
                                         root.selectTab(modelData.id, id);
+                                    }
+                                    onReportRequested: {
+                                        root.requestReport(modelData.id);
                                     }
                                 }
                             }

@@ -316,6 +316,80 @@ marks it, `cmdSet` stops at "the device accepted it", and the QML side treats
 an `ok` reply carrying no device as a cue to re-read rather than as a failure.
 Any future write with the same shape belongs there too; nothing else does.
 
+## Permissions, and the failure with no symptom
+
+hidraw nodes are `crw-------` root-only by default. Without a udev rule
+granting access, every device is invisible: it enumerates, the kernel binds it
+and drives it as a mouse, and this plugin cannot open it to ask it anything.
+Nothing errors. The device just is not there.
+
+`udev/60-omnigear.rules` is the fix, tagging the vendors this project drives
+with `uaccess` so logind hands the node to whoever is logged in at the seat.
+That is preferred over a world-writable mode or a group to join, because the
+ACL follows the session rather than standing open. It is scoped by vendor: a
+blanket rule over `SUBSYSTEM=="hidraw"` would hand every HID device on the
+machine, firmware-update endpoints included, to anything in the session.
+
+This was found the hard way. The project had been working on a machine that
+happened to have Solaar installed, and it was **Solaar's** udev rule granting
+the access. Uninstalling Solaar left already-plugged devices working — a node
+keeps the ACL it was given when it was added — while every newly plugged
+device silently vanished. Nothing here should depend on another project being
+installed, and now nothing does.
+
+Because the symptom is absence, `discovery.Unreadable` looks for the cause
+directly: nodes that carry HID++ and return `EACCES` on open. `list` reports
+them and the panel prints the fix. A node that is merely busy is not reported,
+since no udev rule would help.
+
+## Devices nobody catalogued
+
+A device that is not in the catalog still shows up, described by what it says
+about itself: the name it reports, how it is attached, and a capability list
+derived from its own feature table rather than from anyone's testing. The
+existing driver then reads and writes it unchanged, because the driver keys
+off the capability list and does not care who wrote it. Battery and DPI on an
+unknown Logitech mouse work for exactly that reason.
+
+Such an entry is marked `Discovered` and `SupportUnsupported`, and the panel
+tints its card and labels it, because "the device advertises this feature" is
+a much weaker claim than "someone confirmed this works on this model".
+
+**Only HID++ devices are found this way, and that is a deliberate limit.**
+Identifying an arbitrary mouse from outside cannot be done without guessing:
+
+- The HID report descriptor does not say. A Keychron Q3 keyboard declares a
+  mouse collection, because it has mouse-keys, and would be offered as an
+  unsupported mouse.
+- The kernel's input capabilities do not say either, for the same reason: that
+  keyboard publishes an input device named "… Mouse" carrying `REL_X`,
+  `REL_Y` and `BTN_LEFT`.
+- And both miss the opposite case. The node an MX Master 3S is reached through
+  behind an unexpanded Bolt receiver declares no usages at all and publishes
+  no input device.
+
+A HID++ device will state its own name and list its own features, which is
+evidence rather than inference. Everything else is left to `omnigear report`.
+
+## Reporting a device
+
+`omnigear report [device]` writes the issue somebody else would need in order
+to add support for hardware they do not own.
+
+With a device, it is that device's identity, its whole feature table, and what
+the driver managed to read. With no device, it is every hidraw node on the
+machine — which is the path for a mouse this project cannot identify at all, a
+Razer say, that never appears as a device because it speaks no protocol here.
+
+The reply carries both the text and a prefilled GitHub issue link. The link is
+capped at 8000 characters because a full feature table plus a state dump
+encodes to well over ten thousand and a query string that long gets rejected
+between here and GitHub; past the cap the link is trimmed and says where the
+rest is. The text is always returned whole.
+
+The body contains device ids, what answered, kernel and version, and nothing
+about the person sending it — no hostname, no username, no serial.
+
 ## Reassigning buttons
 
 Feature `0x1B04`. The device holds a table of controls, each with a control id,
@@ -328,6 +402,12 @@ An MX Master 3S reports eight controls, five of them reprogrammable: middle,
 back, forward, gesture, wheel mode. Left and right carry no reprogrammable
 bit, which is the structural reason nothing set here can leave a mouse unable
 to click.
+
+The group masks differ per model, which is why they are read rather than
+assumed. On a 3S every reprogrammable button accepts all seven targets; on an
+MX Master 3 back and forward accept only left, right, back and forward. So
+"remap forward to middle" works on one and is correctly refused on the other,
+with no special case for either.
 
 Three things learned on hardware, all of them non-obvious:
 
@@ -375,10 +455,17 @@ over untouched, in case something else set it on purpose.
 
 ## Easy-Switch, and a warning about probing
 
-An MX device pairs with three hosts and `0x1814` moves it between them. Two
-features describe the same thing and a device with one has both: `0x1814` owns
-the count, the current slot and the switch, and `0x1815` adds per-slot pairing
-status and the host's stored name. Slots are 0-based on the wire and 1-based
+An MX device pairs with three hosts and `0x1814` moves it between them.
+`0x1814` owns the count, the current slot and the switch; `0x1815` adds
+per-slot pairing status and the host's stored name.
+
+**A device can have the first without the second.** That was written here as
+"a device with one has both", on the evidence of a single mouse, and an MX
+Master 3 disproved it: it switches hosts and has no `0x1815` at all. The first
+cut reported every slot as unpaired, because "the call failed" and "the slot
+is empty" had been allowed to look the same. `Hosts.PairingKnown` separates
+them, and the panel offers every slot on such a device rather than claiming
+they are all empty. Slots are 0-based on the wire and 1-based
 everywhere above the driver, matching the buttons on the underside.
 
 The warning is about `0x1815`. Its functions are not symmetrical the way most

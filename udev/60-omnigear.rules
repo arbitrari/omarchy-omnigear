@@ -1,0 +1,27 @@
+# OmniGear needs to read and write its devices over hidraw, and hidraw nodes
+# are root-only by default.
+#
+# uaccess hands the node to whoever is logged in at the seat, via a systemd
+# ACL, rather than making it world-writable or inventing a group to join. The
+# ACL follows the active session, so it is granted and revoked with the login
+# rather than standing open.
+#
+# Scoped to the vendors this project actually drives. A blanket rule over all
+# of SUBSYSTEM=="hidraw" would hand every HID device on the machine — including
+# ones with firmware-update endpoints — to any process in the session.
+#
+# Install:
+#   sudo cp udev/60-omnigear.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules && sudo udevadm trigger
+#
+# Already-plugged devices keep whatever permissions they were given when they
+# were added, so replug anything that was connected before the reload.
+
+# Logitech: mice and keyboards speaking HID++, and the receivers they pair to.
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="046d", TAG+="uaccess"
+
+# Bluetooth-attached devices have no USB parent to match a vendor id on, so
+# they are matched on the HID id instead: bus 0005 is Bluetooth, and the
+# middle field is the vendor.
+KERNEL=="hidraw*", SUBSYSTEM=="hidraw", ATTRS{uniq}=="?*", \
+  KERNELS=="0005:*046D:*", TAG+="uaccess"

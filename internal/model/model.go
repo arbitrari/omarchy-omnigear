@@ -21,6 +21,12 @@ const (
 	Mouse    Category = "mouse"
 	Keyboard Category = "keyboard"
 	Headset  Category = "headset"
+	// Unknown is a device found on the wire that is not in the catalog. What
+	// kind of thing it is cannot be told from outside: a keyboard with
+	// mouse-keys presents a mouse to the kernel, and a device behind an
+	// unexpanded receiver presents nothing at all. Rather than guess wrong in
+	// the UI, it is left unsaid.
+	Unknown Category = "unknown"
 )
 
 // Brand is who makes it. One per "####" section of the README.
@@ -77,6 +83,10 @@ const (
 	SupportPartial Support = "partial"
 	// SupportPlanned — catalogued, not implemented.
 	SupportPlanned Support = "planned"
+	// SupportUnsupported — not catalogued at all. Found by asking the device
+	// what it is and what it implements, so whatever works here works by
+	// accident of the protocol rather than by anyone having tested it.
+	SupportUnsupported Support = "unsupported"
 )
 
 func (s Support) Emoji() string {
@@ -85,6 +95,8 @@ func (s Support) Emoji() string {
 		return "🟩"
 	case SupportPartial:
 		return "🟨"
+	case SupportUnsupported:
+		return "⬜"
 	default:
 		return "🟥"
 	}
@@ -177,6 +189,13 @@ type Entry struct {
 	Icon string
 	// Driver is nil for a planned model: it is listed, and nothing more.
 	Driver Driver
+	// Discovered marks an entry assembled at runtime from what a device said
+	// about itself, rather than one written down in the catalog. Everything
+	// on such an entry is the device's own account of itself.
+	Discovered bool
+	// USBLabel is the vendor:product the device enumerated as, kept so a bug
+	// report can name it. Catalogued entries carry their ids in USB instead.
+	USBLabel string
 }
 
 func (e *Entry) Has(capability Capability) bool {
@@ -393,6 +412,13 @@ type Hosts struct {
 	// the one being asked.
 	Current int    `json:"current"`
 	Slots   []Host `json:"slots"`
+	// PairingKnown says whether Host.Paired means anything.
+	//
+	// Switching hosts is feature 0x1814; describing the slots is 0x1815, and
+	// a device can have the first without the second — an MX Master 3 does.
+	// Then all that is known is how many slots there are and which one is
+	// live, so Paired is false everywhere and must not be read as "empty".
+	PairingKnown bool `json:"pairingKnown"`
 }
 
 type Host struct {
@@ -770,6 +796,7 @@ type DeviceJSON struct {
 	Capabilities []Capability `json:"capabilities"`
 	Icon         string       `json:"icon,omitempty"`
 	Connection   Connection   `json:"connection"`
+	USBLabel     string       `json:"usbLabel,omitempty"`
 	Path         string       `json:"path"`
 	// Conflicts are other programs holding this device's node. Never nil, so
 	// it marshals as [] rather than null.
@@ -789,6 +816,7 @@ func (d *Device) JSON(state DeviceState) DeviceJSON {
 		Capabilities: nonNilCapabilities(d.Entry.Capabilities),
 		Icon:         d.Entry.Icon,
 		Connection:   ConnectionOf(d.Node),
+		USBLabel:     d.Entry.USBLabel,
 		Path:         d.Node.Path,
 		Conflicts:    []Contender{},
 		State:        state,

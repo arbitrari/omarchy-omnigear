@@ -125,6 +125,35 @@ Item {
         }
     }
 
+    // Ask the CLI to write up a device, then hand the prefilled issue to the
+    // browser. The report is assembled in Go because it is the side that can
+    // talk to the device; this only opens what comes back.
+    function report(deviceId) {
+        if (reportProcess.running)
+            return;
+        reportProcess.command = deviceId
+            ? [root.binary, "report", deviceId]
+            : [root.binary, "report"];
+        reportProcess.running = true;
+    }
+
+    signal reportFailed(string message)
+
+    Process {
+        id: reportProcess
+        stdout: StdioCollector {
+            id: reportOut
+            waitForEnd: true
+            onStreamFinished: {
+                var reply = Model.parseReport((reportOut.text || "").trim());
+                if (reply.url !== "")
+                    Qt.openUrlExternally(reply.url);
+                else
+                    root.reportFailed(reply.error || "Could not write the report");
+            }
+        }
+    }
+
     Process {
         id: versionProcess
         command: [root.binary, "version"]
