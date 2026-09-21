@@ -3,17 +3,26 @@
 OmniGear is two pieces with one seam between them:
 
 ```
-  qml/          the Omarchy bar widget — draws things, talks to no hardware
+  qml/            the Omarchy bar widget — draws things, talks to no hardware
     │
     │  JSON over stdout, one object per invocation
     ▼
-  omnigear      a Go CLI — owns every byte that reaches a device
+  cmd/omnigear/   a Go CLI — owns every byte that reaches a device
+    │
+    ▼
+  internal/       transports, drivers and the device catalog
 ```
 
 The seam is deliberate. QML runs inside the long-lived `omarchy-shell` process,
 where a blocking read on a wedged USB device would freeze the desktop. The CLI
 is a short-lived process with bounded timeouts; the worst a broken device can do
 is make one poll come back empty.
+
+The Go program lives under `cmd/` rather than at the top, because the top of
+this repository is a plugin rather than a Go project: `manifest.json`, `qml/`,
+`assets/` and `udev/` are what Omarchy loads, and the binary is one part of it.
+It is built to `bin/omnigear`, which is where the QML looks and which is not
+committed.
 
 ## Finding a device in the source
 

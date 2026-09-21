@@ -26,7 +26,7 @@ BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)
 COMMIT=$(git rev-parse --short HEAD 2>/dev/null || true)
 mise exec -- go build \
   -ldflags="-s -w -X main.branch=$BRANCH -X main.commit=$COMMIT" \
-  -o bin/omnigear .
+  -o bin/omnigear ./cmd/omnigear
 
 echo "installing $ID -> $TARGET"
 mkdir -p "$TARGET"

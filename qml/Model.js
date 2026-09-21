@@ -806,6 +806,6 @@ function missingBinaryState(pluginDir) {
     + "This plugin ships its source and the binary is compiled from it, so a "
     + "fresh clone has no program to run. Build it with:\n\n"
     + "cd " + pluginDir + "\n"
-    + "mise exec -- go build -ldflags=\"-s -w\" -o bin/omnigear ."
+    + "mise exec -- go build -ldflags=\"-s -w\" -o bin/omnigear ./cmd/omnigear"
   return state
 }
