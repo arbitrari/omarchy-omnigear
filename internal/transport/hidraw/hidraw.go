@@ -1,0 +1,365 @@
+// Package hidraw enumerates and opens /dev/hidraw* nodes.
+//
+// Everything needed to identify a node is in sysfs, so this avoids
+// HIDIOCGRAWINFO ioctls entirely: /sys/class/hidraw/hidrawN/device/uevent
+// carries HID_ID (bus:vendor:product), HID_NAME, HID_UNIQ and DRIVER.
+package hidraw
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"golang.org/x/sys/unix"
+)
+
+const sysClass = "/sys/class/hidraw"
+
+// ErrTimeout means the read window closed with nothing to read. It is not a
+// failure on its own: a device can be quiet because nothing was asked of it.
+var ErrTimeout = errors.New("timed out waiting for a report")
+
+// Link is how a device is attached to the machine. Some settings differ by
+// link: a Logitech mouse offers 8000 Hz polling over a cable or its own dongle
+// but only 1000 Hz over Bluetooth.
+type Link string
+
+const (
+	Wired     Link = "wired"
+	Wireless  Link = "wireless"
+	Bluetooth Link = "bluetooth"
+)
+
+// HID bus ids, as the kernel writes them into HID_ID.
+const (
+	busUSB       = 0x0003
+	busBluetooth = 0x0005
+)
+
+// Node is one /dev/hidrawN and what sysfs says about it.
+type Node struct {
+	Path    string
+	Vendor  uint16
+	Product uint16
+	Name    string
+	// Kernel driver bound to the HID device, e.g. logitech-hidpp-device.
+	Driver string
+	// HID_UNIQ — a serial or MAC-ish string, when the device has one.
+	Uniq string
+	// Bus is the HID bus id: 0x0003 USB, 0x0005 Bluetooth.
+	Bus  uint16
+	Link Link
+	// Receiver identifies the dongle this device is paired to, when there is
+	// one. Zero vendor means the device is not behind a receiver.
+	Receiver ReceiverID
+}
+
+// ReceiverID is the USB identity of a dongle a device is paired to.
+type ReceiverID struct {
+	Vendor  uint16
+	Product uint16
+}
+
+// Present reports whether the device is reached through a dongle at all.
+func (r ReceiverID) Present() bool { return r.Vendor != 0 }
+
+// Enumerate returns every hidraw node currently present, in node order.
+func Enumerate() []Node {
+	dir, err := os.ReadDir(sysClass)
+	if err != nil {
+		return nil
+	}
+
+	names := make([]string, 0, len(dir))
+	for _, entry := range dir {
+		names = append(names, entry.Name())
+	}
+	sort.Slice(names, func(i, j int) bool {
+		return nodeNumber(names[i]) < nodeNumber(names[j])
+	})
+
+	nodes := make([]Node, 0, len(names))
+	for _, name := range names {
+		if node, ok := readNode(name); ok {
+			nodes = append(nodes, node)
+		}
+	}
+	return nodes
+}
+
+func nodeNumber(name string) int {
+	n, err := strconv.Atoi(strings.TrimPrefix(name, "hidraw"))
+	if err != nil {
+		return 1 << 30
+	}
+	return n
+}
+
+func readNode(name string) (Node, bool) {
+	raw, err := os.ReadFile(filepath.Join(sysClass, name, "device", "uevent"))
+	if err != nil {
+		return Node{}, false
+	}
+
+	node := Node{Path: filepath.Join("/dev", name)}
+	haveUSB := false
+
+	for _, line := range strings.Split(string(raw), "\n") {
+		key, value, found := strings.Cut(line, "=")
+		if !found {
+			continue
+		}
+		switch key {
+		case "HID_ID":
+			// HID_ID=0003:0000046D:000040BD — bus:vendor:product, hex.
+			parts := strings.Split(value, ":")
+			if len(parts) < 3 {
+				continue
+			}
+			if bus, err := strconv.ParseUint(parts[0], 16, 16); err == nil {
+				node.Bus = uint16(bus)
+			}
+			vendor, errV := strconv.ParseUint(parts[1], 16, 16)
+			product, errP := strconv.ParseUint(parts[2], 16, 16)
+			if errV == nil && errP == nil {
+				node.Vendor = uint16(vendor)
+				node.Product = uint16(product)
+				haveUSB = true
+			}
+		case "HID_NAME":
+			node.Name = value
+		case "DRIVER":
+			node.Driver = value
+		case "HID_UNIQ":
+			node.Uniq = value
+		}
+	}
+
+	node.Link, node.Receiver = readLink(name, node.Bus)
+	return node, haveUSB
+}
+
+// readLink works out how a node is attached, and to what.
+//
+// Bluetooth announces itself in the HID bus id. Otherwise, a device behind a
+// dongle hangs off a receiver in sysfs:
+//
+//	…/0003:046D:C54D.0008/     logitech-djreceiver   <- the dongle
+//	  0003:046D:40BD.0009/     logitech-hidpp-device <- the mouse
+//
+// so the parent separates a dongle from a plain cable — and its own HID_ID
+// says which dongle, which is the only way to tell a Lightspeed receiver from
+// a Unifying one.
+func readLink(name string, bus uint16) (Link, ReceiverID) {
+	if bus == busBluetooth {
+		return Bluetooth, ReceiverID{}
+	}
+	device, err := filepath.EvalSymlinks(filepath.Join(sysClass, name, "device"))
+	if err != nil {
+		return Wired, ReceiverID{}
+	}
+	raw, err := os.ReadFile(filepath.Join(filepath.Dir(device), "uevent"))
+	if err != nil {
+		return Wired, ReceiverID{}
+	}
+	uevent := string(raw)
+	if !strings.Contains(uevent, "receiver") {
+		return Wired, ReceiverID{}
+	}
+
+	return Wireless, parentReceiverID(uevent)
+}
+
+// parentReceiverID pulls the dongle's USB identity out of the parent's
+// HID_ID=bus:vendor:product line.
+func parentReceiverID(uevent string) ReceiverID {
+	for _, line := range strings.Split(uevent, "\n") {
+		key, value, found := strings.Cut(line, "=")
+		if !found || key != "HID_ID" {
+			continue
+		}
+		parts := strings.Split(value, ":")
+		if len(parts) < 3 {
+			continue
+		}
+		vendor, errV := strconv.ParseUint(parts[1], 16, 16)
+		product, errP := strconv.ParseUint(parts[2], 16, 16)
+		if errV == nil && errP == nil {
+			return ReceiverID{Vendor: uint16(vendor), Product: uint16(product)}
+		}
+	}
+	return ReceiverID{}
+}
+
+// ReportDescriptor returns the node's HID report descriptor, which says which
+// report ids the interface carries. A device usually owns several nodes and
+// only one of them speaks a given protocol; the descriptor tells them apart
+// without opening or writing to anything.
+func (n Node) ReportDescriptor() ([]byte, error) {
+	name := filepath.Base(n.Path)
+	return os.ReadFile(filepath.Join(sysClass, name, "device", "report_descriptor"))
+}
+
+// Open opens the node for reading and writing. The caller closes it.
+func (n Node) Open() (*Handle, error) {
+	fd, err := unix.Open(n.Path, unix.O_RDWR|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, fmt.Errorf("open %s: %w", n.Path, err)
+	}
+	return &Handle{fd: fd, path: n.Path}, nil
+}
+
+// Handle is an open hidraw node. Reads are bounded by a timeout so a device
+// that never answers cannot wedge the caller.
+type Handle struct {
+	fd   int
+	path string
+}
+
+func (h *Handle) Close() error {
+	if h.fd < 0 {
+		return nil
+	}
+	err := unix.Close(h.fd)
+	h.fd = -1
+	return err
+}
+
+func (h *Handle) Write(report []byte) error {
+	written, err := unix.Write(h.fd, report)
+	if err != nil {
+		return fmt.Errorf("write %s: %w", h.path, err)
+	}
+	if written != len(report) {
+		return fmt.Errorf("short write to %s: %d of %d bytes", h.path, written, len(report))
+	}
+	return nil
+}
+
+// Read waits up to timeout for one report. It returns ErrTimeout if the window
+// closes first.
+func (h *Handle) Read(timeout time.Duration) ([]byte, error) {
+	if err := h.waitReadable(timeout); err != nil {
+		return nil, err
+	}
+	buf := make([]byte, 64)
+	n, err := unix.Read(h.fd, buf)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", h.path, err)
+	}
+	return buf[:n], nil
+}
+
+func (h *Handle) waitReadable(timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return ErrTimeout
+		}
+		fds := []unix.PollFd{{Fd: int32(h.fd), Events: unix.POLLIN}}
+		ready, err := unix.Poll(fds, int(remaining.Milliseconds()))
+		if err != nil {
+			if errors.Is(err, unix.EINTR) {
+				continue
+			}
+			return fmt.Errorf("poll %s: %w", h.path, err)
+		}
+		if ready == 0 {
+			return ErrTimeout
+		}
+		if fds[0].Revents&unix.POLLIN != 0 {
+			return nil
+		}
+		return ErrTimeout
+	}
+}
+
+// LinkOnline reports whether the kernel currently holds a live link to the
+// device behind this node.
+//
+// `hid-logitech-hidpp` publishes a power_supply for each device it drives,
+// and its `online` attribute tracks the wireless link rather than the
+// battery: 1 while the device is connected, 0 once it is switched off or out
+// of range. It stays 1 while the device is merely idle, which is the
+// distinction worth having — a sleeping mouse is still connected.
+//
+// This costs a sysfs read and, unlike asking the device, does not wake it.
+// Without it the only way to find out a device is off is to spend the whole
+// wake budget discovering that nothing answers.
+//
+// The second result is false when the kernel offers no opinion: a device
+// bound by hid-generic, or behind a receiver the kernel did not expand, has
+// no power_supply at all. Then nothing is known and nothing should be
+// assumed.
+func (n Node) LinkOnline() (online bool, known bool) {
+	dir := filepath.Join(sysClass, filepath.Base(n.Path), "device", "power_supply")
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) == 0 {
+		return false, false
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, entries[0].Name(), "online"))
+	if err != nil {
+		return false, false
+	}
+	return strings.TrimSpace(string(raw)) == "1", true
+}
+
+// PowerSupply is what the kernel knows about a device's battery without
+// anyone having to ask the device.
+type PowerSupply struct {
+	// Percent is -1 when the kernel has no exact figure.
+	Percent int
+	// Level is the coarse word — "Low", "Normal", "Full" — which is all the
+	// kernel exposes for devices on the older 0x1000 battery feature.
+	Level  string
+	Status string
+	Online bool
+}
+
+// Battery reads the kernel's own view of this device's battery.
+//
+// `hid-logitech-hidpp` keeps a power_supply per device it drives, fed by the
+// reports the device sends of its own accord. Reading it is a few sysfs files
+// and, crucially, sends the device nothing: the alternative — asking over
+// HID++ — wakes the mouse, and doing that every twenty seconds is how a
+// battery monitor stops the battery from ever resting.
+//
+// What is available differs by device. A device on the modern 0x1004 feature
+// gives `capacity` as a percentage; one on the older 0x1000 gives only
+// `capacity_level` as a word. Both are returned for whatever is there, and
+// the second result is false when the kernel has no power_supply at all,
+// which is the case for anything it has not bound its own driver to.
+func (n Node) Battery() (PowerSupply, bool) {
+	dir := filepath.Join(sysClass, filepath.Base(n.Path), "device", "power_supply")
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) == 0 {
+		return PowerSupply{}, false
+	}
+	base := filepath.Join(dir, entries[0].Name())
+
+	read := func(name string) string {
+		raw, err := os.ReadFile(filepath.Join(base, name))
+		if err != nil {
+			return ""
+		}
+		return strings.TrimSpace(string(raw))
+	}
+
+	supply := PowerSupply{Percent: -1, Level: read("capacity_level"), Status: read("status")}
+	supply.Online = read("online") == "1"
+	if percent, err := strconv.Atoi(read("capacity")); err == nil {
+		supply.Percent = percent
+	}
+	// A device that is not connected reports stale numbers; the kernel keeps
+	// the last ones it saw. Nothing here is worth showing in that case.
+	if !supply.Online {
+		return PowerSupply{Percent: -1}, false
+	}
+	return supply, supply.Percent >= 0 || supply.Level != ""
+}
