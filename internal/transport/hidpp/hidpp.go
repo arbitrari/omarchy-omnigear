@@ -74,6 +74,8 @@ const (
 	FeatureBatteryStatus      uint16 = 0x1000
 	FeatureBatteryVoltage     uint16 = 0x1001
 	FeatureUnifiedBattery     uint16 = 0x1004
+	FeatureChangeHost         uint16 = 0x1814
+	FeatureHostsInfo          uint16 = 0x1815
 	FeatureHITS               uint16 = 0x1B0C // Haptic Inductive Trigger System
 	FeatureSmartShift         uint16 = 0x2110
 	FeatureHiResWheel         uint16 = 0x2121

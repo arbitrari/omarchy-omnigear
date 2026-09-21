@@ -129,6 +129,10 @@ function parseDevice(raw) {
       threshold: Number(s.smartShift.threshold) || 0,
       max: Number(s.smartShift.max) || 1
     } : null,
+    hosts: s.hosts ? {
+      current: Number(s.hosts.current) || 0,
+      slots: (Array.isArray(s.hosts.slots) ? s.hosts.slots : []).map(parseHost)
+    } : null,
     hits: s.hits ? {
       left: parseHitsButton(s.hits.left),
       right: parseHitsButton(s.hits.right),
@@ -149,6 +153,16 @@ function parseHitsButton(raw) {
     actuation: Number(b.actuation) || 0,
     rapidTrigger: Number(b.rapidTrigger) || 0,
     haptics: Number(b.haptics) || 0
+  }
+}
+
+function parseHost(raw) {
+  var h = raw || {}
+  return {
+    slot: Number(h.slot) || 0,
+    paired: h.paired === true,
+    name: safeText(h.name, "", 32),
+    active: h.active === true
   }
 }
 
@@ -324,7 +338,8 @@ function groups(devices) {
 var TAB_GROUPS = [
   { id: "sensor", label: "Sensor", capabilities: ["dpi", "polling-rate", "onboard-profile"] },
   { id: "wheel", label: "Wheel", capabilities: ["smart-shift", "hi-res-wheel"] },
-  { id: "triggers", label: "Triggers", capabilities: ["hits"] }
+  { id: "triggers", label: "Triggers", capabilities: ["hits"] },
+  { id: "hosts", label: "Hosts", capabilities: ["host"] }
 ]
 
 /// The devices of one kind. Each kind gets its own primary, because "the
@@ -356,8 +371,18 @@ function capabilityLabel(capability) {
   case "hi-res-wheel": return "Scrolling"
   case "lod": return "Lift-Off Distance"
   case "onboard-profile": return "Profile Storage"
+  case "host": return "Easy-Switch"
   default: return capability
   }
+}
+
+/// What to call a host slot. The stored name is whatever the machine called
+/// itself when it paired, and a slot can be paired with no name at all, so
+/// the number is always there to fall back on.
+function hostLabel(host) {
+  if (!host) return ""
+  if (!host.paired) return "Slot " + host.slot + " · empty"
+  return host.name !== "" ? host.name : "Slot " + host.slot
 }
 
 /// Capabilities the device claims but this build cannot show a control for.
@@ -366,7 +391,7 @@ function capabilityLabel(capability) {
 function unsupportedCapabilities(device) {
   if (!device) return []
   var handled = ["battery", "dpi", "polling-rate", "onboard-profile", "hits",
-                 "smart-shift", "hi-res-wheel"]
+                 "smart-shift", "hi-res-wheel", "host"]
   return device.capabilities.filter(function (c) {
     return handled.indexOf(c) === -1
   })

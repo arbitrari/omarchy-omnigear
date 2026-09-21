@@ -44,6 +44,8 @@ USAGE:
     omnigear set <device> <key> <value>    change a setting:
                                              dpi <n> | polling-rate <hz>
                                              profile-mode onboard|host
+                                             host <n>  (switches away from
+                                                        this machine)
     omnigear catalog                       the support matrix, hardware or not
     omnigear probe                         diagnostics: hidraw nodes and what answered
     omnigear call <device> <feature> <fn> [byte...]
@@ -168,6 +170,17 @@ func cmdSet(selector, key, value string) (reply, error) {
 		return nil, err
 	}
 	effective := setting.Value
+
+	// One setting cannot be read back, because its whole effect is that the
+	// device stops talking to this machine. Verifying it would report every
+	// successful host switch as a failure.
+	if !setting.Key.Verifiable() {
+		return reply{
+			"ok": true, "schema": schema,
+			"applied": effective,
+			"note":    "device switched away from this host; nothing left to verify against",
+		}, nil
+	}
 
 	afterState := driver.Read(device)
 	after, known := afterState.Reading(setting.Key)

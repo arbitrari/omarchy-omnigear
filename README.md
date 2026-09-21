@@ -34,24 +34,26 @@ Updates can be done directly in the plugin.
 <details>
 <summary><b>Logitech</b></summary>
 
-|  | Name | Battery | DPI | Polling | HITS* | SmartShift** | Notes 
-|------|-----|-----|-----|-----|-----|-----|-----|
-| 🟩 | PRO X2 SUPERSTRIKE  |🟩|🟩|🟩|🟩| N/A |Not configurable when using Onboard memory|
-| 🟥 | PRO X2 SUPERLIGHT 2 | | | |⬛| | |
-| 🟥 | PRO X2 SUPERLIGHT   | | | |⬛| | |
-| 🟥 | PRO 2 LIGHTSPEED    | | | |⬛| | |
-| 🟥 | G502 X / PLUS       | | | |⬛| | |
-| 🟥 | G309 LIGHTSPEED     | | | |⬛| | |
-| 🟥 | G305                | | | |⬛| | |
-| 🟥 | MX Master 4         | | | |⬛| | |
-| 🟨 | MX Master 3S        |🟩|🟩|⬛|⬛|🟩| |
-| 🟥 | MX Master 3         | | | |⬛| | |
-| 🟥 | MX Master 2         | | | |⬛| | |
-| 🟥 | MX Master           | | | |⬛| | |
+|  | Name | Battery | DPI | Polling | HITS* | SmartShift** | Hi-Res Wheel | Easy-Switch*** | Notes 
+|------|-----|-----|-----|-----|-----|-----|-----|-----|-----|
+| 🟩 | PRO X2 SUPERSTRIKE  |🟩|🟩|🟩|🟩|⬛|⬛|⬛|Not configurable when using Onboard memory|
+| 🟥 | PRO X2 SUPERLIGHT 2 | | | |⬛| | | | |
+| 🟥 | PRO X2 SUPERLIGHT   | | | |⬛| | | | |
+| 🟥 | PRO 2 LIGHTSPEED    | | | |⬛| | | | |
+| 🟥 | G502 X / PLUS       | | | |⬛| | | | |
+| 🟥 | G309 LIGHTSPEED     | | | |⬛| | | | |
+| 🟥 | G305                | | | |⬛| | | | |
+| 🟥 | MX Master 4         | | | |⬛| | | | |
+| 🟨 | MX Master 3S        |🟩|🟩|⬛|⬛|🟩|🟩|🟩| |
+| 🟥 | MX Master 3         | | | |⬛| | | | |
+| 🟥 | MX Master 2         | | | |⬛| | | | |
+| 🟥 | MX Master           | | | |⬛| | | | |
  
 ***Haptic Inductive Trigger System:** configurable actuation points and haptic feedback for left and right click. In the plugin, this appears as a Triggers tab in the SUPERSTRIKE's Panel
 
 ****Smartshift:** ability for the scroll wheel to automatically switch between ratcheting and smooth scroll. In the plugin, this appears as a Wheel tab in the XM Master family's Panel
+
+*****Easy-Switch:** the host slots a device is paired to, and switching between them. In the plugin, this appears as a Hosts tab in the MX Master family's Panel
 
 </details>
 

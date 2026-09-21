@@ -112,6 +112,9 @@ const (
 	CapLOD Capability = "lod"
 	// CapOnboardProfile — onboard vs host profile storage.
 	CapOnboardProfile Capability = "onboard-profile"
+	// CapHost — the Easy-Switch host slots a device is paired to, and which
+	// one it is currently talking to.
+	CapHost Capability = "host"
 )
 
 // USBID is a vendor/product pair a model shows up as. A model that enumerates
@@ -339,6 +342,31 @@ type HiResWheel struct {
 	Inverted bool `json:"inverted"`
 }
 
+// Hosts is Easy-Switch: the machines a device is paired to, and which one it
+// is talking to now.
+//
+// Slots are numbered from 1, the way the buttons on the underside of the
+// device and Logitech's own software number them. The wire numbers them from
+// 0; the driver does that conversion so nothing above it has to.
+type Hosts struct {
+	// Current is the slot this machine is talking to, which is by definition
+	// the one being asked.
+	Current int    `json:"current"`
+	Slots   []Host `json:"slots"`
+}
+
+type Host struct {
+	Slot int `json:"slot"`
+	// Paired is false for a slot that has never been paired. Switching to one
+	// leaves the device looking for a host that is not there, so the UI offers
+	// it as a slot to pair rather than a slot to switch to.
+	Paired bool `json:"paired"`
+	// Name is what the host called itself when it paired, empty if the device
+	// never stored one.
+	Name   string `json:"name"`
+	Active bool   `json:"active"`
+}
+
 type HITSButton struct {
 	Actuation    uint8 `json:"actuation"`
 	RapidTrigger uint8 `json:"rapidTrigger"`
@@ -376,6 +404,7 @@ type DeviceState struct {
 	HiResWheel     *HiResWheel  `json:"hiResWheel"`
 	LOD            *string      `json:"lod"`
 	OnboardProfile *string      `json:"onboardProfile"`
+	Hosts          *Hosts       `json:"hosts"`
 	// Errors holds non-fatal problems, one per capability that could not be
 	// read. Never nil, so it marshals as [] rather than null.
 	Errors []string `json:"errors"`
@@ -403,6 +432,10 @@ const (
 
 	SettingSmartShiftMode      SettingKey = "smart-shift-mode"
 	SettingSmartShiftThreshold SettingKey = "smart-shift-threshold"
+
+	// SettingHost switches the device to another Easy-Switch slot. See
+	// Verifiable: this is the one write that cannot be read back.
+	SettingHost SettingKey = "host"
 
 	// HITS is per click and per field, so each combination is its own key.
 	// Three fields across two buttons is small enough to name outright, and
@@ -485,6 +518,8 @@ func ParseSetting(key, value string) (Setting, error) {
 		return Setting{Key: SettingSmartShiftMode, Value: mode}, nil
 	case "smart-shift-threshold", "wheel-threshold":
 		settingKey = SettingSmartShiftThreshold
+	case "host":
+		settingKey = SettingHost
 	case "profile-mode", "profile":
 		// The only setting named rather than numbered. Its values are the two
 		// words a user would say, not 1 and 2.
@@ -500,7 +535,7 @@ func ParseSetting(key, value string) (Setting, error) {
 		}
 		return Setting{}, fmt.Errorf("unknown setting %q (expected one of: dpi, "+
 			"polling-rate, profile-mode, smart-shift-mode, smart-shift-threshold, "+
-			"wheel-hi-res, wheel-invert, "+
+			"wheel-hi-res, wheel-invert, host, "+
 			"hits-{left,right}-{actuation,rapid-trigger,haptics})", key)
 	}
 
@@ -529,6 +564,16 @@ func boolToValue(on bool) uint32 {
 	}
 	return 0
 }
+
+// Verifiable reports whether a write can be checked by reading the device
+// back. Every setting here can, bar one.
+//
+// Switching Easy-Switch host is a write whose whole effect is that the device
+// stops talking to this machine. There is nothing left to read back: the
+// verifying read finds a device that is gone, which is exactly what a failed
+// write looks like. Treating it like the rest would report every successful
+// host switch as a failure, so the caller stops at "the device accepted it".
+func (k SettingKey) Verifiable() bool { return k != SettingHost }
 
 // Reading pulls the one number a setting is about back out of a fresh read.
 // The second result is false when the device did not report it at all.
@@ -569,6 +614,11 @@ func (s *DeviceState) Reading(key SettingKey) (uint32, bool) {
 	case SettingSmartShiftThreshold:
 		if s.SmartShift != nil {
 			return uint32(s.SmartShift.Threshold), true
+		}
+
+	case SettingHost:
+		if s.Hosts != nil {
+			return uint32(s.Hosts.Current), true
 		}
 
 	case SettingHITSLeftActuation, SettingHITSLeftRapidTrigger, SettingHITSLeftHaptics,

@@ -173,6 +173,14 @@ Item {
                 if (reply.ok && reply.devices.length > 0) {
                     internal.merge(reply.devices[0]);
                     root.applied(deviceId, key, true, reply.note);
+                } else if (reply.ok) {
+                    // A write the CLI could not read back, because the device
+                    // is no longer here to read: switching Easy-Switch host
+                    // hands the mouse to another computer. It went through.
+                    // Re-read so the card shows it as gone rather than frozen
+                    // on its last known state.
+                    root.applied(deviceId, key, true, reply.note);
+                    root.refresh();
                 } else {
                     // The write was refused, or went through and changed
                     // nothing. Re-read so the panel shows the device as it is

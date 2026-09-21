@@ -283,6 +283,36 @@ reads the device back and compares:
 
 The UI shows what the hardware says, not what it was told.
 
+One setting is exempt, and only one. Switching Easy-Switch host (`0x1814`)
+succeeds by making the device leave: the verifying read finds nothing, which
+is indistinguishable from the write having failed. `SettingKey.Verifiable`
+marks it, `cmdSet` stops at "the device accepted it", and the QML side treats
+an `ok` reply carrying no device as a cue to re-read rather than as a failure.
+Any future write with the same shape belongs there too; nothing else does.
+
+## Easy-Switch, and a warning about probing
+
+An MX device pairs with three hosts and `0x1814` moves it between them. Two
+features describe the same thing and a device with one has both: `0x1814` owns
+the count, the current slot and the switch, and `0x1815` adds per-slot pairing
+status and the host's stored name. Slots are 0-based on the wire and 1-based
+everywhere above the driver, matching the buttons on the underside.
+
+The warning is about `0x1815`. Its functions are not symmetrical the way most
+are: fn 3 reads a host's friendly name and **fn 4 writes it**, taking whatever
+bytes it is given. Calling fn 4 with no name bytes, as one would to see what a
+read returns, stores an empty name and destroys what was there. It was found
+that way, on a real mouse, and the names had to be written back:
+
+```bash
+omnigear call mx-master-3s 0x1815 4 00 00 6d 65 67 61 74 72 6f 6e  # "megatron"
+```
+
+`omnigear call` is a loaded gun by design, but a function index is not a hint
+about whether it reads or writes. Probe an unknown one on hardware you can
+afford to reconfigure, and read a feature's whole function list before
+sweeping it.
+
 ## JSON contract
 
 Every command prints exactly one JSON object. Failures are objects too, so the

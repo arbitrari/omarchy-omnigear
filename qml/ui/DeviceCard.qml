@@ -248,6 +248,17 @@ Rectangle {
             }
         }
 
+        // --- hosts ---------------------------------------------------------
+        HostControl {
+            bar: root.bar
+            busy: root.busy
+            visible: root.showingDetail && root.currentTab === "hosts"
+            hosts: root.device ? root.device.hosts : null
+            onRequested: function (slot) {
+                root.settingRequested("host", String(slot));
+            }
+        }
+
         // --- declared, not driven ------------------------------------------
         Column {
             id: unsupportedList

@@ -15,6 +15,7 @@
 package logitech
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"strings"
@@ -97,6 +98,14 @@ func (driver) Read(device *model.Device) model.DeviceState {
 			state.OnboardProfile = &mode
 		}
 	}
+	if device.Entry.Has(model.CapHost) {
+		hosts, err := readHosts(link)
+		if err != nil {
+			state.Fail(model.CapHost, err)
+		} else {
+			state.Hosts = hosts
+		}
+	}
 	if device.Entry.Has(model.CapHITS) {
 		hits, err := readHITS(link)
 		if err != nil {
@@ -144,6 +153,10 @@ func (driver) Write(device *model.Device, setting *model.Setting) error {
 	case model.SettingProfileMode:
 		if err := writeOnboardMode(link, setting.Value); err != nil {
 			return fmt.Errorf("profile-mode: %w", err)
+		}
+	case model.SettingHost:
+		if err := writeHost(link, setting.Value); err != nil {
+			return fmt.Errorf("host: %w", err)
 		}
 	default:
 		if err := writeHITSSetting(link, setting); err != nil {
@@ -503,6 +516,144 @@ func clampThreshold(value uint32) uint8 {
 		return smartShiftMax
 	}
 	return uint8(value)
+}
+
+// --- easy-switch hosts -----------------------------------------------------
+//
+// Two features cover this, and a device that has one has both:
+//
+//	0x1814 ChangeHost
+//	  fn 0 getHostInfo      → [hostCount, currentHost]
+//	  fn 1 setCurrentHost(hostIndex)
+//
+//	0x1815 HostsInfo
+//	  fn 1 getHostInfo(hostIndex)  → [hostIndex, status, …, nameCapacity]
+//	  fn 3 getHostFriendlyName(hostIndex, byteIndex)
+//	                               → [hostIndex, byteIndex, name bytes…]
+//	  fn 4 setHostFriendlyName     → [hostIndex, bytesWritten]
+//
+// fn 4 is a *writer*, and it writes whatever it is given: called with no name
+// bytes it stores an empty name, wiping what was there. Nothing here calls it.
+// It is documented only so the next person reading this does not discover its
+// nature the way it was discovered here.
+//
+// Read off an MX Master 3S paired to two of its three slots, sitting on the
+// first:
+//
+//	0x1814 fn 0        → 03 00                 three slots, on slot 0
+//	0x1815 fn 1 (00)   → 00 01 05 01 08 18     slot 0, paired, room for 24
+//	0x1815 fn 1 (01)   → 01 01 04 01 08 18     slot 1, paired
+//	0x1815 fn 1 (02)   → 02 00 00 00 00 18     slot 2, never paired
+//	0x1815 fn 3 (00 00)→ 00 00 6D 65 67 61 …   "megatron"
+//
+// That last byte is how much room a name has, not how long this one is: it
+// reads 24 for an eight-character name, and stayed 24 when the name was
+// emptied. The name itself is NUL-terminated, so the read stops at the NUL.
+//
+// The count comes from 0x1814 rather than 0x1815, because 0x1814 is the one
+// that has to agree with it: it is the feature the switch is written through.
+//
+// Slot numbering is 0 on the wire and 1 in model.Hosts, matching the buttons
+// on the underside of the device. The conversion happens here and nowhere
+// else.
+const (
+	hostStatusByte   = 1
+	hostNameRoomByte = 5
+	// hostNamePerCall is how much of a name one reply carries: 16 bytes of
+	// payload less the hostIndex and byteIndex echoed back at the front.
+	hostNamePerCall = 14
+	// hostNameCap bounds the chunk loop. Names are a couple of dozen bytes;
+	// this is only here so a device reporting nonsense cannot spin forever.
+	hostNameCap = 128
+)
+
+func readHosts(link *hidpp.Device) (*model.Hosts, error) {
+	reply, err := link.CallFeature(hidpp.FeatureChangeHost, 0x00)
+	if err != nil {
+		return nil, err
+	}
+	count, current := at(reply, 0), at(reply, 1)
+	if count == 0 {
+		return nil, fmt.Errorf("device reports no host slots")
+	}
+
+	hosts := &model.Hosts{Current: int(current) + 1}
+	for slot := byte(0); slot < count; slot++ {
+		host := model.Host{Slot: int(slot) + 1, Active: slot == current}
+
+		// A slot that will not describe itself is reported as unpaired rather
+		// than failing the whole read: the current slot is the useful part,
+		// and it is already in hand.
+		if info, err := link.CallFeature(hidpp.FeatureHostsInfo, 0x01, slot); err == nil {
+			host.Paired = at(info, hostStatusByte) != 0
+			if host.Paired {
+				host.Name = hostName(link, slot, at(info, hostNameRoomByte))
+			}
+		}
+		hosts.Slots = append(hosts.Slots, host)
+	}
+	return hosts, nil
+}
+
+// hostName reads a name out in chunks, stopping at the NUL that ends it so a
+// short name costs one call rather than one per chunk of the capacity.
+//
+// An unreadable chunk ends the name where it got to. A truncated name is worth
+// more to whoever is looking at it than no name at all.
+func hostName(link *hidpp.Device, slot, room byte) string {
+	if room == 0 || room > hostNameCap {
+		return ""
+	}
+	name := make([]byte, 0, room)
+	for offset := byte(0); offset < room; offset += hostNamePerCall {
+		reply, err := link.CallFeature(hidpp.FeatureHostsInfo, 0x03, slot, offset)
+		if err != nil {
+			break
+		}
+		chunk := after(reply, 2)
+		name = append(name, chunk...)
+		if bytes.IndexByte(chunk, 0) >= 0 {
+			break
+		}
+	}
+	if len(name) > int(room) {
+		name = name[:room]
+	}
+	if end := bytes.IndexByte(name, 0); end >= 0 {
+		name = name[:end]
+	}
+	return strings.TrimSpace(string(name))
+}
+
+// writeHost switches the device to another slot.
+//
+// Nothing is verified here and nothing can be: the device answers, leaves for
+// the other host, and is gone before a read could confirm anything. An error
+// means the device refused outright, which is the only failure still visible
+// from this side. See model.SettingKey.Verifiable.
+func writeHost(link *hidpp.Device, slot uint32) error {
+	if slot < 1 {
+		return fmt.Errorf("host slots are numbered from 1")
+	}
+
+	current, err := link.CallFeature(hidpp.FeatureChangeHost, 0x00)
+	if err != nil {
+		return err
+	}
+	count := at(current, 0)
+	if slot > uint32(count) {
+		return fmt.Errorf("device has %d host slots, asked for %d", count, slot)
+	}
+	if at(current, 1) == byte(slot-1) {
+		return fmt.Errorf("device is already on host %d", slot)
+	}
+
+	index, err := link.FeatureIndex(hidpp.FeatureChangeHost)
+	if err != nil {
+		return err
+	}
+	_, err = link.Call(index, 0x01, byte(slot-1))
+	return err
 }
 
 // --- onboard profiles ------------------------------------------------------
