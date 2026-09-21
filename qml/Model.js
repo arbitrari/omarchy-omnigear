@@ -129,6 +129,9 @@ function parseDevice(raw) {
       threshold: Number(s.smartShift.threshold) || 0,
       max: Number(s.smartShift.max) || 1
     } : null,
+    thumbwheel: s.thumbwheel ? {
+      mode: safeText(s.thumbwheel.mode, "", 16)
+    } : null,
     hosts: s.hosts ? {
       current: Number(s.hosts.current) || 0,
       slots: (Array.isArray(s.hosts.slots) ? s.hosts.slots : []).map(parseHost)
@@ -337,7 +340,7 @@ function groups(devices) {
 /// whichever tab is open.
 var TAB_GROUPS = [
   { id: "sensor", label: "Sensor", capabilities: ["dpi", "polling-rate", "onboard-profile"] },
-  { id: "wheel", label: "Wheel", capabilities: ["smart-shift", "hi-res-wheel"] },
+  { id: "wheel", label: "Wheel", capabilities: ["smart-shift", "hi-res-wheel", "thumbwheel"] },
   { id: "triggers", label: "Triggers", capabilities: ["hits"] },
   { id: "hosts", label: "Hosts", capabilities: ["host"] }
 ]
@@ -372,6 +375,7 @@ function capabilityLabel(capability) {
   case "lod": return "Lift-Off Distance"
   case "onboard-profile": return "Profile Storage"
   case "host": return "Easy-Switch"
+  case "thumbwheel": return "Thumbwheel"
   default: return capability
   }
 }
@@ -391,7 +395,7 @@ function hostLabel(host) {
 function unsupportedCapabilities(device) {
   if (!device) return []
   var handled = ["battery", "dpi", "polling-rate", "onboard-profile", "hits",
-                 "smart-shift", "hi-res-wheel", "host"]
+                 "smart-shift", "hi-res-wheel", "host", "thumbwheel"]
   return device.capabilities.filter(function (c) {
     return handled.indexOf(c) === -1
   })
@@ -411,6 +415,16 @@ function wheelModeLabel(mode) {
   switch (mode) {
   case "ratchet": return "Ratchet"
   case "freespin": return "Free Spin"
+  default: return ""
+  }
+}
+
+/// The thumbwheel either scrolls or it has been handed to other software, in
+/// which case it does nothing unless that software is listening.
+function thumbwheelModeLabel(mode) {
+  switch (mode) {
+  case "scroll": return "Scrolling"
+  case "diverted": return "Diverted"
   default: return ""
   }
 }

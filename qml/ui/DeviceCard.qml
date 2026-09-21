@@ -232,6 +232,15 @@ Rectangle {
                     root.settingRequested("wheel-invert", on ? "on" : "off");
                 }
             }
+
+            ThumbwheelControl {
+                bar: root.bar
+                busy: root.busy
+                thumbwheel: root.device ? root.device.thumbwheel : null
+                onRequested: function (mode) {
+                    root.settingRequested("thumbwheel", mode);
+                }
+            }
         }
 
         // --- triggers ------------------------------------------------------

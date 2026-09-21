@@ -290,6 +290,26 @@ marks it, `cmdSet` stops at "the device accepted it", and the QML side treats
 an `ok` reply carrying no device as a cue to re-read rather than as a failure.
 Any future write with the same shape belongs there too; nothing else does.
 
+## A diverted wheel is a dead wheel
+
+Both wheel features can hand their movement to HID++ notifications instead of
+ordinary scroll events. Nothing in OmniGear reads those notifications, so
+unless another client is listening the wheel stops working entirely.
+
+The hi-res wheel (`0x2121`) therefore never has its divert bit touched: a
+read-modify-write carries it over as found. The thumbwheel (`0x2150`) is the
+opposite case and gets a control, because the mouse this was written on
+arrived *already* diverted and its thumbwheel did nothing at all. Writing
+reporting mode 0 brought it straight back. Being able to see that state and
+undo it is the whole value of the capability, and it is not diagnosable from
+the desk: the wheel simply does nothing and the device reports no error.
+
+The thumbwheel's invert flag is deliberately not exposed. Setting it sticks
+(`fn 1` reads back `00 01`) and changes nothing about which direction the
+wheel scrolls, so it evidently applies only to the diverted stream. A switch
+that visibly does nothing is worse than no switch. Writes still carry the byte
+over untouched, in case something else set it on purpose.
+
 ## Easy-Switch, and a warning about probing
 
 An MX device pairs with three hosts and `0x1814` moves it between them. Two

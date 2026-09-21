@@ -98,6 +98,14 @@ func (driver) Read(device *model.Device) model.DeviceState {
 			state.OnboardProfile = &mode
 		}
 	}
+	if device.Entry.Has(model.CapThumbwheel) {
+		wheel, err := readThumbwheel(link)
+		if err != nil {
+			state.Fail(model.CapThumbwheel, err)
+		} else {
+			state.Thumbwheel = wheel
+		}
+	}
 	if device.Entry.Has(model.CapHost) {
 		hosts, err := readHosts(link)
 		if err != nil {
@@ -153,6 +161,10 @@ func (driver) Write(device *model.Device, setting *model.Setting) error {
 	case model.SettingProfileMode:
 		if err := writeOnboardMode(link, setting.Value); err != nil {
 			return fmt.Errorf("profile-mode: %w", err)
+		}
+	case model.SettingThumbwheel:
+		if err := writeThumbwheel(link, setting.Value); err != nil {
+			return fmt.Errorf("thumbwheel: %w", err)
 		}
 	case model.SettingHost:
 		if err := writeHost(link, setting.Value); err != nil {
@@ -516,6 +528,67 @@ func clampThreshold(value uint32) uint8 {
 		return smartShiftMax
 	}
 	return uint8(value)
+}
+
+// --- thumbwheel ------------------------------------------------------------
+//
+// Feature 0x2150, the horizontal wheel under the thumb on the MX line.
+//
+//	fn 0 getThumbwheelInfo    → [nativeRes(2), divertedRes(2),
+//	                             capabilities(2), timeUnit(2)]
+//	fn 1 getThumbwheelStatus  → [reportingMode, invert]
+//	fn 2 setThumbwheelReporting(reportingMode, invert)
+//
+// Read off an MX Master 3S:
+//
+//	fn 0 → 00 12 00 78 00 0F 03 E8   native 18/turn, diverted 120,
+//	                                 capabilities 0x000F, time unit 1000
+//	fn 1 → 01 00                     diverted, not inverted
+//	fn 1 → 00 00                     after writing scroll mode
+//
+// Two things were established on hardware rather than assumed:
+//
+//   - **Diverted is not a preference, it is a dead wheel.** The mouse this was
+//     written on arrived in reporting mode 1, and its thumbwheel did nothing
+//     at all: movement was going out as HID++ notifications, which nothing was
+//     reading. Writing mode 0 brought it straight back. That is the whole
+//     reason this capability exists — the useful thing here is being able to
+//     see the wheel is diverted and put it back.
+//
+//   - **Invert does nothing in scroll mode.** Setting byte 1 sticks (fn 1
+//     reads back 00 01) and changes nothing about which way the wheel
+//     scrolls, so it evidently applies only to the diverted stream. No control
+//     is offered for it: a switch that visibly does nothing is worse than no
+//     switch. The byte is still carried over untouched on every write, in case
+//     something else has set it deliberately.
+const (
+	thumbwheelModeByte   = 0
+	thumbwheelInvertByte = 1
+)
+
+func readThumbwheel(link *hidpp.Device) (*model.Thumbwheel, error) {
+	reply, err := link.CallFeature(hidpp.FeatureThumbwheel, 0x01)
+	if err != nil {
+		return nil, err
+	}
+	return &model.Thumbwheel{
+		Mode: model.ThumbwheelModeName(uint32(at(reply, thumbwheelModeByte))),
+	}, nil
+}
+
+// writeThumbwheel sets the reporting mode, carrying the invert byte over as
+// found: it is not ours to clear.
+func writeThumbwheel(link *hidpp.Device, mode uint32) error {
+	index, err := link.FeatureIndex(hidpp.FeatureThumbwheel)
+	if err != nil {
+		return err
+	}
+	current, err := link.Call(index, 0x01)
+	if err != nil {
+		return err
+	}
+	_, err = link.Call(index, 0x02, byte(mode), at(current, thumbwheelInvertByte))
+	return err
 }
 
 // --- easy-switch hosts -----------------------------------------------------

@@ -115,6 +115,9 @@ const (
 	// CapHost — the Easy-Switch host slots a device is paired to, and which
 	// one it is currently talking to.
 	CapHost Capability = "host"
+	// CapThumbwheel — the horizontal wheel under the thumb: whether it
+	// scrolls or has been handed to other software.
+	CapThumbwheel Capability = "thumbwheel"
 )
 
 // USBID is a vendor/product pair a model shows up as. A model that enumerates
@@ -342,6 +345,41 @@ type HiResWheel struct {
 	Inverted bool `json:"inverted"`
 }
 
+// Thumbwheel modes. The wire uses these numbers directly.
+const (
+	// ThumbwheelScroll is the wheel doing what it is for: ordinary HID
+	// horizontal scroll events.
+	ThumbwheelScroll = 0
+	// ThumbwheelDiverted sends movement as HID++ notifications instead.
+	// Nothing in OmniGear reads those, so unless another client is handling
+	// them the wheel does nothing at all.
+	ThumbwheelDiverted = 1
+)
+
+func ThumbwheelModeName(value uint32) string {
+	if value == ThumbwheelDiverted {
+		return "diverted"
+	}
+	return "scroll"
+}
+
+func ThumbwheelModeValue(name string) (uint32, bool) {
+	switch name {
+	case "scroll", "on", "native":
+		return ThumbwheelScroll, true
+	case "diverted", "off", "divert":
+		return ThumbwheelDiverted, true
+	default:
+		return 0, false
+	}
+}
+
+// Thumbwheel is the horizontal wheel under the thumb on the MX line.
+type Thumbwheel struct {
+	// Mode is "scroll" or "diverted".
+	Mode string `json:"mode"`
+}
+
 // Hosts is Easy-Switch: the machines a device is paired to, and which one it
 // is talking to now.
 //
@@ -405,6 +443,7 @@ type DeviceState struct {
 	LOD            *string      `json:"lod"`
 	OnboardProfile *string      `json:"onboardProfile"`
 	Hosts          *Hosts       `json:"hosts"`
+	Thumbwheel     *Thumbwheel  `json:"thumbwheel"`
 	// Errors holds non-fatal problems, one per capability that could not be
 	// read. Never nil, so it marshals as [] rather than null.
 	Errors []string `json:"errors"`
@@ -436,6 +475,8 @@ const (
 	// SettingHost switches the device to another Easy-Switch slot. See
 	// Verifiable: this is the one write that cannot be read back.
 	SettingHost SettingKey = "host"
+
+	SettingThumbwheel SettingKey = "thumbwheel"
 
 	// HITS is per click and per field, so each combination is its own key.
 	// Three fields across two buttons is small enough to name outright, and
@@ -520,6 +561,12 @@ func ParseSetting(key, value string) (Setting, error) {
 		settingKey = SettingSmartShiftThreshold
 	case "host":
 		settingKey = SettingHost
+	case "thumbwheel":
+		mode, ok := ThumbwheelModeValue(value)
+		if !ok {
+			return Setting{}, fmt.Errorf("%q is not a thumbwheel mode (expected: scroll, diverted)", value)
+		}
+		return Setting{Key: SettingThumbwheel, Value: mode}, nil
 	case "profile-mode", "profile":
 		// The only setting named rather than numbered. Its values are the two
 		// words a user would say, not 1 and 2.
@@ -535,7 +582,7 @@ func ParseSetting(key, value string) (Setting, error) {
 		}
 		return Setting{}, fmt.Errorf("unknown setting %q (expected one of: dpi, "+
 			"polling-rate, profile-mode, smart-shift-mode, smart-shift-threshold, "+
-			"wheel-hi-res, wheel-invert, host, "+
+			"wheel-hi-res, wheel-invert, host, thumbwheel, "+
 			"hits-{left,right}-{actuation,rapid-trigger,haptics})", key)
 	}
 
@@ -619,6 +666,13 @@ func (s *DeviceState) Reading(key SettingKey) (uint32, bool) {
 	case SettingHost:
 		if s.Hosts != nil {
 			return uint32(s.Hosts.Current), true
+		}
+
+	case SettingThumbwheel:
+		if s.Thumbwheel != nil {
+			if value, ok := ThumbwheelModeValue(s.Thumbwheel.Mode); ok {
+				return value, true
+			}
 		}
 
 	case SettingHITSLeftActuation, SettingHITSLeftRapidTrigger, SettingHITSLeftHaptics,

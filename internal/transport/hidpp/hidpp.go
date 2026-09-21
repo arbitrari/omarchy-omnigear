@@ -79,6 +79,7 @@ const (
 	FeatureHITS               uint16 = 0x1B0C // Haptic Inductive Trigger System
 	FeatureSmartShift         uint16 = 0x2110
 	FeatureHiResWheel         uint16 = 0x2121
+	FeatureThumbwheel         uint16 = 0x2150
 	FeatureAdjustableDPI      uint16 = 0x2201
 	FeatureExtendedAdjustDPI  uint16 = 0x2202
 	FeatureReportRate         uint16 = 0x8060
