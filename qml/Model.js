@@ -583,6 +583,7 @@ function presenceLabel(presence) {
   // the bluetooth one.
   case "asleep": return "\uDB81\uDCB2 Asleep"
   case "off": return "Off"
+  case "blocked": return "No Access"
   case "unreachable": return "Disconnected"
   default: return ""
   }

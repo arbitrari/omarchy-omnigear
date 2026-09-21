@@ -502,6 +502,10 @@ const (
 	PresenceOff = "off"
 	// PresenceUnreachable — did not answer, and nothing knows why.
 	PresenceUnreachable = "unreachable"
+	// PresenceBlocked — the node is there and we are not allowed to open it.
+	// Distinct from unreachable because the device is almost certainly fine
+	// and the machine is the thing that needs changing.
+	PresenceBlocked = "blocked"
 )
 
 func NewDeviceState() DeviceState {

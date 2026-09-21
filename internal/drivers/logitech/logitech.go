@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io/fs"
 	"strings"
 
 	"github.com/arbitrari/omarchy-omnigear/internal/model"
@@ -60,6 +61,12 @@ func (driver) Read(device *model.Device) model.DeviceState {
 	if err != nil {
 		state.Connected = false
 		state.Presence = model.PresenceUnreachable
+		// Not being allowed to open the node is not the device being absent,
+		// and saying "disconnected" for it sends the user looking at their
+		// hardware instead of at their udev rules.
+		if errors.Is(err, fs.ErrPermission) {
+			state.Presence = model.PresenceBlocked
+		}
 		// Silence is the ordinary way a switched-off device presents itself,
 		// and "disconnected" says that better than an error would. Anything
 		// else — a permission problem, a broken node — is worth reporting.
