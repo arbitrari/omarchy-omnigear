@@ -210,7 +210,9 @@ Use of Agents such as Claude Code, Codex, Cursor, Grok, Opencode, etc is encoura
 
 ### Getting Started
 
-You need [mise](https://mise.jdx.dev) (it pulls in Go) and the device you are adding. Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) first. It explains where a model lives in the tree, why a capability list is all the UI needs, and the hardware quirks that otherwise cost you an evening.
+On Omarchy, you need nothing but the device you are adding. Omarchy ships with [mise](https://mise.jdx.dev) and this repository's `mise.toml` asks for `Go`. The first `./scripts/dev-install` call pulls `Go` down by itself and there is no toolchain to set up.
+
+Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) first. It explains where a model lives in the tree, why a capability list is all the UI needs, and the hardware quirks that otherwise cost you an evening.
 
 ### Testing Changes
 
@@ -219,7 +221,7 @@ As you make frequent changes, you will want to build the plugin. To make this ea
 ```
 ./scripts/dev-install
 ```
-That will build the plugin and load it into the current shell
+That will build the plugin and load it into the current shell automatically.
 
 ### Adding a Device
 
