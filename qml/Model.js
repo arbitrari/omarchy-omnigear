@@ -329,6 +329,11 @@ function barCharge(device, showPercentage) {
 /// How many icon slots the bar label needs, so the widget reserves the right
 /// width for the charge reading and the device icon beside it.
 function barSlots(device, showPercentage) {
+  // The OmniGear mark stands in until the first read lands, and a wordmark is
+  // wider than the square-ish glyph a slot is cut for. It fits a single slot
+  // at the default bar font; the margin is for a theme that sets a larger one.
+  if (!device) return 1.2
+
   var slots = 1.0
   if (showPercentage && device && device.battery) {
     // Sized from the reading itself rather than assumed to be three
