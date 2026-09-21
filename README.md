@@ -44,7 +44,7 @@ Updates can be done directly in the plugin.
 | 🟥 | G309 LIGHTSPEED     | | | |⬛| | | | | | |
 | 🟥 | G305                | | | |⬛| | | | | | |
 | 🟥 | MX Master 4         | | | |⬛| | | | | | |
-| 🟨 | MX Master 3S        |🟩|🟩|⬛|⬛|🟩|🟩|🟩|🟩|🟩| |
+| 🟩 | MX Master 3S        |🟩|🟩|⬛|⬛|🟩|🟩|🟩|🟩|🟩| |
 | 🟥 | MX Master 3         | | | |⬛| | | | | | |
 | 🟥 | MX Master 2         | | | |⬛| | | | | | |
 | 🟥 | MX Master           | | | |⬛| | | | | | |

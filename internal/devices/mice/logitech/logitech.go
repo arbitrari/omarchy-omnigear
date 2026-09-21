@@ -60,12 +60,20 @@ var Entries = []model.Entry{
 		// routes are listed so it is found either way.
 		USB:   []model.USBID{{Vendor: vendor, Product: MXMaster3SBluetooth}},
 		Names: []string{"MX Master 3S"},
-		// Gestures (0x2251) are the last thing it implements that this
-		// project does not model yet, so support is partial rather than full.
-		// The id is not in any public list this project has found; it sits
-		// beside 0x2250 AnalyticsData and the mouse has both a gesture button
-		// and a virtual one, which is suggestive and not evidence.
-		Support: model.SupportPartial,
+		// Full: everything this mouse exposes that is a setting is driven.
+		//
+		// What is left of its 35 features is not configuration. Sixteen are
+		// flagged hidden or engineering by the firmware itself. Of the rest,
+		// 0x2250 XY_STATS and 0x2251 WHEEL_STATS are telemetry counters,
+		// 0x1D4B only raises notifications, 0x00C3 is firmware update, and
+		// the remainder are names and ids the transport already uses.
+		//
+		// It has no gesture feature at all — nothing in the 0x65xx range. The
+		// gesture button is an ordinary divertable control (cid 0x00C3), and
+		// gestures are something host software builds on top by diverting it,
+		// which would need a daemon. This plugin is a short-lived CLI on a
+		// timer and deliberately has nowhere to put one.
+		Support: model.SupportFull,
 		Capabilities: []model.Capability{
 			model.CapBattery,
 			model.CapDPI,

@@ -293,7 +293,8 @@ type featureReport struct {
 var featureNames = map[uint16]string{
 	0x0000: "IRoot", 0x0001: "IFeatureSet", 0x0003: "DeviceInformation",
 	0x0005: "DeviceName", 0x0007: "DeviceFriendlyName", 0x0020: "ConfigChange",
-	0x0021: "UniqueID", 0x00C2: "DFUControl", 0x1000: "BatteryStatus",
+	0x0021: "CryptoID", 0x00C2: "DFUControl", 0x00C3: "DFUControl3",
+	0x1000: "BatteryStatus",
 	0x1001: "BatteryVoltage", 0x1004: "UnifiedBattery", 0x1602: "PasswordAccess",
 	0x1802: "DeviceReset", 0x1814: "ChangeHost", 0x1815: "HostsInfo",
 	0x1830: "PowerModes", 0x18A1: "LEDTest", 0x1B04: "ReprogrammableKeys",
@@ -301,7 +302,8 @@ var featureNames = map[uint16]string{
 	0x1E22: "SPIDirectAccess", 0x2100: "VerticalScrolling", 0x2110: "SmartShift",
 	0x2111: "SmartShiftEnhanced", 0x2121: "HiResWheel", 0x2130: "RatchetWheel",
 	0x2150: "Thumbwheel", 0x2201: "AdjustableDPI", 0x2202: "ExtendedAdjustableDPI",
-	0x2250: "AnalyticsData", 0x8060: "ReportRate", 0x8061: "ExtendedReportRate",
+	0x2250: "XYStats", 0x2251: "WheelStats",
+	0x8060: "ReportRate", 0x8061: "ExtendedReportRate",
 	0x8100: "OnboardProfiles",
 }
 
