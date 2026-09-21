@@ -45,9 +45,21 @@ func connect(device *model.Device) (*hidpp.Device, error) {
 func (driver) Read(device *model.Device) model.DeviceState {
 	state := model.NewDeviceState()
 
+	// A device the kernel already knows is gone is not worth the wake budget.
+	// Spending 2.5s discovering that a switched-off mouse is switched off, on
+	// every poll, is the difference between a snappy panel and a stalling
+	// one — and the kernel's answer costs a sysfs read and does not wake
+	// anything.
+	if online, known := device.Node.LinkOnline(); known && !online {
+		state.Connected = false
+		state.Presence = model.PresenceOff
+		return state
+	}
+
 	link, err := connect(device)
 	if err != nil {
 		state.Connected = false
+		state.Presence = model.PresenceUnreachable
 		// Silence is the ordinary way a switched-off device presents itself,
 		// and "disconnected" says that better than an error would. Anything
 		// else — a permission problem, a broken node — is worth reporting.
@@ -57,6 +69,10 @@ func (driver) Read(device *model.Device) model.DeviceState {
 		return state
 	}
 	defer link.Close()
+
+	if link.Woken() {
+		state.Presence = model.PresenceAsleep
+	}
 
 	if device.Entry.Has(model.CapBattery) {
 		battery, err := readBattery(link)

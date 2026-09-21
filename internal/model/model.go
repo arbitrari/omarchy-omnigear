@@ -461,7 +461,11 @@ type DeviceState struct {
 	// Connected is false when the device is catalogued and its node is still
 	// present, but nothing answers — a wireless mouse switched off leaves its
 	// node behind, because the dongle it is paired to is still plugged in.
-	Connected      bool         `json:"connected"`
+	Connected bool `json:"connected"`
+	// Presence is the finer answer behind Connected. See the Presence
+	// constants: a device can be absent because it is switched off, or
+	// present but have needed waking.
+	Presence       string       `json:"presence"`
 	Battery        *Battery     `json:"battery"`
 	DPI            *DPI         `json:"dpi"`
 	PollingRate    *PollingRate `json:"pollingRate"`
@@ -478,8 +482,30 @@ type DeviceState struct {
 	Errors []string `json:"errors"`
 }
 
+// How present a device is, beyond the yes/no of Connected.
+//
+// "Asleep" is necessarily retrospective. A sleeping device cannot be observed
+// while sleeping, because the only way to ask it anything is to wake it; what
+// can be observed is that it needed the full wake window to answer, which an
+// awake device never does. So the label means "was asleep when we reached
+// it", and the device dozes off again between polls.
+//
+// The distinction that is *not* retrospective is off versus unreachable, and
+// that comes from the kernel rather than the device: hid-logitech-hidpp
+// tracks the wireless link and says so without touching the hardware.
+const (
+	// PresenceAwake — answered straight away.
+	PresenceAwake = "awake"
+	// PresenceAsleep — answered, but only after the wake window.
+	PresenceAsleep = "asleep"
+	// PresenceOff — did not answer, and the kernel says the link is down.
+	PresenceOff = "off"
+	// PresenceUnreachable — did not answer, and nothing knows why.
+	PresenceUnreachable = "unreachable"
+)
+
 func NewDeviceState() DeviceState {
-	return DeviceState{Connected: true, Errors: []string{}}
+	return DeviceState{Connected: true, Presence: PresenceAwake, Errors: []string{}}
 }
 
 func (s *DeviceState) Fail(capability Capability, err error) {
@@ -837,4 +863,36 @@ func nonNilUSB(in []USBID) []USBID {
 		return []USBID{}
 	}
 	return in
+}
+
+// BatteryLevelWord normalises the kernel's coarse capacity_level to the words
+// this project already uses for a level.
+func BatteryLevelWord(level string) string {
+	switch strings.ToLower(level) {
+	case "critical":
+		return "critical"
+	case "low":
+		return "low"
+	case "normal", "high":
+		return "good"
+	case "full":
+		return "full"
+	default:
+		return ""
+	}
+}
+
+// BatteryStatusWord normalises the kernel's power_supply status to the same
+// words the HID++ read produces, so the UI cannot tell which source it got.
+func BatteryStatusWord(status string) string {
+	switch strings.ToLower(status) {
+	case "charging":
+		return "charging"
+	case "full":
+		return "full"
+	case "discharging", "not charging":
+		return "discharging"
+	default:
+		return "unknown"
+	}
 }

@@ -146,7 +146,18 @@ type Device struct {
 	// alwaysLong is set for a node that carries only the long report. Sending
 	// a short one there is not refused — it simply goes nowhere.
 	alwaysLong bool
+	// woken records that the device answered only once the patient sweep gave
+	// it the full wake window.
+	woken bool
 }
+
+// Woken reports whether this device had to be woken to answer.
+//
+// It is the only evidence of sleep available from this side, and it is
+// necessarily retrospective: asking a sleeping device anything wakes it, so
+// by the time there is an answer it is awake. What it says is "this one was
+// asleep when we reached it", which is what makes a slow poll explicable.
+func (d *Device) Woken() bool { return d.woken }
 
 // reports says which HID++ report sizes a node carries, read off its HID
 // report descriptor.
@@ -216,7 +227,13 @@ func Open(node hidraw.Node) (*Device, error) {
 	if device, err := openWith(node, probeTimeout, callTimeout); err == nil {
 		return device, nil
 	}
-	return openWith(node, wakeTimeout, callTimeout)
+	device, err := openWith(node, wakeTimeout, callTimeout)
+	if err == nil {
+		// It ignored the quick sweep and answered the patient one, which is
+		// what a sleeping device does and an awake one never needs to.
+		device.woken = true
+	}
+	return device, err
 }
 
 // openWith searches the indexes for one that answers.

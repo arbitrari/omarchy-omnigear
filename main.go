@@ -47,6 +47,7 @@ USAGE:
                                              host <n>  (switches away from
                                                         this machine)
     omnigear catalog                       the support matrix, hardware or not
+    omnigear battery                       charge only, from the kernel, waking nothing
     omnigear probe                         diagnostics: hidraw nodes and what answered
     omnigear report [device]               write up a device to request support;
                                            with no device, every node on the machine
@@ -98,6 +99,8 @@ func run(args []string) (reply, error) {
 		return cmdSet(args[1], args[2], args[3])
 	case "catalog":
 		return cmdCatalog()
+	case "battery":
+		return cmdBattery()
 	case "probe":
 		return cmdProbe()
 	case "report":

@@ -276,6 +276,80 @@ OmniGear's own processes are filtered out. The CLI is re-run on every poll, so
 a hand-run command overlapping the bar's would otherwise have the panel
 warning about OmniGear.
 
+## Polling is not free: it wakes the mouse
+
+A poll is a conversation. A wireless mouse has to power its radio and
+transmit to answer one, so every poll wakes it — there is no passive read on
+that path. Measured by counting round trips in the transport, one `list` of
+two mice is **63 HID++ round trips**. On the default twenty-second timer that
+is about 11,300 an hour, and a mouse that never gets to sleep.
+
+It is easy to miss, because the symptom is absence: nothing errors, the
+battery just goes down faster. It was noticed here only when someone observed
+their mouse "only falling asleep shortly".
+
+The fix is that the bar does not need any of it. `hid-logitech-hidpp` keeps a
+power_supply per device, fed by reports the device sends of its own accord,
+so `omnigear battery` reads charge from sysfs and sends the hardware nothing:
+**0.003s against 1.149s**, and no wake at all. The expensive read — DPI,
+buttons, hosts, wheel — is only worth doing while the panel is open and
+someone is looking at it.
+
+So the timer has two jobs. Panel open, or no full read in the last fifteen
+minutes: a full read. Otherwise: charge from the kernel, folded into the
+devices from the last full read.
+
+Two details that matter:
+
+- **The merge only takes what the kernel actually knows.** A device on the
+  older 0x1000 battery feature gives `capacity_level` as a word and no
+  percentage; overwriting a real figure with "unknown" would put `--` on the
+  bar between full reads. A number fifteen minutes old is better than no
+  number, because charge moves slowly and the reading it replaces was true.
+- **It covers only devices the kernel drives directly.** One behind a
+  receiver the kernel did not expand has no power_supply, and identifying it
+  needs HID++ anyway, so it is left out of the cheap path and picked up by
+  the occasional full read.
+
+Confirmed end to end: with the panel shut, an MX Master 3 left alone for 150
+seconds answered the next poll in 3.42s and reported `presence: asleep`.
+Under the old timer the same mouse never once needed the wake sweep.
+
+## Sleeping, and why it can only be reported in the past tense
+
+A sleeping device cannot be observed while sleeping. The only way to ask it
+anything is to send it a request, and that wakes it — so by the time there is
+an answer, the answer comes from an awake device. There is no poll that
+observes sleep.
+
+What can be observed is the cost of the waking. `Open` sweeps the indexes
+quickly first and only repeats the sweep patiently when nothing answered at
+all; a device that ignores the quick sweep and answers the patient one was
+asleep, and an awake one never needs the second pass. `Device.Woken` records
+which sweep won, and the state reports `presence: "asleep"`. The label is
+retrospective on purpose: it means "this was asleep when the poll reached
+it", which is also the explanation for why that poll was slow.
+
+The distinction that is *not* retrospective is off versus unreachable, and it
+does not come from the device at all. `hid-logitech-hidpp` publishes a
+power_supply per device it drives, whose `online` attribute tracks the
+wireless link rather than the battery: 1 while connected, 0 once switched off
+or out of range, and 1 throughout an ordinary idle — a sleeping mouse is
+still a connected one. `hidraw.Node.LinkOnline` reads it, which costs a sysfs
+read and wakes nothing.
+
+That is worth more than a nicer label. Before it, a switched-off mouse cost
+the whole wake budget on every single poll to rediscover that it was still
+off: 2.7s, twenty seconds apart, forever. Now the driver asks the kernel
+first and returns immediately. Measured on a switched-off MX Master 3, a read
+went from 2.72s to 0.03s, and a full `list` alongside a live mouse from about
+1.2s to 0.36s.
+
+The kernel has no opinion about a device bound by `hid-generic`, or one
+behind a receiver it did not expand. Then `LinkOnline` says so rather than
+guessing, nothing is skipped, and a device that stays silent is reported as
+`unreachable` rather than as off.
+
 ## A device that is off still has a node
 
 Switch a wireless mouse off and its node stays: the dongle it is paired to is

@@ -95,6 +95,11 @@ func expandedByKernel(node hidraw.Node) bool {
 	return strings.Contains(node.Driver, "djreceiver")
 }
 
+// IDFor exposes the device id so a caller that never opens the device can
+// still name it the same way a full read does. The cheap battery path needs
+// exactly this: the same id, arrived at from sysfs alone.
+func IDFor(entry *model.Entry, uniq string) string { return deviceID(entry, uniq) }
+
 // deviceID is "<category>/<brand>/<slug>", plus "#<serial>" when the kernel
 // knows one.
 func deviceID(entry *model.Entry, uniq string) string {

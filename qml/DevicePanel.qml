@@ -144,7 +144,14 @@ Panel {
         }
     }
 
-    onOpenedChanged: if (opened) {
+    onOpenedChanged: {
+        // While the panel is open a full read is what the user is asking for;
+        // while it is shut, polling the hardware only keeps their mouse awake.
+        if (gear)
+            gear.detailed = opened;
+        if (!opened)
+            return;
+
         if (flick)
             flick.contentY = 0;
         root.status = "";

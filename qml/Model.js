@@ -107,6 +107,7 @@ function parseDevice(raw) {
     support: safeText(d.support, "planned", 16),
     usbLabel: safeText(d.usbLabel, "", 16),
     connected: s.connected !== false,
+    presence: safeText(s.presence, "awake", 16),
     connection: parseConnection(d.connection),
     icon: safeText(d.icon, "", 32),
     onboardProfile: safeText(s.onboardProfile, "", 16),
@@ -509,15 +510,40 @@ function deviceSubtitle(device) {
   if (!device) return ""
   var parts = [device.brand]
   if (!device.connected) {
-    // Nothing else is known while it is off, and the connection it would use
-    // is not the same as the one it has.
-    return parts.concat(["Disconnected"]).join(" · ")
+    // Nothing else is known while it is away, and the connection it would use
+    // is not the same as the one it has. Which kind of away it is, though, is
+    // worth saying: "Off" is a thing the user did, "Disconnected" is a thing
+    // that happened to them.
+    return parts.concat([presenceLabel(device.presence) || "Disconnected"]).join(" · ")
   }
   if (device.connection && device.connection.label) parts.push(device.connection.label)
+  var presence = presenceLabel(device.presence)
+  if (presence) parts.push(presence)
   var support = supportLabel(device.support)
   if (support) parts.push(support)
   return parts.filter(function (p) { return !!p }).join(" · ")
 }
+
+/// How present the device is, in a word. Empty for the ordinary case, which
+/// needs no word at all.
+///
+/// "Asleep" is retrospective and deliberately so: a sleeping device cannot be
+/// observed while sleeping, because asking it anything wakes it. It means the
+/// device was asleep when the poll reached it, and will doze off again — which
+/// is worth showing, because it is also why that poll was slow.
+function presenceLabel(presence) {
+  switch (presence) {
+  // Nerd Font nf-md-sleep (U+F04B2), the "zzz" mark. Checked against the
+  // font rather than guessed: the neighbouring code points in this block are
+  // bluetooth-off and a crescent moon, and the first attempt here shipped
+  // the bluetooth one.
+  case "asleep": return "\uDB81\uDCB2 Asleep"
+  case "off": return "Off"
+  case "unreachable": return "Disconnected"
+  default: return ""
+  }
+}
+
 
 function supportLabel(support) {
   switch (support) {
@@ -683,4 +709,42 @@ function unreadableSummary(paths) {
   return n === 1
     ? "1 device is connected but cannot be opened."
     : n + " devices are connected but cannot be opened."
+}
+
+
+/// A `battery` reply: charge for each device the kernel can speak for.
+function parseBatteries(raw) {
+  if (typeof raw !== "string" || raw === "" || raw.length > MAX_REPLY) return []
+  var data
+  try { data = JSON.parse(raw) } catch (e) { return [] }
+  if (!data || data.ok !== true || !Array.isArray(data.batteries)) return []
+  return data.batteries.map(function (b) {
+    return {
+      id: safeText(b.id, "", 128),
+      percent: typeof b.percent === "number" ? b.percent : UNKNOWN,
+      level: safeText(b.level, "", 16),
+      status: safeText(b.status, "unknown", 16)
+    }
+  })
+}
+
+/// Fold a cheap battery reading into a device from the last full read.
+///
+/// Only what the kernel actually knows is taken. A device on the older
+/// battery feature gives a coarse word and no percentage, and overwriting a
+/// real figure with "unknown" would make the bar show "--" between full
+/// reads — worse than a number that is a few minutes old, because charge
+/// moves slowly and the reading it replaces was true.
+function mergeBattery(device, reading) {
+  if (!device || !reading) return device
+  var existing = device.battery || { percent: UNKNOWN, level: "unknown", status: "unknown" }
+  var merged = {
+    percent: reading.percent >= 0 ? reading.percent : existing.percent,
+    level: reading.level !== "" ? reading.level : existing.level,
+    status: reading.status
+  }
+  var next = {}
+  for (var key in device) next[key] = device[key]
+  next.battery = merged
+  return next
 }

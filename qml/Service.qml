@@ -37,6 +37,20 @@ Item {
         return Math.max(5, configured || 20);
     }
 
+    // True while the panel is open and the user is actually looking at the
+    // controls. Only then is a full read worth what it costs.
+    property bool detailed: false
+
+    // How often a full HID++ read happens with the panel shut.
+    //
+    // A full read is sixty-odd round trips, and every one of them makes a
+    // wireless mouse power its radio to answer — on the ordinary poll timer
+    // that is a mouse which never gets to sleep. Charge comes from the kernel
+    // instead, which costs nothing and wakes nothing; this is only for what
+    // the kernel cannot say, notably an exact percentage on devices whose
+    // battery feature it reports as a coarse word.
+    readonly property int fullReadIntervalSec: 15 * 60
+
     // Resolved from this file's own location rather than the plugin id, so the
     // path survives a rename — `omarchy plugin clone` installs the same code
     // under a different directory name.
@@ -108,6 +122,28 @@ Item {
             send(next.deviceId, next.key, next.value);
         }
 
+        // When the last full read happened, so the slow timer can tell whether
+        // one is due without a second timer to keep in step.
+        property double lastFullRead: 0
+
+        function applyBatteries(readings) {
+            if (!readings || readings.length === 0)
+                return;
+            var byId = {};
+            readings.forEach(function (reading) { byId[reading.id] = reading; });
+
+            var next = state.devices.map(function (device) {
+                return byId[device.id] ? Model.mergeBattery(device, byId[device.id]) : device;
+            });
+            state = {
+                ok: state.ok,
+                devices: next,
+                error: state.error,
+                note: state.note,
+                unreadable: state.unreadable
+            };
+        }
+
         // Replace one device in place, leaving the others alone. A `set` reply
         // carries only the device it wrote; the rest of the list is still good.
         function merge(device) {
@@ -120,8 +156,30 @@ Item {
                 ok: state.ok,
                 devices: next,
                 error: state.error,
-                note: state.note
+                note: state.note,
+                unreadable: state.unreadable
             };
+        }
+    }
+
+    // Refresh charge without touching the hardware. What comes back is folded
+    // into the devices from the last full read rather than replacing them:
+    // this reply knows nothing about DPI, buttons or anything else.
+    function refreshBattery() {
+        if (batteryProcess.running || listProcess.running)
+            return;
+        batteryProcess.running = true;
+    }
+
+    Process {
+        id: batteryProcess
+        command: [root.binary, "battery"]
+        stdout: StdioCollector {
+            id: batteryOut
+            waitForEnd: true
+            onStreamFinished: {
+                internal.applyBatteries(Model.parseBatteries((batteryOut.text || "").trim()));
+            }
         }
     }
 
@@ -223,11 +281,24 @@ Item {
         }
     }
 
+    // One timer, two jobs. With the panel open the user is watching live
+    // controls and a full read is what they are asking for; with it shut only
+    // the charge on the bar is on screen, and that comes from the kernel.
+    // A full read still happens occasionally, for what the kernel cannot say.
     Timer {
         interval: root.pollIntervalSec * 1000
         running: true
         repeat: true
         triggeredOnStart: true
-        onTriggered: root.refresh()
+        onTriggered: {
+            var now = Date.now();
+            var due = now - internal.lastFullRead > root.fullReadIntervalSec * 1000;
+            if (root.detailed || due || internal.lastFullRead === 0) {
+                internal.lastFullRead = now;
+                root.refresh();
+            } else {
+                root.refreshBattery();
+            }
+        }
     }
 }
