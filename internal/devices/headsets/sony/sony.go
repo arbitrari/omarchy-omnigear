@@ -26,13 +26,13 @@ var Entries = []model.Entry{
 		Brand:    model.Sony,
 		Category: model.Headset,
 		USB:      []model.USBID{{Vendor: vendor, Product: WH1000XM3}},
-		// Partial: the headset also has an equalizer, DSEE HX, auto power
-		// off and a touch panel switch, all of which answer but none of which
-		// are driven yet.
+		// Partial: the headset also has DSEE HX, auto power off and a touch
+		// panel switch, all of which answer but none of which are driven yet.
 		Support: model.SupportPartial,
 		Capabilities: []model.Capability{
 			model.CapBattery,
 			model.CapNoiseControl,
+			model.CapEqualizer,
 		},
 		Driver: driver.MDR,
 	},

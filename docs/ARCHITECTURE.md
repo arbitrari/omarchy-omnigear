@@ -451,6 +451,15 @@ the rest over. Two things found on the hardware:
 - The on byte must be written as `11`. Written as `01`, as the headset itself
   reports it, the mode changes and a new level is silently ignored.
 
+**The codec decides whether the equalizer exists.** Over LDAC or aptX an XM3
+still reports its equalizer, but refuses every change with `99 01 01 01` and
+applies nothing. The headset's own answer to "is the equalizer available"
+(`52 01`) says `00` either way, so it is no help; the codec is (`18 00`), and
+each of SBC `01`, AAC `02`, LDAC `10`, aptX `20` and aptX HD `21` was read off
+the headset with PipeWire switched to it. The panel says which codec is in the
+way rather than offering sliders that do nothing. Which codec is used is the
+host's choice, not the headset's — `pactl set-card-profile` picks it.
+
 **The bar reads one device per kind.** A mouse and a headset each get their
 own reading and their own primary (`primaryMouse`, `primaryHeadset`), rather
 than the lowest battery of everything speaking for all of it — a dying headset

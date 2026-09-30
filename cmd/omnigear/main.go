@@ -228,7 +228,7 @@ func cmdSet(selector, key, value string) (reply, error) {
 	if !setting.Key.Verifiable() {
 		return reply{
 			"ok": true, "schema": schema,
-			"applied": effective,
+			"applied": setting.Key.Display(effective),
 			"note":    "device switched away from this host; nothing left to verify against",
 		}, nil
 	}
@@ -243,15 +243,15 @@ func cmdSet(selector, key, value string) (reply, error) {
 			// the caller just needs the real number.
 			return reply{
 				"ok": true, "schema": schema,
-				"requested": requested,
-				"applied":   after,
+				"requested": setting.Key.Display(requested),
+				"applied":   setting.Key.Display(after),
 				"note":      "value snapped to what the device can hold",
 				"device":    device.JSON(afterState),
 			}, nil
 		}
 		return reply{
 			"ok": true, "schema": schema,
-			"applied": after,
+			"applied": setting.Key.Display(after),
 			"device":  device.JSON(afterState),
 		}, nil
 	case known && after != before:
@@ -259,13 +259,13 @@ func cmdSet(selector, key, value string) (reply, error) {
 		// success, but the caller should hear the real number.
 		return reply{
 			"ok": true, "schema": schema,
-			"requested": setting.Value,
-			"applied":   after,
+			"requested": setting.Key.Display(setting.Value),
+			"applied":   setting.Key.Display(after),
 			"note":      "device rounded the value",
 			"device":    device.JSON(afterState),
 		}, nil
 	case known:
-		message := fmt.Sprintf("device accepted the change but kept %d", after)
+		message := fmt.Sprintf("device accepted the change but kept %v", setting.Key.Display(after))
 		// The most common cause is another HID++ client on the same node
 		// undoing the write. Name it rather than leave the caller guessing.
 		if holders := hidraw.OtherHolders(device.Node.Path); len(holders) > 0 {

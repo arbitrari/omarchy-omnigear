@@ -135,6 +135,9 @@ const (
 	// CapNoiseControl — noise cancelling, ambient sound, or neither, and how
 	// much of the room the ambient mode lets in.
 	CapNoiseControl Capability = "noise-control"
+	// CapEqualizer — a headset's preset sound profiles, and its adjustable
+	// bands.
+	CapEqualizer Capability = "equalizer"
 )
 
 // USBID is a vendor/product pair a model shows up as. A model that enumerates
@@ -524,6 +527,90 @@ type NoiseControl struct {
 	FocusOnVoice bool `json:"focusOnVoice"`
 }
 
+// Equalizer is a headset's sound profile.
+type Equalizer struct {
+	// Available is false when the headset will not apply an equalizer right
+	// now, and Unavailable says why. A WH-1000XM3 refuses one outright over
+	// LDAC or aptX; the reading is still there, it just does nothing.
+	Available   bool   `json:"available"`
+	Unavailable string `json:"unavailable,omitempty"`
+	// Preset is a slug from EQPresets.
+	Preset  string     `json:"preset"`
+	Presets []EQPreset `json:"presets"`
+	// Bands are what the current preset does, in order: Clear Bass first on a
+	// Sony, then low to high frequency.
+	Bands []EQBand `json:"bands"`
+	Min   int      `json:"min"`
+	Max   int      `json:"max"`
+}
+
+// EQPreset is one sound profile the device offers.
+type EQPreset struct {
+	Slug  string `json:"slug"`
+	Label string `json:"label"`
+	// Editable presets keep bands of their own. Changing a band on any other
+	// preset moves the device onto the first editable one, carrying the
+	// bands over, which is what the Sony app does too.
+	Editable bool `json:"editable"`
+}
+
+// EQBand is one adjustable band.
+type EQBand struct {
+	Slug  string `json:"slug"`
+	Label string `json:"label"`
+	Value int    `json:"value"`
+}
+
+// eqPresetSlugs are every preset slug any driver knows, so a setting can name
+// one before the device is asked. The number is the slug's index here, which
+// is what a Setting carries; drivers map it to their own wire value.
+var eqPresetSlugs = []string{
+	"off", "bright", "excited", "mellow", "relaxed", "vocal",
+	"treble-boost", "bass-boost", "speech", "manual", "custom-1", "custom-2",
+}
+
+func EQPresetValue(slug string) (uint32, bool) {
+	for i, candidate := range eqPresetSlugs {
+		if strings.EqualFold(candidate, slug) {
+			return uint32(i), true
+		}
+	}
+	return 0, false
+}
+
+func EQPresetSlug(value uint32) string {
+	if int(value) < len(eqPresetSlugs) {
+		return eqPresetSlugs[value]
+	}
+	return ""
+}
+
+// EQBias is added to a band level to carry it in a Setting, whose value is
+// unsigned. A level of -3 travels as 125.
+const EQBias = 128
+
+// EQBandKey is the setting key for one band.
+func EQBandKey(slug string) SettingKey { return SettingKey("eq-" + slug) }
+
+// EQBandSlugOf is the inverse of EQBandKey.
+func EQBandSlugOf(key SettingKey) (string, bool) {
+	slug, found := strings.CutPrefix(string(key), "eq-")
+	if !found || key == SettingEQPreset || slug == "" {
+		return "", false
+	}
+	return slug, true
+}
+
+// Band returns the band with a slug, or nil.
+func (e *Equalizer) Band(slug string) *EQBand {
+	for i := range e.Bands {
+		if e.Bands[i].Slug == slug {
+			return &e.Bands[i]
+		}
+	}
+	return nil
+}
+
 // DeviceState is everything a driver managed to read. Every field is optional:
 // a capability the device claims but the read failed for comes back null with
 // a line in Errors, rather than failing the whole device.
@@ -548,6 +635,7 @@ type DeviceState struct {
 	Thumbwheel     *Thumbwheel   `json:"thumbwheel"`
 	Buttons        []Button      `json:"buttons"`
 	NoiseControl   *NoiseControl `json:"noiseControl"`
+	Equalizer      *Equalizer    `json:"equalizer"`
 	// Errors holds non-fatal problems, one per capability that could not be
 	// read. Never nil, so it marshals as [] rather than null.
 	Errors []string `json:"errors"`
@@ -611,6 +699,9 @@ const (
 	SettingNoiseMode    SettingKey = "noise-mode"
 	SettingAmbientLevel SettingKey = "ambient-level"
 	SettingFocusOnVoice SettingKey = "focus-on-voice"
+
+	// SettingEQPreset picks a preset. Bands are eq-<band slug>; see EQBandKey.
+	SettingEQPreset SettingKey = "eq-preset"
 
 	// HITS is per click and per field, so each combination is its own key.
 	// Three fields across two buttons is small enough to name outright, and
@@ -715,6 +806,13 @@ func ParseSetting(key, value string) (Setting, error) {
 			return Setting{}, fmt.Errorf("%q is not on or off", value)
 		}
 		return Setting{Key: SettingFocusOnVoice, Value: on}, nil
+	case "eq-preset":
+		preset, ok := EQPresetValue(value)
+		if !ok {
+			return Setting{}, fmt.Errorf("%q is not an equalizer preset (expected one of: %s)",
+				value, strings.Join(eqPresetSlugs, ", "))
+		}
+		return Setting{Key: SettingEQPreset, Value: preset}, nil
 	case "profile-mode", "profile":
 		// The only setting named rather than numbered. Its values are the two
 		// words a user would say, not 1 and 2.
@@ -743,10 +841,19 @@ func ParseSetting(key, value string) (Setting, error) {
 			}
 			return Setting{Key: SettingKey(key), Value: uint32(target)}, nil
 		}
+		if _, ok := EQBandSlugOf(SettingKey(key)); ok {
+			// Levels are signed, and a Setting is not. Which bands exist is
+			// the device's to say, and is checked against a read.
+			level, err := strconv.ParseInt(value, 10, 32)
+			if err != nil || level <= -EQBias || level >= EQBias {
+				return Setting{}, fmt.Errorf("%q is not a band level", value)
+			}
+			return Setting{Key: SettingKey(key), Value: uint32(level + EQBias)}, nil
+		}
 		return Setting{}, fmt.Errorf("unknown setting %q (expected one of: dpi, "+
 			"polling-rate, profile-mode, smart-shift-mode, smart-shift-threshold, "+
 			"wheel-hi-res, wheel-invert, host, thumbwheel, button-<name>, "+
-			"noise-mode, ambient-level, focus-on-voice, "+
+			"noise-mode, ambient-level, focus-on-voice, eq-preset, eq-<band>, "+
 			"hits-{left,right}-{actuation,rapid-trigger,haptics})", key)
 	}
 
@@ -785,6 +892,16 @@ func boolToValue(on bool) uint32 {
 // write looks like. Treating it like the rest would report every successful
 // host switch as a failure, so the caller stops at "the device accepted it".
 func (k SettingKey) Verifiable() bool { return k != SettingHost }
+
+// Display turns a setting's value back into the number a person would say.
+// Only equalizer bands differ: they travel biased, because a Setting is
+// unsigned and a band level is not.
+func (k SettingKey) Display(value uint32) any {
+	if _, ok := EQBandSlugOf(k); ok {
+		return int(value) - EQBias
+	}
+	return value
+}
 
 // Reading pulls the one number a setting is about back out of a fresh read.
 // The second result is false when the device did not report it at all.
@@ -856,6 +973,11 @@ func (s *DeviceState) Reading(key SettingKey) (uint32, bool) {
 			return boolToValue(s.NoiseControl.FocusOnVoice), true
 		}
 
+	case SettingEQPreset:
+		if s.Equalizer != nil {
+			return EQPresetValue(s.Equalizer.Preset)
+		}
+
 	case SettingHITSLeftActuation, SettingHITSLeftRapidTrigger, SettingHITSLeftHaptics,
 		SettingHITSRightActuation, SettingHITSRightRapidTrigger, SettingHITSRightHaptics:
 		if s.HITS == nil {
@@ -874,6 +996,13 @@ func (s *DeviceState) Reading(key SettingKey) (uint32, bool) {
 		default:
 			return uint32(button.Haptics), true
 		}
+	}
+
+	if slug, ok := EQBandSlugOf(key); ok && s.Equalizer != nil {
+		if band := s.Equalizer.Band(slug); band != nil {
+			return uint32(band.Value + EQBias), true
+		}
+		return 0, false
 	}
 
 	// Button keys are per-device rather than from a fixed list, so they are

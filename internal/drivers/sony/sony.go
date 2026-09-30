@@ -44,6 +44,13 @@ func (driver) Read(device *model.Device) model.DeviceState {
 			state.NoiseControl = noise
 		}
 	}
+	if device.Entry.Has(model.CapEqualizer) {
+		if eq, err := readEqualizer(conn); err != nil {
+			state.Fail(model.CapEqualizer, err)
+		} else {
+			state.Equalizer = eq
+		}
+	}
 	return state
 }
 
@@ -95,9 +102,43 @@ func (driver) Write(device *model.Device, setting *model.Setting) error {
 			noise.FocusOnVoice = setting.Value != 0
 		}
 		return writeNoiseControl(conn, noise)
-	default:
-		return fmt.Errorf("%s cannot set %s", device.Entry.Model, setting.Key)
 	}
+
+	if setting.Key == model.SettingEQPreset {
+		eq, err := readEqualizer(conn)
+		if err != nil {
+			return err
+		}
+		if !eq.Available {
+			return errors.New(eq.Unavailable)
+		}
+		wire, ok := presetWire(model.EQPresetSlug(setting.Value))
+		if !ok {
+			return fmt.Errorf("%s has no %q preset", device.Entry.Model, model.EQPresetSlug(setting.Value))
+		}
+		return conn.Send(0x58, 0x01, wire, 0x00)
+	}
+
+	if slug, ok := model.EQBandSlugOf(setting.Key); ok {
+		eq, err := readEqualizer(conn)
+		if err != nil {
+			return err
+		}
+		if !eq.Available {
+			return errors.New(eq.Unavailable)
+		}
+		band := eq.Band(slug)
+		if band == nil {
+			return fmt.Errorf("%s has no %q band", device.Entry.Model, slug)
+		}
+		level := int(setting.Value) - model.EQBias
+		level = max(eq.Min, min(eq.Max, level))
+		setting.Value = uint32(level + model.EQBias)
+		band.Value = level
+		return writeBands(conn, eq)
+	}
+
+	return fmt.Errorf("%s cannot set %s", device.Entry.Model, setting.Key)
 }
 
 var busyError = errors.New("another program is connected to the headset's control channel; " +
@@ -215,4 +256,148 @@ func writeNoiseControl(conn *mdr.Conn, noise *model.NoiseControl) error {
 		voice = 1
 	}
 	return conn.Send(0x68, 0x02, effect, 0x02, cancelling, 0x01, voice, noise.AmbientLevel)
+}
+
+// Codecs, as 18 00 reports them, each read off the headset while PipeWire
+// had it selected.
+var codecNames = map[byte]string{
+	0x01: "SBC",
+	0x02: "AAC",
+	0x10: "LDAC",
+	0x20: "aptX",
+	0x21: "aptX HD",
+}
+
+// readCodec asks which codec the audio is using right now.
+//
+//	→ 18 00
+//	← 19 00 10      LDAC
+func readCodec(conn *mdr.Conn) (byte, error) {
+	reply, err := conn.Call(0x19, 0x18, 0x00)
+	if err != nil {
+		return 0, err
+	}
+	if len(reply) < 3 {
+		return 0, fmt.Errorf("short codec reply % x", reply)
+	}
+	return reply[2], nil
+}
+
+// eqPresets are the XM3's presets, in the order the Sony app lists them, with
+// their wire ids. Found by writing each id over AAC and reading it back; an id
+// the headset does not have is not refused, it resets to off (58 01 18 00
+// reads back as 57 01 00 …).
+var eqPresets = []struct {
+	slug     string
+	label    string
+	wire     byte
+	editable bool
+}{
+	{"off", "Off", 0x00, false},
+	{"bright", "Bright", 0x10, false},
+	{"excited", "Excited", 0x11, false},
+	{"mellow", "Mellow", 0x12, false},
+	{"relaxed", "Relaxed", 0x13, false},
+	{"vocal", "Vocal", 0x14, false},
+	{"treble-boost", "Treble Boost", 0x15, false},
+	{"bass-boost", "Bass Boost", 0x16, false},
+	{"speech", "Speech", 0x17, false},
+	{"manual", "Manual", 0xA0, true},
+	{"custom-1", "Custom 1", 0xA1, true},
+	{"custom-2", "Custom 2", 0xA2, true},
+}
+
+func presetWire(slug string) (byte, bool) {
+	for _, p := range eqPresets {
+		if p.slug == slug {
+			return p.wire, true
+		}
+	}
+	return 0, false
+}
+
+// eqBands are the six values the headset reports, in its order. The
+// frequencies are the Sony app's labels; the headset only sends the numbers.
+var eqBands = []struct{ slug, label string }{
+	{"clear-bass", "Clear Bass"},
+	{"400", "400"},
+	{"1k", "1k"},
+	{"2k5", "2.5k"},
+	{"6k3", "6.3k"},
+	{"16k", "16k"},
+}
+
+// Band levels on the wire are 00–14, centred on 0a. 15 is not refused; it is
+// kept as 14.
+const (
+	eqCentre = 0x0A
+	eqMin    = -10
+	eqMax    = 10
+)
+
+// readEqualizer reads the preset and what its bands are set to.
+//
+//	→ 56 01
+//	← 57 01 00 06 0a 0a 0a 0a 0a 0a   off: everything flat
+//	← 57 01 10 06 09 0a 0f 11 11 13   bright: -1, 0, +5, +7, +7, +9
+//	        │  │  └─ Clear Bass, then 400 Hz to 16 kHz
+//	        │  └──── six values follow
+//	        └─────── preset
+//
+// Over LDAC or aptX the headset still answers this, but refuses any change
+// with 99 01 01 01 and applies no equalizer. The codec is read alongside so
+// the panel can say so rather than offer controls that do nothing.
+func readEqualizer(conn *mdr.Conn) (*model.Equalizer, error) {
+	reply, err := conn.Call(0x57, 0x56, 0x01)
+	if err != nil {
+		return nil, err
+	}
+	if len(reply) < 4 || int(reply[3]) != len(eqBands) || len(reply) < 4+len(eqBands) {
+		return nil, fmt.Errorf("unexpected equalizer reply % x", reply)
+	}
+
+	eq := &model.Equalizer{Available: true, Min: eqMin, Max: eqMax}
+	for _, p := range eqPresets {
+		eq.Presets = append(eq.Presets, model.EQPreset{Slug: p.slug, Label: p.label, Editable: p.editable})
+		if p.wire == reply[2] {
+			eq.Preset = p.slug
+		}
+	}
+	for i, b := range eqBands {
+		eq.Bands = append(eq.Bands, model.EQBand{Slug: b.slug, Label: b.label, Value: int(reply[4+i]) - eqCentre})
+	}
+
+	codec, err := readCodec(conn)
+	if err != nil {
+		return nil, err
+	}
+	if codec != 0x01 && codec != 0x02 {
+		name := codecNames[codec]
+		if name == "" {
+			name = fmt.Sprintf("codec 0x%02x", codec)
+		}
+		eq.Available = false
+		eq.Unavailable = fmt.Sprintf("the equalizer only works over SBC or AAC, and the headset is using %s", name)
+	}
+	return eq, nil
+}
+
+// writeBands sets every band at once. On a preset with bands of its own the
+// preset is kept; on any other, the headset is moved to manual carrying the
+// bands over, so a nudge to one band of Bright starts from Bright.
+//
+//	→ 58 01 a0 06 0c 0b 0a 09 08 07
+//	← 59 01 a0 06 0c 0b 0a 09 08 07   (notification of the new state)
+func writeBands(conn *mdr.Conn, eq *model.Equalizer) error {
+	preset := byte(0xA0)
+	for _, p := range eqPresets {
+		if p.slug == eq.Preset && p.editable {
+			preset = p.wire
+		}
+	}
+	payload := []byte{0x58, 0x01, preset, byte(len(eq.Bands))}
+	for _, band := range eq.Bands {
+		payload = append(payload, byte(band.Value+eqCentre))
+	}
+	return conn.Send(payload...)
 }

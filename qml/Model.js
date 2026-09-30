@@ -142,6 +142,23 @@ function parseDevice(raw) {
       maxAmbientLevel: Number(s.noiseControl.maxAmbientLevel) || 1,
       focusOnVoice: s.noiseControl.focusOnVoice === true
     } : null,
+    equalizer: s.equalizer ? {
+      available: s.equalizer.available === true,
+      unavailable: safeText(s.equalizer.unavailable, "", 128),
+      preset: safeText(s.equalizer.preset, "", 24),
+      presets: (Array.isArray(s.equalizer.presets) ? s.equalizer.presets : []).map(function (p) {
+        return { slug: safeText(p.slug, "", 24), label: safeText(p.label, "", 32) }
+      }),
+      bands: (Array.isArray(s.equalizer.bands) ? s.equalizer.bands : []).map(function (b) {
+        return {
+          slug: safeText(b.slug, "", 16),
+          label: safeText(b.label, "", 16),
+          value: Number(b.value) || 0
+        }
+      }),
+      min: Number(s.equalizer.min) || 0,
+      max: Number(s.equalizer.max) || 0
+    } : null,
     thumbwheel: s.thumbwheel ? {
       mode: safeText(s.thumbwheel.mode, "", 16)
     } : null,
@@ -436,7 +453,7 @@ var TAB_GROUPS = [
   { id: "triggers", label: "Triggers", capabilities: ["hits"] },
   { id: "buttons", label: "Buttons", capabilities: ["buttons"] },
   { id: "hosts", label: "Hosts", capabilities: ["host"] },
-  { id: "sound", label: "Sound", capabilities: ["noise-control"] }
+  { id: "sound", label: "Sound", capabilities: ["noise-control", "equalizer"] }
 ]
 
 /// The devices of one kind. Each kind gets its own primary, because "the
@@ -472,6 +489,7 @@ function capabilityLabel(capability) {
   case "thumbwheel": return "Thumbwheel"
   case "buttons": return "Buttons"
   case "noise-control": return "Noise Control"
+  case "equalizer": return "Equalizer"
   default: return capability
   }
 }
@@ -495,7 +513,7 @@ function unsupportedCapabilities(device) {
   if (!device) return []
   var handled = ["battery", "dpi", "polling-rate", "onboard-profile", "hits",
                  "smart-shift", "hi-res-wheel", "host", "thumbwheel", "buttons",
-                 "noise-control"]
+                 "noise-control", "equalizer"]
   return device.capabilities.filter(function (c) {
     return handled.indexOf(c) === -1
   })
@@ -536,6 +554,26 @@ function noiseModeLabel(mode) {
   case "off": return "Off"
   default: return ""
   }
+}
+
+/// The label of the preset an equalizer is on.
+function eqPresetLabel(equalizer) {
+  if (!equalizer) return ""
+  for (var i = 0; i < equalizer.presets.length; i++) {
+    if (equalizer.presets[i].slug === equalizer.preset) return equalizer.presets[i].label
+  }
+  return ""
+}
+
+/// A band level with its sign, so +3 and -3 read as the opposites they are.
+function signedLevel(value) {
+  return value > 0 ? "+" + value : String(value)
+}
+
+/// A reason from the CLI, which is written to follow a colon, as a sentence.
+function sentenceCase(text) {
+  if (!text) return ""
+  return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
 function profileModeLabel(mode) {

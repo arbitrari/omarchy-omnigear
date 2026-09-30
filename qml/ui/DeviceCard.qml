@@ -313,20 +313,36 @@ Rectangle {
         }
 
         // --- sound ---------------------------------------------------------
-        NoiseControlControl {
-            bar: root.bar
-            busy: root.busy
+        Column {
+            width: parent.width
+            spacing: Style.space(10)
             visible: root.showingDetail && root.currentTab === "sound"
-                && root.device && root.device.noiseControl !== null
-            noiseControl: root.device ? root.device.noiseControl : null
-            onModeRequested: function (mode) {
-                root.settingRequested("noise-mode", mode);
+
+            NoiseControlControl {
+                bar: root.bar
+                busy: root.busy
+                noiseControl: root.device ? root.device.noiseControl : null
+                onModeRequested: function (mode) {
+                    root.settingRequested("noise-mode", mode);
+                }
+                onLevelRequested: function (level) {
+                    root.settingRequested("ambient-level", String(level));
+                }
+                onVoiceRequested: function (on) {
+                    root.settingRequested("focus-on-voice", on ? "on" : "off");
+                }
             }
-            onLevelRequested: function (level) {
-                root.settingRequested("ambient-level", String(level));
-            }
-            onVoiceRequested: function (on) {
-                root.settingRequested("focus-on-voice", on ? "on" : "off");
+
+            EqualizerControl {
+                bar: root.bar
+                busy: root.busy
+                equalizer: root.device ? root.device.equalizer : null
+                onPresetRequested: function (preset) {
+                    root.settingRequested("eq-preset", preset);
+                }
+                onBandRequested: function (band, level) {
+                    root.settingRequested("eq-" + band, String(level));
+                }
             }
         }
 
