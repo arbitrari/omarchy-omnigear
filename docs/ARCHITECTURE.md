@@ -415,6 +415,46 @@ still reported. The panel shows such a device as a name and `Disconnected`,
 with no controls to operate and no tabs, and the bar never picks it to speak
 for the widget.
 
+## Headphones are not HID
+
+A pair of Sony WH-1000XM3 never appears under hidraw. It is an audio sink, a
+headset profile and a vendor RFCOMM service, and none of that is a node in
+`/dev`. So a headset takes a different road through every layer:
+
+| | mice and keyboards | headphones |
+|---|---|---|
+| found by | hidraw enumeration | BlueZ over D-Bus (`transport/bluez`) |
+| identified by | USB id from sysfs | vendor and product from the Device ID record (`Modalias`) |
+| addressed by | `Device.Node` | `Device.Address`, the MAC |
+| spoken to | HID++ on the node | Sony's protocol on an RFCOMM channel (`transport/rfcomm`, `transport/mdr`) |
+| cheap battery | kernel power_supply | BlueZ `Battery1`, fed over the hands-free link |
+
+The catalog does not care: the XM3's modalias `usb:v054Cp0CD3` is matched as
+USB id `054C:0CD3` like anything else.
+
+The RFCOMM channel is not fixed. It is looked up on each connection by asking
+the headset's SDP server for the service UUID; an XM3 answered channel 15.
+
+**One client at a time.** Where a hidraw node shares every reply with every
+reader, an RFCOMM service refuses a second connection outright with `EBUSY`.
+The failure is clean, but it names nobody, so the card says that another
+program has the control channel rather than who.
+
+**Writes need the whole record.** Noise cancelling, ambient sound, the ambient
+level and focus on voice are one message, so a write reads first and carries
+the rest over. Two things found on the hardware:
+
+- While noise cancelling, the headset reports the ambient level and voice
+  filter as zero rather than what it will go back to, and ambient at level 0
+  *is* off. Switching to ambient from noise cancelling therefore has to supply
+  a level; it asks for the full room.
+- The on byte must be written as `11`. Written as `01`, as the headset itself
+  reports it, the mode changes and a new level is silently ignored.
+
+Straight after a mode change the headset plays a voice prompt, and a
+connection opened during it occasionally goes unanswered. `mdr.Open` retries
+the init once.
+
 ## Writes are verified, never assumed
 
 A device can accept a write and quietly ignore it. `omnigear set` therefore

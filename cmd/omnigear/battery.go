@@ -4,6 +4,7 @@ import (
 	"github.com/arbitrari/omarchy-omnigear/internal/catalog"
 	"github.com/arbitrari/omarchy-omnigear/internal/discovery"
 	"github.com/arbitrari/omarchy-omnigear/internal/model"
+	"github.com/arbitrari/omarchy-omnigear/internal/transport/bluez"
 	"github.com/arbitrari/omarchy-omnigear/internal/transport/hidraw"
 )
 
@@ -45,6 +46,21 @@ func cmdBattery() (reply, error) {
 			Percent: supply.Percent,
 			Level:   model.BatteryLevelWord(supply.Level),
 			Status:  model.BatteryStatusWord(supply.Status),
+		})
+	}
+
+	// Headsets are not in hidraw. BlueZ keeps their charge instead, from what
+	// the headset reports over the hands-free link of its own accord.
+	for _, device := range bluez.Connected() {
+		entry := catalog.FindByUSB(device.Vendor, device.Product)
+		if entry == nil || entry.Category != model.Headset || device.Battery == nil {
+			continue
+		}
+		readings = append(readings, batteryReading{
+			ID:      discovery.IDFor(entry, device.Address),
+			Percent: *device.Battery,
+			// BlueZ's Battery1 has a percentage and nothing about charging.
+			Status: "unknown",
 		})
 	}
 

@@ -2,4 +2,7 @@ module github.com/arbitrari/omarchy-omnigear
 
 go 1.27.1
 
-require golang.org/x/sys v0.48.0
+require (
+	github.com/godbus/dbus/v5 v5.2.2
+	golang.org/x/sys v0.48.0
+)

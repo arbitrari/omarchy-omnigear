@@ -8,6 +8,7 @@ import (
 
 	"github.com/arbitrari/omarchy-omnigear/internal/catalog"
 	"github.com/arbitrari/omarchy-omnigear/internal/model"
+	"github.com/arbitrari/omarchy-omnigear/internal/transport/bluez"
 	"github.com/arbitrari/omarchy-omnigear/internal/transport/hidpp"
 	"github.com/arbitrari/omarchy-omnigear/internal/transport/hidraw"
 )
@@ -47,7 +48,34 @@ func Devices() []model.Device {
 		})
 	}
 
-	return append(found, behindReceivers()...)
+	found = append(found, behindReceivers()...)
+	return append(found, overBluetooth()...)
+}
+
+// overBluetooth finds catalogued devices BlueZ has connected that have no
+// hidraw node at all.
+//
+// Headphones are the case: they are audio devices with a vendor control
+// channel, not HID, so nothing under /dev names them. BlueZ does, and it has
+// the vendor and product ids from the device's own Device ID record, so they
+// match the catalog the same way a USB id does. That costs one D-Bus call and
+// says nothing to the device.
+func overBluetooth() []model.Device {
+	var found []model.Device
+	for _, device := range bluez.Connected() {
+		entry := catalog.FindByUSB(device.Vendor, device.Product)
+		if entry == nil || entry.Category != model.Headset {
+			// A Bluetooth mouse is found through its hidraw node, and finding
+			// it here too would list it twice.
+			continue
+		}
+		found = append(found, model.Device{
+			Entry:   entry,
+			ID:      deviceID(entry, device.Address),
+			Address: device.Address,
+		})
+	}
+	return found
 }
 
 // behindReceivers finds devices that have no hidraw node of their own.

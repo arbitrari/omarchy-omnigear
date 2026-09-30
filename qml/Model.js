@@ -135,6 +135,13 @@ function parseDevice(raw) {
       max: Number(s.smartShift.max) || 1
     } : null,
     buttons: (Array.isArray(s.buttons) ? s.buttons : []).map(parseButton),
+    noiseControl: s.noiseControl ? {
+      mode: safeText(s.noiseControl.mode, "", 24),
+      ambientLevel: Number(s.noiseControl.ambientLevel) || 0,
+      minAmbientLevel: Number(s.noiseControl.minAmbientLevel) || 1,
+      maxAmbientLevel: Number(s.noiseControl.maxAmbientLevel) || 1,
+      focusOnVoice: s.noiseControl.focusOnVoice === true
+    } : null,
     thumbwheel: s.thumbwheel ? {
       mode: safeText(s.thumbwheel.mode, "", 16)
     } : null,
@@ -424,7 +431,8 @@ var TAB_GROUPS = [
   { id: "wheel", label: "Wheel", capabilities: ["smart-shift", "hi-res-wheel", "thumbwheel"] },
   { id: "triggers", label: "Triggers", capabilities: ["hits"] },
   { id: "buttons", label: "Buttons", capabilities: ["buttons"] },
-  { id: "hosts", label: "Hosts", capabilities: ["host"] }
+  { id: "hosts", label: "Hosts", capabilities: ["host"] },
+  { id: "sound", label: "Sound", capabilities: ["noise-control"] }
 ]
 
 /// The devices of one kind. Each kind gets its own primary, because "the
@@ -459,6 +467,7 @@ function capabilityLabel(capability) {
   case "host": return "Easy-Switch"
   case "thumbwheel": return "Thumbwheel"
   case "buttons": return "Buttons"
+  case "noise-control": return "Noise Control"
   default: return capability
   }
 }
@@ -481,7 +490,8 @@ function hostLabel(host, pairingKnown) {
 function unsupportedCapabilities(device) {
   if (!device) return []
   var handled = ["battery", "dpi", "polling-rate", "onboard-profile", "hits",
-                 "smart-shift", "hi-res-wheel", "host", "thumbwheel", "buttons"]
+                 "smart-shift", "hi-res-wheel", "host", "thumbwheel", "buttons",
+                 "noise-control"]
   return device.capabilities.filter(function (c) {
     return handled.indexOf(c) === -1
   })
@@ -511,6 +521,15 @@ function thumbwheelModeLabel(mode) {
   switch (mode) {
   case "scroll": return "Scrolling"
   case "diverted": return "Diverted"
+  default: return ""
+  }
+}
+
+function noiseModeLabel(mode) {
+  switch (mode) {
+  case "noise-cancelling": return "Noise Cancelling"
+  case "ambient": return "Ambient Sound"
+  case "off": return "Off"
   default: return ""
   }
 }
@@ -786,7 +805,9 @@ function mergeBattery(device, reading) {
   var merged = {
     percent: reading.percent >= 0 ? reading.percent : existing.percent,
     level: reading.level !== "" ? reading.level : existing.level,
-    status: reading.status
+    // BlueZ gives a headset's percentage and says nothing about charging, so
+    // "unknown" there means "not said", not "no longer charging".
+    status: reading.status !== "unknown" ? reading.status : existing.status
   }
   var next = {}
   for (var key in device) next[key] = device[key]

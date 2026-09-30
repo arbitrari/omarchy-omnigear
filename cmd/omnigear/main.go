@@ -44,6 +44,8 @@ USAGE:
     omnigear set <device> <key> <value>    change a setting:
                                              dpi <n> | polling-rate <hz>
                                              profile-mode onboard|host
+                                           noise-mode noise-cancelling|ambient|off
+                                           ambient-level <1-20> | focus-on-voice on|off
                                              host <n>  (switches away from
                                                         this machine)
     omnigear catalog                       the support matrix, hardware or not

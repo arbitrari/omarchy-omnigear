@@ -312,6 +312,24 @@ Rectangle {
             }
         }
 
+        // --- sound ---------------------------------------------------------
+        NoiseControlControl {
+            bar: root.bar
+            busy: root.busy
+            visible: root.showingDetail && root.currentTab === "sound"
+                && root.device && root.device.noiseControl !== null
+            noiseControl: root.device ? root.device.noiseControl : null
+            onModeRequested: function (mode) {
+                root.settingRequested("noise-mode", mode);
+            }
+            onLevelRequested: function (level) {
+                root.settingRequested("ambient-level", String(level));
+            }
+            onVoiceRequested: function (on) {
+                root.settingRequested("focus-on-voice", on ? "on" : "off");
+            }
+        }
+
         // --- not supported, and what to do about it ------------------------
         //
         // Sits above the errors so the offer to report it is the last word on

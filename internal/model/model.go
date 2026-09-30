@@ -132,6 +132,9 @@ const (
 	CapThumbwheel Capability = "thumbwheel"
 	// CapButtons — reassigning what the device's buttons do, in hardware.
 	CapButtons Capability = "buttons"
+	// CapNoiseControl — noise cancelling, ambient sound, or neither, and how
+	// much of the room the ambient mode lets in.
+	CapNoiseControl Capability = "noise-control"
 )
 
 // USBID is a vendor/product pair a model shows up as. A model that enumerates
@@ -239,6 +242,12 @@ type Connection struct {
 
 // ConnectionOf describes how node is attached.
 func ConnectionOf(node hidraw.Node) Connection {
+	// A Bluetooth device reached without hidraw has an empty node; see
+	// Device.Address.
+	if node.Path == "" {
+		return Connection{Kind: "bluetooth", Label: "Bluetooth"}
+	}
+
 	// The node may itself be a receiver, when the device behind it has no node
 	// of its own. Then the link is that dongle — not the USB cable the dongle
 	// happens to be plugged in with, which is what the sysfs tree would say.
@@ -280,6 +289,19 @@ type Device struct {
 	// Index addresses the device behind a receiver. Zero means the node
 	// speaks for the device directly and the driver can find the index itself.
 	Index byte
+	// Address is the Bluetooth MAC of a device that has no hidraw node at all
+	// — headphones, which are audio devices with a vendor control channel
+	// rather than HID. Node is empty for such a device.
+	Address string
+}
+
+// Path names what the device is reached through: its hidraw node, or its
+// Bluetooth address when it has none.
+func (d *Device) Path() string {
+	if d.Node.Path == "" {
+		return d.Address
+	}
+	return d.Node.Path
 }
 
 // --- state -----------------------------------------------------------------
@@ -454,6 +476,54 @@ type HITS struct {
 	Step uint8 `json:"step"`
 }
 
+// Noise control modes. The numbers are this project's, not the wire's: a
+// Setting is a plain number, and these are what `noise-mode` carries.
+const (
+	NoiseOff        = 0
+	NoiseAmbient    = 1
+	NoiseCancelling = 2
+)
+
+func NoiseModeName(value uint32) string {
+	switch value {
+	case NoiseOff:
+		return "off"
+	case NoiseAmbient:
+		return "ambient"
+	case NoiseCancelling:
+		return "noise-cancelling"
+	default:
+		return "unknown"
+	}
+}
+
+func NoiseModeValue(name string) (uint32, bool) {
+	switch strings.ToLower(name) {
+	case "off":
+		return NoiseOff, true
+	case "ambient", "ambient-sound", "asm":
+		return NoiseAmbient, true
+	case "noise-cancelling", "nc", "anc":
+		return NoiseCancelling, true
+	default:
+		return 0, false
+	}
+}
+
+// NoiseControl is what a headset does with the sound of the room.
+type NoiseControl struct {
+	// Mode is "noise-cancelling", "ambient" or "off".
+	Mode string `json:"mode"`
+	// AmbientLevel is how much of the room ambient mode lets through, from
+	// MinAmbientLevel to MaxAmbientLevel. The headset remembers it in every
+	// mode, but it only has an effect in ambient.
+	AmbientLevel    uint8 `json:"ambientLevel"`
+	MinAmbientLevel uint8 `json:"minAmbientLevel"`
+	MaxAmbientLevel uint8 `json:"maxAmbientLevel"`
+	// FocusOnVoice filters ambient sound down to speech.
+	FocusOnVoice bool `json:"focusOnVoice"`
+}
+
 // DeviceState is everything a driver managed to read. Every field is optional:
 // a capability the device claims but the read failed for comes back null with
 // a line in Errors, rather than failing the whole device.
@@ -465,18 +535,19 @@ type DeviceState struct {
 	// Presence is the finer answer behind Connected. See the Presence
 	// constants: a device can be absent because it is switched off, or
 	// present but have needed waking.
-	Presence       string       `json:"presence"`
-	Battery        *Battery     `json:"battery"`
-	DPI            *DPI         `json:"dpi"`
-	PollingRate    *PollingRate `json:"pollingRate"`
-	HITS           *HITS        `json:"hits"`
-	SmartShift     *SmartShift  `json:"smartShift"`
-	HiResWheel     *HiResWheel  `json:"hiResWheel"`
-	LOD            *string      `json:"lod"`
-	OnboardProfile *string      `json:"onboardProfile"`
-	Hosts          *Hosts       `json:"hosts"`
-	Thumbwheel     *Thumbwheel  `json:"thumbwheel"`
-	Buttons        []Button     `json:"buttons"`
+	Presence       string        `json:"presence"`
+	Battery        *Battery      `json:"battery"`
+	DPI            *DPI          `json:"dpi"`
+	PollingRate    *PollingRate  `json:"pollingRate"`
+	HITS           *HITS         `json:"hits"`
+	SmartShift     *SmartShift   `json:"smartShift"`
+	HiResWheel     *HiResWheel   `json:"hiResWheel"`
+	LOD            *string       `json:"lod"`
+	OnboardProfile *string       `json:"onboardProfile"`
+	Hosts          *Hosts        `json:"hosts"`
+	Thumbwheel     *Thumbwheel   `json:"thumbwheel"`
+	Buttons        []Button      `json:"buttons"`
+	NoiseControl   *NoiseControl `json:"noiseControl"`
 	// Errors holds non-fatal problems, one per capability that could not be
 	// read. Never nil, so it marshals as [] rather than null.
 	Errors []string `json:"errors"`
@@ -536,6 +607,10 @@ const (
 	SettingHost SettingKey = "host"
 
 	SettingThumbwheel SettingKey = "thumbwheel"
+
+	SettingNoiseMode    SettingKey = "noise-mode"
+	SettingAmbientLevel SettingKey = "ambient-level"
+	SettingFocusOnVoice SettingKey = "focus-on-voice"
 
 	// HITS is per click and per field, so each combination is its own key.
 	// Three fields across two buttons is small enough to name outright, and
@@ -626,6 +701,20 @@ func ParseSetting(key, value string) (Setting, error) {
 			return Setting{}, fmt.Errorf("%q is not a thumbwheel mode (expected: scroll, diverted)", value)
 		}
 		return Setting{Key: SettingThumbwheel, Value: mode}, nil
+	case "noise-mode", "noise":
+		mode, ok := NoiseModeValue(value)
+		if !ok {
+			return Setting{}, fmt.Errorf("%q is not a noise mode (expected: noise-cancelling, ambient, off)", value)
+		}
+		return Setting{Key: SettingNoiseMode, Value: mode}, nil
+	case "ambient-level":
+		settingKey = SettingAmbientLevel
+	case "focus-on-voice", "voice":
+		on, ok := parseSwitch(value)
+		if !ok {
+			return Setting{}, fmt.Errorf("%q is not on or off", value)
+		}
+		return Setting{Key: SettingFocusOnVoice, Value: on}, nil
 	case "profile-mode", "profile":
 		// The only setting named rather than numbered. Its values are the two
 		// words a user would say, not 1 and 2.
@@ -657,6 +746,7 @@ func ParseSetting(key, value string) (Setting, error) {
 		return Setting{}, fmt.Errorf("unknown setting %q (expected one of: dpi, "+
 			"polling-rate, profile-mode, smart-shift-mode, smart-shift-threshold, "+
 			"wheel-hi-res, wheel-invert, host, thumbwheel, button-<name>, "+
+			"noise-mode, ambient-level, focus-on-voice, "+
 			"hits-{left,right}-{actuation,rapid-trigger,haptics})", key)
 	}
 
@@ -747,6 +837,23 @@ func (s *DeviceState) Reading(key SettingKey) (uint32, bool) {
 			if value, ok := ThumbwheelModeValue(s.Thumbwheel.Mode); ok {
 				return value, true
 			}
+		}
+
+	case SettingNoiseMode:
+		if s.NoiseControl != nil {
+			if value, ok := NoiseModeValue(s.NoiseControl.Mode); ok {
+				return value, true
+			}
+		}
+
+	case SettingAmbientLevel:
+		if s.NoiseControl != nil {
+			return uint32(s.NoiseControl.AmbientLevel), true
+		}
+
+	case SettingFocusOnVoice:
+		if s.NoiseControl != nil {
+			return boolToValue(s.NoiseControl.FocusOnVoice), true
 		}
 
 	case SettingHITSLeftActuation, SettingHITSLeftRapidTrigger, SettingHITSLeftHaptics,
@@ -847,7 +954,7 @@ func (d *Device) JSON(state DeviceState) DeviceJSON {
 		Icon:         d.Entry.Icon,
 		Connection:   ConnectionOf(d.Node),
 		USBLabel:     d.Entry.USBLabel,
-		Path:         d.Node.Path,
+		Path:         d.Path(),
 		Conflicts:    []Contender{},
 		State:        state,
 	}
