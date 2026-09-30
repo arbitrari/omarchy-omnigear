@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/arbitrari/omarchy-omnigear/internal/drivers/a2dp"
 	"github.com/arbitrari/omarchy-omnigear/internal/model"
 	"github.com/arbitrari/omarchy-omnigear/internal/transport/mdr"
 	"github.com/arbitrari/omarchy-omnigear/internal/transport/rfcomm"
@@ -44,6 +45,13 @@ func (driver) Read(device *model.Device) model.DeviceState {
 			state.NoiseControl = noise
 		}
 	}
+	if device.Entry.Has(model.CapCodec) {
+		if codec, err := a2dp.Read(device.Address); err != nil {
+			state.Fail(model.CapCodec, err)
+		} else {
+			state.Codec = codec
+		}
+	}
 	if device.Entry.Has(model.CapEqualizer) {
 		if eq, err := readEqualizer(conn); err != nil {
 			state.Fail(model.CapEqualizer, err)
@@ -55,6 +63,12 @@ func (driver) Read(device *model.Device) model.DeviceState {
 }
 
 func (driver) Write(device *model.Device, setting *model.Setting) error {
+	// The codec is the sound server's to change, and the headset need not be
+	// spoken to at all.
+	if setting.Key == model.SettingCodec {
+		return a2dp.Write(device.Address, model.CodecName(setting.Value))
+	}
+
 	conn, err := mdr.Open(device.Address)
 	if err != nil {
 		if errors.Is(err, rfcomm.ErrBusy) {
@@ -335,6 +349,11 @@ const (
 	eqMax    = 10
 )
 
+// eqCodecs are the host's codecs over which the headset applies an
+// equalizer. SBC-XQ is SBC at a higher bitpool, and the equalizer worked over
+// it as well as over SBC and AAC.
+var eqCodecs = []string{"sbc", "sbc-xq", "aac"}
+
 // readEqualizer reads the preset and what its bands are set to.
 //
 //	→ 56 01
@@ -356,7 +375,7 @@ func readEqualizer(conn *mdr.Conn) (*model.Equalizer, error) {
 		return nil, fmt.Errorf("unexpected equalizer reply % x", reply)
 	}
 
-	eq := &model.Equalizer{Available: true, Min: eqMin, Max: eqMax}
+	eq := &model.Equalizer{Available: true, Codecs: eqCodecs, Min: eqMin, Max: eqMax}
 	for _, p := range eqPresets {
 		eq.Presets = append(eq.Presets, model.EQPreset{Slug: p.slug, Label: p.label, Editable: p.editable})
 		if p.wire == reply[2] {

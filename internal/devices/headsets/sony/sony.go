@@ -33,6 +33,7 @@ var Entries = []model.Entry{
 			model.CapBattery,
 			model.CapNoiseControl,
 			model.CapEqualizer,
+			model.CapCodec,
 		},
 		Driver: driver.MDR,
 	},

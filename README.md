@@ -177,11 +177,13 @@ Updates can be done directly in the plugin.
 <details>
 <summary><b>Sony</b></summary>
 
-|  | Name | Battery | Noise Control* | Equalizer | DSEE HX | Auto Power Off | Touch Panel | Notes
-|------|-----|-----|-----|-----|-----|-----|-----|-----|
-| 🟨 | WH-1000XM3 |🟩|🟩|🟩|🟥|🟥|🟥|Bluetooth only; Equalizer only over SBC or AAC|
+|  | Name | Battery | Noise Control* | Equalizer | Codec** | DSEE HX | Auto Power Off | Touch Panel | Notes
+|------|-----|-----|-----|-----|-----|-----|-----|-----|-----|
+| 🟨 | WH-1000XM3 |🟩|🟩|🟩|🟩|🟥|🟥|🟥|Bluetooth only; Equalizer only over SBC or AAC|
 
 ***Noise Control:** noise cancelling, ambient sound or off, with ambient level and focus on voice. In the plugin, this appears as a Sound tab
+
+****Codec:** which Bluetooth codec the audio plays over (SBC, AAC, aptX, LDAC, …). This is chosen by your computer's sound server rather than stored in the headset. In the plugin, this appears in the Sound tab
 
 </details>
 

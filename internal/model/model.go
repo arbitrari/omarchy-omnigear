@@ -138,6 +138,9 @@ const (
 	// CapEqualizer — a headset's preset sound profiles, and its adjustable
 	// bands.
 	CapEqualizer Capability = "equalizer"
+	// CapCodec — which Bluetooth codec the audio is played over. Chosen by
+	// this machine's sound server, not stored in the headset.
+	CapCodec Capability = "codec"
 )
 
 // USBID is a vendor/product pair a model shows up as. A model that enumerates
@@ -534,6 +537,9 @@ type Equalizer struct {
 	// LDAC or aptX; the reading is still there, it just does nothing.
 	Available   bool   `json:"available"`
 	Unavailable string `json:"unavailable,omitempty"`
+	// Codecs are the codecs, as CodecOption slugs, over which the device does
+	// apply an equalizer — so the panel can offer to switch to one.
+	Codecs []string `json:"codecs"`
 	// Preset is a slug from EQPresets.
 	Preset  string     `json:"preset"`
 	Presets []EQPreset `json:"presets"`
@@ -611,6 +617,49 @@ func (e *Equalizer) Band(slug string) *EQBand {
 	return nil
 }
 
+// Codec is which Bluetooth codec a headset's audio is played over, and which
+// others the sound server would use instead.
+type Codec struct {
+	// Current is empty when the card is not playing to the headset at all —
+	// in a call on the hands-free profile, or switched off.
+	Current string        `json:"current"`
+	Options []CodecOption `json:"options"`
+}
+
+type CodecOption struct {
+	Slug  string `json:"slug"`
+	Label string `json:"label"`
+}
+
+// codecSlugs are the codecs PipeWire's Bluetooth layer can play over, in
+// rough order of quality. The index is what a Setting carries.
+var codecSlugs = []string{
+	"sbc", "sbc-xq", "faststream", "aac", "aac-eld", "aptx", "aptx-ll",
+	"aptx-hd", "opus-05", "lc3", "lc3plus-hr", "ldac",
+}
+
+// CodecSlug turns the sound server's name for a codec — "aptX HD", "SBC-XQ" —
+// into a slug.
+func CodecSlug(label string) string {
+	return strings.ToLower(strings.ReplaceAll(strings.TrimSpace(label), " ", "-"))
+}
+
+func CodecValue(slug string) (uint32, bool) {
+	for i, candidate := range codecSlugs {
+		if candidate == slug {
+			return uint32(i), true
+		}
+	}
+	return 0, false
+}
+
+func CodecName(value uint32) string {
+	if int(value) < len(codecSlugs) {
+		return codecSlugs[value]
+	}
+	return ""
+}
+
 // DeviceState is everything a driver managed to read. Every field is optional:
 // a capability the device claims but the read failed for comes back null with
 // a line in Errors, rather than failing the whole device.
@@ -636,6 +685,7 @@ type DeviceState struct {
 	Buttons        []Button      `json:"buttons"`
 	NoiseControl   *NoiseControl `json:"noiseControl"`
 	Equalizer      *Equalizer    `json:"equalizer"`
+	Codec          *Codec        `json:"codec"`
 	// Errors holds non-fatal problems, one per capability that could not be
 	// read. Never nil, so it marshals as [] rather than null.
 	Errors []string `json:"errors"`
@@ -702,6 +752,8 @@ const (
 
 	// SettingEQPreset picks a preset. Bands are eq-<band slug>; see EQBandKey.
 	SettingEQPreset SettingKey = "eq-preset"
+
+	SettingCodec SettingKey = "codec"
 
 	// HITS is per click and per field, so each combination is its own key.
 	// Three fields across two buttons is small enough to name outright, and
@@ -806,6 +858,13 @@ func ParseSetting(key, value string) (Setting, error) {
 			return Setting{}, fmt.Errorf("%q is not on or off", value)
 		}
 		return Setting{Key: SettingFocusOnVoice, Value: on}, nil
+	case "codec":
+		codec, ok := CodecValue(CodecSlug(value))
+		if !ok {
+			return Setting{}, fmt.Errorf("%q is not a codec (expected one of: %s)",
+				value, strings.Join(codecSlugs, ", "))
+		}
+		return Setting{Key: SettingCodec, Value: codec}, nil
 	case "eq-preset":
 		preset, ok := EQPresetValue(value)
 		if !ok {
@@ -853,7 +912,7 @@ func ParseSetting(key, value string) (Setting, error) {
 		return Setting{}, fmt.Errorf("unknown setting %q (expected one of: dpi, "+
 			"polling-rate, profile-mode, smart-shift-mode, smart-shift-threshold, "+
 			"wheel-hi-res, wheel-invert, host, thumbwheel, button-<name>, "+
-			"noise-mode, ambient-level, focus-on-voice, eq-preset, eq-<band>, "+
+			"noise-mode, ambient-level, focus-on-voice, eq-preset, eq-<band>, codec, "+
 			"hits-{left,right}-{actuation,rapid-trigger,haptics})", key)
 	}
 
@@ -971,6 +1030,11 @@ func (s *DeviceState) Reading(key SettingKey) (uint32, bool) {
 	case SettingFocusOnVoice:
 		if s.NoiseControl != nil {
 			return boolToValue(s.NoiseControl.FocusOnVoice), true
+		}
+
+	case SettingCodec:
+		if s.Codec != nil {
+			return CodecValue(s.Codec.Current)
 		}
 
 	case SettingEQPreset:

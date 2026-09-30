@@ -333,16 +333,34 @@ Rectangle {
                 }
             }
 
-            EqualizerControl {
+            // The codec decides whether the equalizer can be used at all.
+            // The Equalizer tab says so when it cannot, and offers to switch.
+            CodecControl {
                 bar: root.bar
                 busy: root.busy
-                equalizer: root.device ? root.device.equalizer : null
-                onPresetRequested: function (preset) {
-                    root.settingRequested("eq-preset", preset);
+                codec: root.device ? root.device.codec : null
+                onRequested: function (codec) {
+                    root.settingRequested("codec", codec);
                 }
-                onBandRequested: function (band, level) {
-                    root.settingRequested("eq-" + band, String(level));
-                }
+            }
+        }
+
+        // --- equalizer -----------------------------------------------------
+        EqualizerControl {
+            bar: root.bar
+            busy: root.busy
+            fixCodec: Model.eqCodec(root.device)
+            equalizer: root.device ? root.device.equalizer : null
+            visible: root.showingDetail && root.currentTab === "equalizer"
+                && root.device && root.device.equalizer !== null
+            onPresetRequested: function (preset) {
+                root.settingRequested("eq-preset", preset);
+            }
+            onBandRequested: function (band, level) {
+                root.settingRequested("eq-" + band, String(level));
+            }
+            onCodecRequested: function (codec) {
+                root.settingRequested("codec", codec);
             }
         }
 

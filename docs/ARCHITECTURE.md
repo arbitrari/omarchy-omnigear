@@ -457,8 +457,25 @@ applies nothing. The headset's own answer to "is the equalizer available"
 (`52 01`) says `00` either way, so it is no help; the codec is (`18 00`), and
 each of SBC `01`, AAC `02`, LDAC `10`, aptX `20` and aptX HD `21` was read off
 the headset with PipeWire switched to it. The panel says which codec is in the
-way rather than offering sliders that do nothing. Which codec is used is the
-host's choice, not the headset's — `pactl set-card-profile` picks it.
+way rather than offering sliders that do nothing.
+
+**The codec is the host's, not the headset's.** Both ends offer what they
+support and PipeWire picks, as the card profile: `a2dp-sink-aac` is AAC. So
+`drivers/a2dp` switches it through `transport/pactl` and says nothing to the
+headset at all, which is also why any Bluetooth headset could reuse it. The
+codec is only named in the profile's description — the default profile is
+plain `a2dp-sink`, whichever codec that is — so it is read from there.
+`set-card-profile` returns before the switch lands; reading straight after it
+sometimes found the old profile, so the write waits until the card reports the
+new one.
+
+A switch takes the audio output away for a moment, and a media player whose
+output disappears pauses — Spotify did, half a second in, before the switch had
+even finished. So `transport/mpris` notes which players are playing before the
+switch and plays the ones that paused, over the session bus. Play is repeated
+until the player says it is playing, because Spotify ignored one sent too soon
+after a pause. A player that was already paused, or that kept playing, is left
+alone.
 
 **The bar reads one device per kind.** A mouse and a headset each get their
 own reading and their own primary (`primaryMouse`, `primaryHeadset`), rather

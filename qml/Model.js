@@ -142,9 +142,18 @@ function parseDevice(raw) {
       maxAmbientLevel: Number(s.noiseControl.maxAmbientLevel) || 1,
       focusOnVoice: s.noiseControl.focusOnVoice === true
     } : null,
+    codec: s.codec ? {
+      current: safeText(s.codec.current, "", 24),
+      options: (Array.isArray(s.codec.options) ? s.codec.options : []).map(function (o) {
+        return { slug: safeText(o.slug, "", 24), label: safeText(o.label, "", 24) }
+      })
+    } : null,
     equalizer: s.equalizer ? {
       available: s.equalizer.available === true,
       unavailable: safeText(s.equalizer.unavailable, "", 128),
+      codecs: (Array.isArray(s.equalizer.codecs) ? s.equalizer.codecs : []).map(function (c) {
+        return safeText(c, "", 24)
+      }),
       preset: safeText(s.equalizer.preset, "", 24),
       presets: (Array.isArray(s.equalizer.presets) ? s.equalizer.presets : []).map(function (p) {
         return { slug: safeText(p.slug, "", 24), label: safeText(p.label, "", 32) }
@@ -453,7 +462,8 @@ var TAB_GROUPS = [
   { id: "triggers", label: "Triggers", capabilities: ["hits"] },
   { id: "buttons", label: "Buttons", capabilities: ["buttons"] },
   { id: "hosts", label: "Hosts", capabilities: ["host"] },
-  { id: "sound", label: "Sound", capabilities: ["noise-control", "equalizer"] }
+  { id: "sound", label: "Sound", capabilities: ["noise-control", "codec"] },
+  { id: "equalizer", label: "Equalizer", capabilities: ["equalizer"] }
 ]
 
 /// The devices of one kind. Each kind gets its own primary, because "the
@@ -490,6 +500,7 @@ function capabilityLabel(capability) {
   case "buttons": return "Buttons"
   case "noise-control": return "Noise Control"
   case "equalizer": return "Equalizer"
+  case "codec": return "Codec"
   default: return capability
   }
 }
@@ -513,7 +524,7 @@ function unsupportedCapabilities(device) {
   if (!device) return []
   var handled = ["battery", "dpi", "polling-rate", "onboard-profile", "hits",
                  "smart-shift", "hi-res-wheel", "host", "thumbwheel", "buttons",
-                 "noise-control", "equalizer"]
+                 "noise-control", "equalizer", "codec"]
   return device.capabilities.filter(function (c) {
     return handled.indexOf(c) === -1
   })
@@ -563,6 +574,28 @@ function eqPresetLabel(equalizer) {
     if (equalizer.presets[i].slug === equalizer.preset) return equalizer.presets[i].label
   }
   return ""
+}
+
+/// The label of the codec playing now. Empty current means the card is not
+/// playing to the headset at all — in a call, on the hands-free profile.
+function codecLabel(codec) {
+  if (!codec) return ""
+  for (var i = 0; i < codec.options.length; i++) {
+    if (codec.options[i].slug === codec.current) return codec.options[i].label
+  }
+  return "Hands-Free"
+}
+
+/// The best codec the sound server offers that the equalizer works over, or
+/// null. "Best" is the order the codec list is already in, which puts the
+/// highest quality last.
+function eqCodec(device) {
+  if (!device || !device.codec || !device.equalizer) return null
+  var best = null
+  device.codec.options.forEach(function (option) {
+    if (device.equalizer.codecs.indexOf(option.slug) !== -1) best = option
+  })
+  return best
 }
 
 /// A band level with its sign, so +3 and -3 read as the opposites they are.

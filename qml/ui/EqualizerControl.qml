@@ -19,9 +19,14 @@ Column {
     property var equalizer: null
     property QtObject bar: null
     property bool busy: false
+    // The best codec the equalizer works over, when the codec can be switched
+    // from the panel: { slug, label }, or null. Offered as a one-press fix
+    // when the equalizer is unavailable.
+    property var fixCodec: null
 
     signal presetRequested(string preset)
     signal bandRequested(string band, int level)
+    signal codecRequested(string codec)
 
     readonly property color foreground: bar ? bar.foreground : Color.foreground
     readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
@@ -29,7 +34,6 @@ Column {
 
     width: parent ? parent.width : implicitWidth
     spacing: Style.space(10)
-    visible: equalizer !== null
     opacity: busy ? 0.5 : 1.0
     enabled: !busy
 
@@ -59,6 +63,18 @@ Column {
             font.pixelSize: Style.font.caption
         }
 
+        Button {
+            visible: !root.available && root.fixCodec !== null
+            text: root.fixCodec ? "Switch to " + root.fixCodec.label : ""
+            foreground: root.foreground
+            background: root.bar ? root.bar.background : Color.background
+            accent: Color.accent
+            fontFamily: root.fontFamily
+            fontSize: Style.font.bodySmall
+            focusable: false
+            onClicked: root.codecRequested(root.fixCodec.slug)
+        }
+
         Dropdown {
             width: parent.width
             visible: root.available
@@ -75,33 +91,76 @@ Column {
         }
     }
 
-    Repeater {
-        model: root.available && root.equalizer ? root.equalizer.bands : []
+    // The bands side by side, low to high, the way an equalizer is drawn
+    // everywhere else, so the shape of the curve can be read at a glance.
+    Row {
+        id: bands
+        width: parent.width
+        visible: root.available && root.equalizer !== null
 
-        delegate: Column {
-            id: band
-            required property var modelData
+        readonly property int count: root.equalizer ? root.equalizer.bands.length : 0
+        readonly property real sliderLength: Style.space(140)
 
-            width: root.width
-            spacing: Style.space(4)
+        Repeater {
+            model: bands.visible ? root.equalizer.bands : []
 
-            SettingHeader {
-                bar: root.bar
-                label: band.modelData.label
-                value: Model.signedLevel(band.modelData.value)
-            }
+            delegate: Column {
+                id: band
+                required property var modelData
 
-            SquaredSlider {
-                width: parent.width
-                height: Style.spacing.controlHeight
-                bar: root.bar
-                minimum: root.equalizer.min
-                maximum: root.equalizer.max
-                value: band.modelData.value
-                step: 1
-                integer: true
-                onReleased: function (v) {
-                    root.bandRequested(band.modelData.slug, Math.round(v));
+                width: bands.count > 0 ? bands.width / bands.count : 0
+                spacing: Style.space(6)
+
+                Text {
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    text: Model.signedLevel(band.modelData.value)
+                    textFormat: Text.PlainText
+                    color: root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                }
+
+                // The vendored slider only runs left to right, and is kept
+                // byte-for-byte close to upstream, so it is turned rather than
+                // taught a second orientation. A quarter turn anticlockwise
+                // puts the minimum at the bottom; the mouse is mapped through
+                // the rotation, so dragging and the wheel still go the way
+                // they look.
+                Item {
+                    width: parent.width
+                    height: bands.sliderLength
+
+                    SquaredSlider {
+                        anchors.centerIn: parent
+                        width: parent.height
+                        height: Style.spacing.controlHeight
+                        rotation: -90
+                        bar: root.bar
+                        minimum: root.equalizer.min
+                        maximum: root.equalizer.max
+                        value: band.modelData.value
+                        step: 1
+                        integer: true
+                        // A notch at each end and one at the middle, so flat
+                        // is visible without a number.
+                        tickCount: 3
+                        onReleased: function (v) {
+                            root.bandRequested(band.modelData.slug, Math.round(v));
+                        }
+                    }
+                }
+
+                Text {
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    text: band.modelData.label
+                    textFormat: Text.PlainText
+                    color: Qt.darker(root.foreground, 1.4)
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                    font.bold: true
                 }
             }
         }
