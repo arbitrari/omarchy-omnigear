@@ -319,6 +319,29 @@ function primary(devices, preferredId) {
   })
 }
 
+/// The devices the bar speaks for: one per kind, in the README's order.
+///
+/// A mouse and a headset are separate questions — the headset dying is not
+/// less urgent because the mouse is lower — so each kind gets its own primary
+/// and its own reading, rather than one device speaking for all of them.
+/// `preferred` maps a category to the id the user chose for it.
+function barDevices(devices, preferred) {
+  var chosen = preferred || {}
+  var out = []
+  for (var i = 0; i < CATEGORY_ORDER.length; i++) {
+    var category = CATEGORY_ORDER[i]
+    var device = primary(devicesOfCategory(devices, category), chosen[category] || "")
+    if (device) out.push(device)
+  }
+  // Nothing catalogued is answering. An uncatalogued device will still do
+  // rather than leave the bar blank.
+  if (out.length === 0) {
+    var any = primary(devices, "")
+    if (any) out.push(any)
+  }
+  return out
+}
+
 /// Whether a device is taking on charge right now.
 function isCharging(device) {
   return !!device && !!device.battery && device.battery.status === "charging"
@@ -331,25 +354,6 @@ var CHARGING_BOLT = "\uF0E7"
 function barCharge(device, showPercentage) {
   if (!device || !device.battery || !showPercentage) return ""
   return batteryReading(device.battery)
-}
-
-/// How many icon slots the bar label needs, so the widget reserves the right
-/// width for the charge reading and the device icon beside it.
-function barSlots(device, showPercentage) {
-  // The OmniGear mark stands in until the first read lands, and a wordmark is
-  // wider than the square-ish glyph a slot is cut for. It fits a single slot
-  // at the default bar font; the margin is for a theme that sets a larger one.
-  if (!device) return 1.2
-
-  var slots = 1.0
-  if (showPercentage && device && device.battery) {
-    // Sized from the reading itself rather than assumed to be three
-    // characters: a device that reports steps instead of a percentage shows
-    // a word, and "Critical" is not the width of "91%".
-    slots += 0.4 * barCharge(device, showPercentage).length
-  }
-  if (isCharging(device)) slots += 0.5
-  return slots
 }
 
 function tooltip(state) {

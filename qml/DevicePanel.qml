@@ -48,6 +48,7 @@ Panel {
     // Which mouse the user picked to speak for the bar. Owned by the bar
     // widget, because that is where the widget's settings live.
     property string primaryMouseId: ""
+    property string primaryHeadsetId: ""
 
     // Space held back down the right for the scrollbar.
     //
@@ -58,10 +59,16 @@ Panel {
     readonly property int gutter: Style.space(8)
 
     readonly property int mouseCount: Model.devicesOfCategory(state.devices, "mouse").length
+    readonly property int headsetCount: Model.devicesOfCategory(state.devices, "headset").length
 
     function choosePrimaryMouse(deviceId) {
         if (hostWidget && typeof hostWidget.setPrimaryMouse === "function")
             hostWidget.setPrimaryMouse(deviceId);
+    }
+
+    function choosePrimaryHeadset(deviceId) {
+        if (hostWidget && typeof hostWidget.setPrimaryHeadset === "function")
+            hostWidget.setPrimaryHeadset(deviceId);
     }
 
     // Hands a device to the CLI to be written up, and opens the prefilled
@@ -337,9 +344,8 @@ Panel {
             // lives once at the foot of the panel instead of repeating as an
             // ornament on every card.
             //
-            // One chooser per kind of device. Only mice report a battery to
-            // the bar today; a keyboard or headset that does will add its own
-            // chooser here rather than change this one.
+            // One chooser per kind of device that reports a battery to the
+            // bar. A keyboard that does will add its own here.
             Item {
                 id: footer
                 anchors.left: parent.left
@@ -349,7 +355,7 @@ Panel {
                 // Computed from the model, not from the chooser's own
                 // visibility: a parent whose visibility depends on its child's
                 // does not re-evaluate when that child's data arrives.
-                visible: root.mouseCount > 1
+                visible: root.mouseCount > 1 || root.headsetCount > 1
                 height: visible ? footerBody.implicitHeight : 0
 
                 Column {
@@ -371,6 +377,16 @@ Panel {
                         current: root.primaryMouseId
                         onChosen: function (deviceId) {
                             root.choosePrimaryMouse(deviceId);
+                        }
+                    }
+
+                    PrimaryChooser {
+                        bar: root.bar
+                        label: "Primary Headset"
+                        devices: Model.devicesOfCategory(root.state.devices, "headset")
+                        current: root.primaryHeadsetId
+                        onChosen: function (deviceId) {
+                            root.choosePrimaryHeadset(deviceId);
                         }
                     }
                 }

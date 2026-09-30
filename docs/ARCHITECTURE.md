@@ -451,6 +451,18 @@ the rest over. Two things found on the hardware:
 - The on byte must be written as `11`. Written as `01`, as the headset itself
   reports it, the mode changes and a new level is silently ignored.
 
+**The bar reads one device per kind.** A mouse and a headset each get their
+own reading and their own primary (`primaryMouse`, `primaryHeadset`), rather
+than the lowest battery of everything speaking for all of it — a dying headset
+is not less urgent because the mouse is lower.
+
+Headphones come and go far more often than a mouse, and with the panel shut a
+full read is fifteen minutes apart. So `omnigear battery` lists every connected
+headset, with `percent: -1` when BlueZ has no charge for it, and the bar treats
+a change in that set as a reason for a full read now. Without it a pair just
+switched on would be missing from the bar for up to fifteen minutes, and a pair
+just switched off would linger there as long.
+
 Straight after a mode change the headset plays a voice prompt, and a
 connection opened during it occasionally goes unanswered. `mdr.Open` retries
 the init once.

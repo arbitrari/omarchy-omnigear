@@ -17,15 +17,15 @@ Item {
     readonly property var devices: internal.state.devices
     readonly property bool ok: internal.state.ok
     readonly property string error: internal.state.error
-    readonly property var primary: Model.primary(internal.state.devices, root.preferredDeviceId)
+    // One device per kind that speaks for the bar, in the README's order.
+    readonly property var barDevices: Model.barDevices(internal.state.devices, root.preferred)
 
-    // Which mouse the user picked to speak for the bar. Empty means "decide
-    // for me". Scoped per kind of device, so a keyboard or headset battery can
-    // be chosen independently once those are reported too.
-    readonly property string preferredDeviceId: {
-        var chosen = settings ? settings.primaryMouse : "";
-        return chosen ? String(chosen) : "";
-    }
+    // Which device of each kind the user picked to speak for the bar, by
+    // category. An empty id means "decide for me".
+    readonly property var preferred: ({
+        mouse: settings && settings.primaryMouse ? String(settings.primaryMouse) : "",
+        headset: settings && settings.primaryHeadset ? String(settings.primaryHeadset) : ""
+    })
     readonly property bool busy: listProcess.running || setProcess.running
 
     // What the binary was built from. Fixed for the life of the process, so it
@@ -182,6 +182,13 @@ Item {
         property double lastFullRead: 0
 
         function applyBatteries(readings) {
+            if (headsetsChanged(readings)) {
+                // A headset arrived or left. The cheap reply cannot describe
+                // one it has never seen, so this is worth a full read now
+                // rather than up to fifteen minutes from now.
+                root.refresh();
+                return;
+            }
             if (!readings || readings.length === 0)
                 return;
             var byId = {};
@@ -197,6 +204,25 @@ Item {
                 note: state.note,
                 unreadable: state.unreadable
             };
+        }
+
+        // Whether the battery reply names a different set of headsets than
+        // the last full read found. It lists every connected one, so a
+        // difference either way is an arrival or a departure.
+        function headsetsChanged(readings) {
+            var known = {};
+            state.devices.forEach(function (device) {
+                if (device.category === "headset")
+                    known[device.id] = true;
+            });
+            var seen = {};
+            var arrived = (readings || []).some(function (reading) {
+                seen[reading.id] = true;
+                return reading.id.indexOf("headset/") === 0 && !known[reading.id];
+            });
+            return arrived || Object.keys(known).some(function (id) {
+                return !seen[id];
+            });
         }
 
         // Replace one device in place, leaving the others alone. A `set` reply

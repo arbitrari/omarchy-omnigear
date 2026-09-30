@@ -10,7 +10,8 @@ import (
 
 // batteryReading is one device's charge, as the kernel has it.
 type batteryReading struct {
-	ID      string `json:"id"`
+	ID string `json:"id"`
+	// Percent is -1 for a headset BlueZ has no charge for.
 	Percent int    `json:"percent"`
 	Level   string `json:"level,omitempty"`
 	Status  string `json:"status"`
@@ -51,14 +52,23 @@ func cmdBattery() (reply, error) {
 
 	// Headsets are not in hidraw. BlueZ keeps their charge instead, from what
 	// the headset reports over the hands-free link of its own accord.
+	//
+	// Every connected one is listed, with or without a charge, because this
+	// reply doubles as the list of which headsets are here at all. Headphones
+	// come and go far more often than a mouse, and the bar learns of an
+	// arrival or a departure from this rather than waiting on a full read.
 	for _, device := range bluez.Connected() {
 		entry := catalog.FindByUSB(device.Vendor, device.Product)
-		if entry == nil || entry.Category != model.Headset || device.Battery == nil {
+		if entry == nil || entry.Category != model.Headset {
 			continue
+		}
+		percent := -1
+		if device.Battery != nil {
+			percent = *device.Battery
 		}
 		readings = append(readings, batteryReading{
 			ID:      discovery.IDFor(entry, device.Address),
-			Percent: *device.Battery,
+			Percent: percent,
 			// BlueZ's Battery1 has a percentage and nothing about charging.
 			Status: "unknown",
 		})

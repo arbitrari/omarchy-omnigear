@@ -20,7 +20,8 @@
     "defaults": {
       "pollInterval": 20,
       "showPercentage": true,
-      "primaryMouse": ""
+      "primaryMouse": "",
+      "primaryHeadset": ""
     },
     "schema": [
       {
