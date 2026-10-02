@@ -156,13 +156,12 @@ Item {
       root.released(root.liveValue)
       root.liveValue = root.value
     }
+    // The wheel is not the slider's. Every slider here sits in a panel that
+    // scrolls, and taking the wheel meant scrolling past one changed it —
+    // a write to the device, from someone who was only reading. Passing it
+    // on lets the panel scroll over the slider as it does anywhere else.
     onWheel: function(wheel) {
-      var delta = wheel.angleDelta.y > 0 ? root.step : -root.step
-      var next = Math.max(root.minimum, Math.min(root.maximum, root.liveValue + delta))
-      if (root.integer) next = Math.round(next)
-      root.liveValue = next
-      root.moved(next)
-      root.released(next)
+      wheel.accepted = false
     }
   }
 }
