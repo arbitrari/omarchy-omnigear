@@ -166,6 +166,10 @@ const (
 	// CapWirelessMode — whether a headset's own wireless link favours
 	// latency or range.
 	CapWirelessMode Capability = "wireless-mode"
+	// CapSonar — separate outputs for game, chat, media and the rest, with a
+	// ChatMix dial on the device balancing game against chat. The outputs
+	// are the sound server's; the dial is the device's.
+	CapSonar Capability = "sonar"
 )
 
 // USBID is a vendor/product pair a model shows up as. A model that enumerates
@@ -221,6 +225,17 @@ type Speaker interface {
 // one the driver can read.
 type BatteryReader interface {
 	Battery(node hidraw.Node) (reading BatteryReading, ok bool)
+}
+
+// ChatMixer is a driver for a device with a ChatMix dial, which reports the
+// dial as it turns.
+//
+// Watch blocks, calling onMix with the game and chat levels, each 0–100,
+// every time the dial moves, and returns only when the device can no longer
+// be read. The device says nothing until the dial moves; there is no reading
+// to ask for.
+type ChatMixer interface {
+	WatchChatMix(node hidraw.Node, onMix func(game, chat uint8)) error
 }
 
 // BatteryReading is a cheap battery answer. Battery is nil when the device is
@@ -800,6 +815,25 @@ type DSEE struct {
 	Label string `json:"label"`
 }
 
+// Sonar is whether a headset's separate outputs exist.
+type Sonar struct {
+	Enabled bool `json:"enabled"`
+	// Live is false when Sonar is on but the sound server has not made the
+	// outputs, which needs the headset plugged in.
+	Live     bool           `json:"live"`
+	Channels []SonarChannel `json:"channels"`
+}
+
+// SonarChannel is one output, and the sink applications are pointed at to
+// use it.
+type SonarChannel struct {
+	Slug  string `json:"slug"`
+	Label string `json:"label"`
+	Sink  string `json:"sink"`
+	// Mixed is true for the channels the ChatMix dial balances.
+	Mixed bool `json:"mixed"`
+}
+
 // DeviceState is everything a driver managed to read. Every field is optional:
 // a capability the device claims but the read failed for comes back null with
 // a line in Errors, rather than failing the whole device.
@@ -835,6 +869,7 @@ type DeviceState struct {
 	MuteLight      *Level        `json:"muteLight"`
 	Gain           *Choice       `json:"gain"`
 	WirelessMode   *Choice       `json:"wirelessMode"`
+	Sonar          *Sonar        `json:"sonar"`
 	// Errors holds non-fatal problems, one per capability that could not be
 	// read. Never nil, so it marshals as [] rather than null.
 	Errors []string `json:"errors"`
@@ -919,6 +954,8 @@ const (
 	// SettingWirelessMode drops the headset's link while it moves over; see
 	// drivers/steelseries.
 	SettingWirelessMode SettingKey = "wireless-mode"
+	// SettingSonar restarts the sound server; see package sonar.
+	SettingSonar SettingKey = "sonar"
 
 	// HITS is per click and per field, so each combination is its own key.
 	// Three fields across two buttons is small enough to name outright, and
@@ -1030,7 +1067,7 @@ func ParseSetting(key, value string) (Setting, error) {
 				value, strings.Join(codecSlugs, ", "))
 		}
 		return Setting{Key: SettingCodec, Value: codec}, nil
-	case "dsee", "speak-to-chat", "touch-panel":
+	case "dsee", "speak-to-chat", "touch-panel", "sonar":
 		on, ok := parseSwitch(value)
 		if !ok {
 			return Setting{}, fmt.Errorf("%q is not on or off", value)
@@ -1116,7 +1153,7 @@ func ParseSetting(key, value string) (Setting, error) {
 			"polling-rate, profile-mode, smart-shift-mode, smart-shift-threshold, "+
 			"wheel-hi-res, wheel-invert, host, thumbwheel, button-<name>, "+
 			"noise-mode, ambient-level, focus-on-voice, eq-preset, eq-<band>, codec, auto-power-off, dsee, speak-to-chat, touch-panel, "+
-			"sidetone, mic-volume, mute-light, gain, wireless-mode, "+
+			"sidetone, mic-volume, mute-light, gain, wireless-mode, sonar, "+
 			"hits-{left,right}-{actuation,rapid-trigger,haptics})", key)
 	}
 
@@ -1279,6 +1316,11 @@ func (s *DeviceState) Reading(key SettingKey) (uint32, bool) {
 	case SettingWirelessMode:
 		if s.WirelessMode != nil {
 			return WirelessModeValue(s.WirelessMode.Current)
+		}
+
+	case SettingSonar:
+		if s.Sonar != nil {
+			return boolToValue(s.Sonar.Enabled), true
 		}
 
 	case SettingMicVolume:

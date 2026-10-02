@@ -16,6 +16,9 @@ Rectangle {
     id: root
 
     property var device: null
+    // Where the device's ChatMix dial is, from the service's listener; null
+    // until it has moved.
+    property var chatMix: null
     property QtObject bar: null
     property bool busy: false
 
@@ -443,6 +446,19 @@ Rectangle {
             on: root.device ? root.device.touchPanel : null
             onRequested: function (on) {
                 root.settingRequested("touch-panel", on ? "on" : "off");
+            }
+        }
+
+        // --- sonar ---------------------------------------------------------
+        SonarControl {
+            bar: root.bar
+            busy: root.busy
+            visible: root.showingDetail && root.currentTab === "sonar"
+                && root.device && root.device.sonar !== null
+            sonar: root.device ? root.device.sonar : null
+            chatMix: root.chatMix
+            onRequested: function (on) {
+                root.settingRequested("sonar", on ? "on" : "off");
             }
         }
 

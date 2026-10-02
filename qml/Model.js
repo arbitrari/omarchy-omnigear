@@ -161,6 +161,18 @@ function parseDevice(raw) {
     gain: parseChoice(s.gain),
     wirelessMode: parseChoice(s.wirelessMode),
     micVolume: parseLevel(s.micVolume),
+    sonar: s.sonar ? {
+      enabled: s.sonar.enabled === true,
+      live: s.sonar.live === true,
+      channels: (Array.isArray(s.sonar.channels) ? s.sonar.channels : []).map(function (c) {
+        return {
+          slug: safeText(c.slug, "", 16),
+          label: safeText(c.label, "", 32),
+          sink: safeText(c.sink, "", 64),
+          mixed: c.mixed === true
+        }
+      })
+    } : null,
     muteLight: parseLevel(s.muteLight),
     equalizer: s.equalizer ? {
       available: s.equalizer.available === true,
@@ -525,6 +537,7 @@ var TAB_GROUPS = [
   { id: "equalizer", label: "Equalizer", capabilities: ["equalizer"] },
   { id: "mic", label: "Mic", capabilities: ["mic-volume", "sidetone", "mute-light"] },
   { id: "controls", label: "Controls", capabilities: ["touch-panel"] },
+  { id: "sonar", label: "Sonar", capabilities: ["sonar"] },
   { id: "wireless", label: "Wireless", capabilities: ["wireless-mode"] },
   { id: "power", label: "Power", capabilities: ["auto-power-off"] }
 ]
@@ -573,6 +586,7 @@ function capabilityLabel(capability) {
   case "mute-light": return "Mute Light"
   case "gain": return "Gain"
   case "wireless-mode": return "Wireless Mode"
+  case "sonar": return "Sonar"
   default: return capability
   }
 }
@@ -597,7 +611,7 @@ function unsupportedCapabilities(device) {
   var handled = ["battery", "dpi", "polling-rate", "onboard-profile", "hits",
                  "smart-shift", "hi-res-wheel", "host", "thumbwheel", "buttons",
                  "noise-control", "equalizer", "codec", "auto-power-off", "dsee", "speak-to-chat", "touch-panel",
-                 "sidetone", "mic-volume", "mute-light", "gain", "wireless-mode"]
+                 "sidetone", "mic-volume", "mute-light", "gain", "wireless-mode", "sonar"]
   return device.capabilities.filter(function (c) {
     return handled.indexOf(c) === -1
   })
@@ -988,4 +1002,25 @@ function missingBinaryState(pluginDir) {
     + "cd " + pluginDir + "\n"
     + "mise exec -- go build -ldflags=\"-s -w\" -o bin/omnigear ./cmd/omnigear"
   return state
+}
+
+
+/// One line of `omnigear chatmix`: where a device's ChatMix dial is, as game
+/// and chat levels from 0 to 100. Null for a line that is not one.
+function parseChatMix(line) {
+  if (typeof line !== "string" || line === "" || line.length > 1024) return null
+  var data
+  try { data = JSON.parse(line) } catch (e) { return null }
+  if (!data || typeof data.id !== "string") return null
+  return {
+    id: safeText(data.id, "", 128),
+    game: Math.max(0, Math.min(100, Number(data.game) || 0)),
+    chat: Math.max(0, Math.min(100, Number(data.chat) || 0)),
+    error: safeText(data.error, "", 256)
+  }
+}
+
+/// Whether any device has a ChatMix dial worth listening to.
+function wantsChatMix(devices) {
+  return (devices || []).some(function (d) { return has(d, "sonar") })
 }

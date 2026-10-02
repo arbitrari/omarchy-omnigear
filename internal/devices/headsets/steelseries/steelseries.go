@@ -37,6 +37,7 @@ var Entries = []model.Entry{
 			model.CapMuteLight,
 			model.CapWirelessMode,
 			model.CapAutoPowerOff,
+			model.CapSonar,
 		},
 		Driver: driver.NovaProWireless,
 	},

@@ -28,6 +28,12 @@ Item {
     })
     readonly property bool busy: listProcess.running || setProcess.running
 
+    // Where each ChatMix dial is, by device id: { game, chat }, each 0–100.
+    // Kept apart from the device list because that list is replaced on every
+    // read, and the dial is only reported as it moves; a read would otherwise
+    // wipe a position that will not be said again until the dial is touched.
+    readonly property var chatMix: internal.chatMix
+
     // What the binary was built from. Fixed for the life of the process, so it
     // is asked once at startup rather than riding along on every poll.
     readonly property var build: internal.build
@@ -151,6 +157,7 @@ Item {
         property var build: ({ branch: "", commit: "", label: "" })
         property string pendingId: ""
         property string pendingKey: ""
+        property var chatMix: ({})
 
         // Counts completed writes. A read that started before a write finished
         // is carrying pre-write values, and applying it would undo what the
@@ -249,6 +256,55 @@ Item {
                 unreadable: state.unreadable
             };
         }
+    }
+
+    // --- ChatMix ---------------------------------------------------------
+    //
+    // The one process that is kept running rather than run per poll. A
+    // ChatMix dial is reported only as it turns, so something has to be
+    // listening at the time; `omnigear chatmix` applies each position to the
+    // Sonar channels itself and prints it here, one JSON line per movement.
+    // It is started only while a device with a dial is present, and the CLI
+    // asks the kernel to stop it if the shell goes away.
+    readonly property bool wantsChatMix: binaryChecked && !binaryMissing
+        && Model.wantsChatMix(internal.state.devices)
+
+    onWantsChatMixChanged: {
+        if (wantsChatMix && !chatMixProcess.running)
+            chatMixProcess.running = true;
+        else if (!wantsChatMix && chatMixProcess.running)
+            chatMixProcess.running = false;
+    }
+
+    Process {
+        id: chatMixProcess
+        command: [root.binary, "chatmix"]
+
+        stdout: SplitParser {
+            onRead: function (line) {
+                var mix = Model.parseChatMix(line);
+                if (!mix)
+                    return;
+                var next = {};
+                for (var id in internal.chatMix)
+                    next[id] = internal.chatMix[id];
+                next[mix.id] = { game: mix.game, chat: mix.chat, error: mix.error };
+                internal.chatMix = next;
+            }
+        }
+
+        // It only ever stops on purpose or by failing. A failure is retried
+        // after a pause rather than at once, so a binary that cannot run does
+        // not spin.
+        onExited: if (root.wantsChatMix)
+            chatMixRestart.start()
+    }
+
+    Timer {
+        id: chatMixRestart
+        interval: 5000
+        onTriggered: if (root.wantsChatMix && !chatMixProcess.running)
+            chatMixProcess.running = true
     }
 
     // Refresh charge without touching the hardware. What comes back is folded

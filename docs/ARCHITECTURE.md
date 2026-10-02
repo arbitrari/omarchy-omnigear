@@ -572,6 +572,60 @@ is left is the media-key node. Rather than report that as a missing device,
 the driver looks for an interface bound to usbfs and names whoever holds the
 USB device open. Unlike a shared hidraw node, nothing can be read at all.
 
+## Sonar, and the one process that stays running
+
+SteelSeries Sonar gives a headset separate outputs for games, chat, media and
+everything else, and the base station's ChatMix dial balances game against
+chat. Here that is two halves that meet at the sound server.
+
+**The outputs are PipeWire's.** Each channel is a loopback: a virtual sink
+applications are pointed at, playing into the headset's own output. They are
+declared in a drop-in, `~/.config/pipewire/pipewire.conf.d/omnigear-sonar.conf`,
+rather than created by OmniGear, so PipeWire makes them at login whether the
+bar is running or not, and an application keeps its channel across reboots.
+The drop-in existing is what "on" means. A drop-in is only read at startup, so
+switching Sonar restarts PipeWire, and every stream drops for a moment; the
+switch says so.
+
+The headset's output is found by the USB ids of its sound card, which are the
+base station's own, so the catalog entry is all it takes. Two things learned
+switching it:
+
+- **PipeWire comes back in two halves.** The loopbacks are PipeWire's and
+  appear at once; the headset's output waits on WirePlumber finding the sound
+  card, a second or so later. Waiting on the channels alone returned a sound
+  server that was half up, and the next request failed with a bare "Not
+  supported". The wait is for both.
+- **The loopback cannot fall back.** Its playback side is passive, so an idle
+  channel does not hold the headset open, and `node.dont-fallback` is set:
+  with the headset unplugged and Game the default output, a fallback would
+  have Game play into the default — itself.
+
+**The dial scales the loopback's stream, not its sink.** The sink's volume is
+the listener's own, set in any mixer; the dial works on top of it, so turning
+toward Game quietens chat without losing the level chat was set to.
+
+**The dial is only reported as it turns.** `07 45 gg cc`, game and chat each
+0–100; turning toward one side lowers the other, never both. There is no
+reading to ask for, so something has to be listening when it moves, and that
+is the one exception to every command being a short-lived process:
+`omnigear chatmix` runs for as long as the bar does, applies each position
+itself, and prints it as one JSON line for the panel. Three things keep it
+cheap and safe:
+
+- It finds the base station by USB id and report descriptor only, opening
+  nothing else, so waiting for one to be plugged in does not ping every mouse
+  on the machine every few seconds.
+- The dial reports every ~40ms while turning, faster than `pactl` can be run.
+  One worker applies whichever position is newest and the rest are dropped.
+- It asks the kernel for `PR_SET_PDEATHSIG`, so a shell that crashes takes it
+  down rather than orphaning it.
+
+The base station never says where the dial is, only that it moved. That would
+leave the mix wrong after every restart, except that WirePlumber restores
+stream volumes by node name: the last position applied is the one that comes
+back.
+
 ## Writes are verified, never assumed
 
 A device can accept a write and quietly ignore it. `omnigear set` therefore
@@ -770,6 +824,9 @@ QML side never has to parse stderr:
 ```
 
 `schema` is bumped when the shape changes in a way that would break a reader.
+
+`omnigear chatmix` is the one exception: it streams one object per line, for
+as long as it runs. See Sonar above.
 
 ## Why Go
 

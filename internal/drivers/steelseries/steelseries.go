@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/arbitrari/omarchy-omnigear/internal/model"
+	"github.com/arbitrari/omarchy-omnigear/internal/sonar"
 	"github.com/arbitrari/omarchy-omnigear/internal/transport/arctis"
 	"github.com/arbitrari/omarchy-omnigear/internal/transport/hidraw"
 )
@@ -303,6 +304,12 @@ func (d driver) Read(device *model.Device) model.DeviceState {
 		}
 	}
 
+	if device.Entry.Has(model.CapSonar) {
+		if state.Sonar, err = readSonar(); err != nil {
+			state.Fail(model.CapSonar, err)
+		}
+	}
+
 	if !device.Entry.Has(model.CapGain) && !device.Entry.Has(model.CapMicVolume) &&
 		!device.Entry.Has(model.CapSidetone) {
 		return state
@@ -344,12 +351,18 @@ var settingCapabilities = map[model.SettingKey]model.Capability{
 	model.SettingMuteLight:    model.CapMuteLight,
 	model.SettingGain:         model.CapGain,
 	model.SettingWirelessMode: model.CapWirelessMode,
+	model.SettingSonar:        model.CapSonar,
 }
 
 func (d driver) Write(device *model.Device, setting *model.Setting) error {
 	capability, ok := settingCapabilities[setting.Key]
 	if !ok || !device.Entry.Has(capability) {
 		return fmt.Errorf("%s has no %s", device.Entry.Model, setting.Key)
+	}
+
+	// Sonar is the sound server's, and the base station is not spoken to.
+	if setting.Key == model.SettingSonar {
+		return writeSonar(device, setting.Value != 0)
 	}
 
 	conn, err := open(device.Node)
@@ -467,4 +480,69 @@ func open(node hidraw.Node) (*arctis.Conn, error) {
 		return nil, errors.New(message + "; close it to use OmniGear")
 	}
 	return nil, errors.New("the base station's control interface is missing")
+}
+
+func readSonar() (*model.Sonar, error) {
+	status, err := sonar.Read()
+	out := &model.Sonar{Enabled: status.Enabled, Live: status.Live}
+	for i, c := range sonar.Channels {
+		out.Channels = append(out.Channels, model.SonarChannel{
+			Slug: c.Slug, Label: c.Label, Sink: c.SinkName(),
+			// Game and Chat, the first two, are what the dial balances.
+			Mixed: i < 2,
+		})
+	}
+	return out, err
+}
+
+// writeSonar points the channels at the headset's own output, found by the
+// base station's USB ids: its sound card is the same USB device.
+func writeSonar(device *model.Device, on bool) error {
+	target, err := sonar.SinkFor(device.Node.Vendor, device.Node.Product)
+	if err != nil {
+		return fmt.Errorf("finding the headset's output: %w", err)
+	}
+	if on {
+		return sonar.Enable(target)
+	}
+	return sonar.Disable(target)
+}
+
+// chatMix is the base station reporting the ChatMix dial, unprompted, every
+// time it moves:
+//
+//	07 45 64 64   centred: game and chat both at 100
+//	07 45 64 3a   part way toward game: chat down to 58
+//	07 45 64 00   all the way to game: chat silent
+//	07 45 3a 64   part way toward chat: game down to 58
+//
+// Turning toward one side lowers the other, from 100 to 0 in twelve steps of
+// about eight; at no point are both below 100. Which side is which was read
+// with the dial turned fully to Game and left there.
+const chatMix = 0x45
+
+// reportNotice is the report the base station speaks unprompted on.
+const reportNotice = 0x07
+
+// WatchChatMix follows the dial until the base station goes away. Reading
+// alongside other readers is safe: a hidraw node hands every report to all
+// of them.
+func (driver) WatchChatMix(node hidraw.Node, onMix func(game, chat uint8)) error {
+	handle, err := node.Open()
+	if err != nil {
+		return err
+	}
+	defer handle.Close()
+	for {
+		report, err := handle.Read(time.Minute)
+		if errors.Is(err, hidraw.ErrTimeout) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if len(report) >= 4 && report[0] == reportNotice && report[1] == chatMix {
+			onMix(min(report[2], 100), min(report[3], 100))
+		}
+	}
 }

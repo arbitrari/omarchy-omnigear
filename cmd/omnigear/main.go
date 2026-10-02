@@ -53,10 +53,14 @@ USAGE:
                                            sidetone off|low|medium|high
                                            mic-volume <1-10> | mute-light <1-10>
                                            gain low|high | wireless-mode speed|range
+                                           sonar on|off  (restarts PipeWire)
                                              host <n>  (switches away from
                                                         this machine)
     omnigear catalog                       the support matrix, hardware or not
     omnigear battery                       charge only, from the kernel, waking nothing
+    omnigear chatmix                       follow a ChatMix dial and apply it to the
+                                           Sonar channels; one JSON line per change,
+                                           until stopped
     omnigear probe                         diagnostics: hidraw nodes and what answered
     omnigear report [device]               write up a device to request support;
                                            with no device, every node on the machine
@@ -79,6 +83,15 @@ func main() {
 
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
 		fmt.Fprint(os.Stderr, usage)
+		return
+	}
+
+	// The one command that streams rather than replying once.
+	if args[0] == "chatmix" {
+		if err := cmdChatMix(); err != nil {
+			emit(reply{"ok": false, "error": err.Error()})
+			os.Exit(1)
+		}
 		return
 	}
 

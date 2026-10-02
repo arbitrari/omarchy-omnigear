@@ -460,6 +460,8 @@ Panel {
                                     bar: root.bar
                                     busy: root.busy
                                     device: modelData
+                                    chatMix: root.gear && root.gear.chatMix
+                                        ? (root.gear.chatMix[modelData.id] || null) : null
                                     activeTab: root.tabFor(modelData.id)
                                     collapsed: root.isCollapsed(modelData.id)
                                     onCollapseToggled: root.toggleCollapsed(modelData.id)

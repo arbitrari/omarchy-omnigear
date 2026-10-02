@@ -1,5 +1,5 @@
-// Package pactl reads and sets a Bluetooth audio device's card profile
-// through the sound server.
+// Package pactl talks to the sound server: a Bluetooth audio device's card
+// profile, and the outputs and streams Sonar's channels are made of.
 //
 // A headset's codec is not the headset's to choose. The two ends offer what
 // they support and the host picks one, and on a PipeWire system that choice is
@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -127,4 +128,80 @@ func run(args ...string) ([]byte, error) {
 		return nil, fmt.Errorf("pactl: %w", err)
 	}
 	return out, nil
+}
+
+// Sink is an output the sound server offers.
+type Sink struct {
+	Name string
+	// Vendor and Product are the USB ids of the sound card behind it, zero
+	// for a sink that is not a USB device.
+	Vendor  uint16
+	Product uint16
+}
+
+// Sinks lists every output the sound server has.
+func Sinks() ([]Sink, error) {
+	out, err := run("-f", "json", "list", "sinks")
+	if err != nil {
+		return nil, err
+	}
+	var sinks []struct {
+		Name       string            `json:"name"`
+		Properties map[string]string `json:"properties"`
+	}
+	if err := json.Unmarshal(out, &sinks); err != nil {
+		return nil, fmt.Errorf("pactl: %w", err)
+	}
+	found := make([]Sink, 0, len(sinks))
+	for _, s := range sinks {
+		sink := Sink{Name: s.Name}
+		// "0x1038", as ALSA writes it.
+		if v, err := strconv.ParseUint(strings.TrimPrefix(s.Properties["device.vendor.id"], "0x"), 16, 16); err == nil {
+			sink.Vendor = uint16(v)
+		}
+		if p, err := strconv.ParseUint(strings.TrimPrefix(s.Properties["device.product.id"], "0x"), 16, 16); err == nil {
+			sink.Product = uint16(p)
+		}
+		found = append(found, sink)
+	}
+	return found, nil
+}
+
+// DefaultSink is the output new streams play to.
+func DefaultSink() (string, error) {
+	out, err := run("get-default-sink")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+func SetDefaultSink(name string) error {
+	_, err := run("set-default-sink", name)
+	return err
+}
+
+// SetStreamVolume sets the volume of the playback stream with a node name,
+// in percent. A stream rather than a sink: a loopback's sink volume is the
+// listener's to set, and its stream volume is free for something else to
+// scale on top of it.
+func SetStreamVolume(nodeName string, percent int) error {
+	out, err := run("-f", "json", "list", "sink-inputs")
+	if err != nil {
+		return err
+	}
+	var inputs []struct {
+		Index      int               `json:"index"`
+		Properties map[string]string `json:"properties"`
+	}
+	if err := json.Unmarshal(out, &inputs); err != nil {
+		return fmt.Errorf("pactl: %w", err)
+	}
+	for _, input := range inputs {
+		if input.Properties["node.name"] == nodeName {
+			_, err := run("set-sink-input-volume", strconv.Itoa(input.Index), fmt.Sprintf("%d%%", percent))
+			return err
+		}
+	}
+	return fmt.Errorf("the sound server has no stream %s", nodeName)
 }
