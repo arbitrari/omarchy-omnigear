@@ -539,7 +539,7 @@ func readSonar() (*model.Sonar, error) {
 	}
 	apps, err := sonar.Apps()
 	for _, app := range apps {
-		out.Apps = append(out.Apps, model.SonarApp{Name: app.Name, Channel: app.Channel})
+		out.Apps = append(out.Apps, model.SonarApp{Name: app.Name, Label: app.Label, Channel: app.Channel})
 	}
 	return out, err
 }

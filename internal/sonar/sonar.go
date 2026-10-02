@@ -250,7 +250,11 @@ func hasSink(sinks []pactl.Sink, name string) bool {
 
 // App is an application playing sound, and the channel it plays to.
 type App struct {
+	// Name is what the app calls its stream, and what it is routed by.
 	Name string
+	// Label is what to call it: see names.go. Name, when nothing better is
+	// known.
+	Label string
 	// Channel is a channel's slug, or empty when the app plays somewhere
 	// that is not a channel — straight to the headset, say.
 	Channel string
@@ -273,13 +277,18 @@ func Apps() ([]App, error) {
 		return nil, err
 	}
 	var apps []App
+	var names labeller
 	seen := map[string]bool{}
 	for _, stream := range streams {
 		if stream.App == "" || strings.HasPrefix(stream.Node, "omnigear_") || seen[stream.App] {
 			continue
 		}
 		seen[stream.App] = true
-		apps = append(apps, App{Name: stream.App, Channel: channelOf(stream.Sink)})
+		apps = append(apps, App{
+			Name:    stream.App,
+			Label:   names.label(stream.App, stream.PID, stream.Binary),
+			Channel: channelOf(stream.Sink),
+		})
 	}
 	return apps, nil
 }

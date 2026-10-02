@@ -234,6 +234,9 @@ type Stream struct {
 	// Node is the stream's node name, which for a loopback is its own.
 	Node string
 	Sink string
+	// PID and Binary are the process playing it, when the stream says.
+	PID    int
+	Binary string
 }
 
 // Streams lists everything playing, with each one's sink by name.
@@ -256,11 +259,14 @@ func Streams() ([]Stream, error) {
 	}
 	streams := make([]Stream, 0, len(inputs))
 	for _, input := range inputs {
+		pid, _ := strconv.Atoi(input.Properties["application.process.id"])
 		streams = append(streams, Stream{
-			Index: input.Index,
-			App:   input.Properties["application.name"],
-			Node:  input.Properties["node.name"],
-			Sink:  sinks[input.Sink],
+			Index:  input.Index,
+			App:    input.Properties["application.name"],
+			Node:   input.Properties["node.name"],
+			Sink:   sinks[input.Sink],
+			PID:    pid,
+			Binary: input.Properties["application.process.binary"],
 		})
 	}
 	return streams, nil

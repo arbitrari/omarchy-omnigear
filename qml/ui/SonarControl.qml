@@ -227,7 +227,7 @@ Column {
 
                 Text {
                     width: parent.width
-                    text: modelData.name
+                    text: modelData.label
                     elide: Text.ElideRight
                     textFormat: Text.PlainText
                     color: root.foreground

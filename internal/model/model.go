@@ -829,7 +829,11 @@ type Sonar struct {
 
 // SonarApp is an application playing sound.
 type SonarApp struct {
-	Name string `json:"name"`
+	// Name is the app's own name for its stream, and the key it is routed
+	// by. Label is what to show; often better, since an app can name its
+	// stream after its audio library.
+	Name  string `json:"name"`
+	Label string `json:"label"`
 	// Channel is a channel's slug, or empty for an app playing somewhere
 	// that is not a channel.
 	Channel string `json:"channel"`

@@ -180,7 +180,11 @@ function parseDevice(raw) {
       apps: (Array.isArray(s.sonar.apps) ? s.sonar.apps : []).filter(function (a) {
         return a && typeof a.name === "string" && a.name !== "" && a.name.length <= 128
       }).map(function (a) {
-        return { name: a.name, channel: safeText(a.channel, "", 16) }
+        return {
+          name: a.name,
+          label: safeText(a.label, "", 64) || safeText(a.name, "", 64),
+          channel: safeText(a.channel, "", 16)
+        }
       })
     } : null,
     muteLight: parseLevel(s.muteLight),

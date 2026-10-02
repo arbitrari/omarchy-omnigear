@@ -611,6 +611,16 @@ straight afterwards — so the write waits for it to land before the verifying
 read. The list is only as fresh as the last full read, which with the panel
 open is every poll.
 
+An app names its own stream, and often after its audio library: Discord's
+voice plays as "WEBRTC VoiceEngine" and Valheim as "FMOD Ex App". The list
+shows a better name where one can be found. A process Steam launched carries
+`SteamAppId` in its environment, and Steam's manifest for that app has the
+store name; otherwise the stream's process binary is matched to a desktop
+entry, by window class and then by the program its Exec line runs. Only the
+label changes. Routing still goes by the stream's own name, because that is
+what WirePlumber remembers an output by — which also means two games on the
+same engine, both "FMOD Ex App", share one remembered channel.
+
 **Each channel has its own equalizer, in software.** While Sonar is on, the
 base station hands its equalizer to the computer: its own menu says the EQ is
 "on Sonar" and will not change it. So, as Sonar does, each channel is a
