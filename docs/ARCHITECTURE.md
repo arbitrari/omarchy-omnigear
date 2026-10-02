@@ -493,6 +493,17 @@ Straight after a mode change the headset plays a voice prompt, and a
 connection opened during it occasionally goes unanswered. `mdr.Open` retries
 the init once.
 
+**A WH-1000XM4 is an XM3 with two exceptions.** It publishes the same control
+service (`96cc203e…`) and answers every read with the same layout, so it
+shares the driver, as `drivers/sony.MDRXM4`. Where it differs:
+
+- It ignores the XM3's band write (`58 01 a0 06 …`), over AAC as well as LDAC,
+  and keeps the bands it had. Sent to preset `ff`, the selected one, the same
+  bands are taken: written to that preset if it is editable, otherwise to
+  manual with the headset moved onto it.
+- It refuses no equalizer change over LDAC. Presets and bands are taken and
+  read back, so its equalizer is not gated on the codec.
+
 ## Writes are verified, never assumed
 
 A device can accept a write and quietly ignore it. `omnigear set` therefore

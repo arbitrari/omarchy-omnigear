@@ -2,7 +2,8 @@
 //
 // Every decoder here carries the bytes it was read off, from a WH-1000XM3 on
 // firmware 4.5.2. The protocol is Sony's own and undocumented; the bytes are
-// the only proof of what a field means.
+// the only proof of what a field means. A WH-1000XM4 answers every one of
+// them with the same layout; where it behaves differently, that is noted.
 package sony
 
 import (
@@ -15,14 +16,26 @@ import (
 	"github.com/arbitrari/omarchy-omnigear/internal/transport/rfcomm"
 )
 
-// MDR is the driver for headphones that speak Sony's MDR protocol.
-var MDR model.Driver = driver{}
+// MDR is the driver for headphones that speak Sony's MDR protocol, as the
+// WH-1000XM3 does.
+var MDR model.Driver = driver{eqCodecs: []string{"sbc", "sbc-xq", "aac"}}
 
-type driver struct{}
+// MDRXM4 is MDR as the WH-1000XM4 speaks it. It addresses a band write to
+// whichever preset is selected, and applies an equalizer over any codec.
+var MDRXM4 model.Driver = driver{bandsToSelected: true}
+
+type driver struct {
+	// eqCodecs are the host's codecs over which the headset applies an
+	// equalizer. Empty means every codec.
+	eqCodecs []string
+	// bandsToSelected writes bands to preset ff, the selected one, rather than
+	// to an editable preset by its id.
+	bandsToSelected bool
+}
 
 func (driver) Name() string { return "Sony MDR" }
 
-func (driver) Read(device *model.Device) model.DeviceState {
+func (d driver) Read(device *model.Device) model.DeviceState {
 	state := model.NewDeviceState()
 
 	conn, err := mdr.Open(device.Address)
@@ -53,7 +66,7 @@ func (driver) Read(device *model.Device) model.DeviceState {
 		}
 	}
 	if device.Entry.Has(model.CapEqualizer) {
-		if eq, err := readEqualizer(conn); err != nil {
+		if eq, err := d.readEqualizer(conn); err != nil {
 			state.Fail(model.CapEqualizer, err)
 		} else {
 			state.Equalizer = eq
@@ -62,7 +75,7 @@ func (driver) Read(device *model.Device) model.DeviceState {
 	return state
 }
 
-func (driver) Write(device *model.Device, setting *model.Setting) error {
+func (d driver) Write(device *model.Device, setting *model.Setting) error {
 	// The codec is the sound server's to change, and the headset need not be
 	// spoken to at all.
 	if setting.Key == model.SettingCodec {
@@ -119,7 +132,7 @@ func (driver) Write(device *model.Device, setting *model.Setting) error {
 	}
 
 	if setting.Key == model.SettingEQPreset {
-		eq, err := readEqualizer(conn)
+		eq, err := d.readEqualizer(conn)
 		if err != nil {
 			return err
 		}
@@ -134,7 +147,7 @@ func (driver) Write(device *model.Device, setting *model.Setting) error {
 	}
 
 	if slug, ok := model.EQBandSlugOf(setting.Key); ok {
-		eq, err := readEqualizer(conn)
+		eq, err := d.readEqualizer(conn)
 		if err != nil {
 			return err
 		}
@@ -149,7 +162,7 @@ func (driver) Write(device *model.Device, setting *model.Setting) error {
 		level = max(eq.Min, min(eq.Max, level))
 		setting.Value = uint32(level + model.EQBias)
 		band.Value = level
-		return writeBands(conn, eq)
+		return d.writeBands(conn, eq)
 	}
 
 	return fmt.Errorf("%s cannot set %s", device.Entry.Model, setting.Key)
@@ -200,7 +213,8 @@ func readBattery(conn *mdr.Conn) (*model.Battery, error) {
 
 // Ambient level range. The headset does not report one; 20 is the most it
 // keeps (68 02 11 02 00 01 00 15 reads back as level 14 hex), and 0 is not a
-// level at all but off.
+// level at all but off. An XM4 keeps 15 as 15 and resets anything above it to
+// 01; 20 is still the most the Sony app offers, so it is the most offered here.
 const (
 	minAmbientLevel = 1
 	maxAmbientLevel = 20
@@ -300,7 +314,9 @@ func readCodec(conn *mdr.Conn) (byte, error) {
 // eqPresets are the XM3's presets, in the order the Sony app lists them, with
 // their wire ids. Found by writing each id over AAC and reading it back; an id
 // the headset does not have is not refused, it resets to off (58 01 18 00
-// reads back as 57 01 00 …).
+// reads back as 57 01 00 …). An XM4 has the same ids, read back the same way,
+// but keeps 18 rather than resetting it, with every band at 00; it is not a
+// preset the Sony app offers, so it is left out.
 var eqPresets = []struct {
 	slug     string
 	label    string
@@ -349,11 +365,6 @@ const (
 	eqMax    = 10
 )
 
-// eqCodecs are the host's codecs over which the headset applies an
-// equalizer. SBC-XQ is SBC at a higher bitpool, and the equalizer worked over
-// it as well as over SBC and AAC.
-var eqCodecs = []string{"sbc", "sbc-xq", "aac"}
-
 // readEqualizer reads the preset and what its bands are set to.
 //
 //	→ 56 01
@@ -363,10 +374,15 @@ var eqCodecs = []string{"sbc", "sbc-xq", "aac"}
 //	        │  └──── six values follow
 //	        └─────── preset
 //
-// Over LDAC or aptX the headset still answers this, but refuses any change
-// with 99 01 01 01 and applies no equalizer. The codec is read alongside so
-// the panel can say so rather than offer controls that do nothing.
-func readEqualizer(conn *mdr.Conn) (*model.Equalizer, error) {
+// Over LDAC or aptX an XM3 still answers this, but refuses any change with
+// 99 01 01 01 and applies no equalizer. The codec is read alongside so the
+// panel can say so rather than offer controls that do nothing. SBC-XQ is SBC
+// at a higher bitpool, and the equalizer worked over it as well as over SBC
+// and AAC.
+//
+// An XM4 refuses nothing over LDAC: presets and bands are both taken and read
+// back, so its codec is not checked.
+func (d driver) readEqualizer(conn *mdr.Conn) (*model.Equalizer, error) {
 	reply, err := conn.Call(0x57, 0x56, 0x01)
 	if err != nil {
 		return nil, err
@@ -375,7 +391,10 @@ func readEqualizer(conn *mdr.Conn) (*model.Equalizer, error) {
 		return nil, fmt.Errorf("unexpected equalizer reply % x", reply)
 	}
 
-	eq := &model.Equalizer{Available: true, Codecs: eqCodecs, Min: eqMin, Max: eqMax}
+	eq := &model.Equalizer{Available: true, Codecs: d.eqCodecs, Min: eqMin, Max: eqMax}
+	if eq.Codecs == nil {
+		eq.Codecs = []string{}
+	}
 	for _, p := range eqPresets {
 		eq.Presets = append(eq.Presets, model.EQPreset{Slug: p.slug, Label: p.label, Editable: p.editable})
 		if p.wire == reply[2] {
@@ -384,6 +403,9 @@ func readEqualizer(conn *mdr.Conn) (*model.Equalizer, error) {
 	}
 	for i, b := range eqBands {
 		eq.Bands = append(eq.Bands, model.EQBand{Slug: b.slug, Label: b.label, Value: int(reply[4+i]) - eqCentre})
+	}
+	if len(d.eqCodecs) == 0 {
+		return eq, nil
 	}
 
 	codec, err := readCodec(conn)
@@ -407,12 +429,24 @@ func readEqualizer(conn *mdr.Conn) (*model.Equalizer, error) {
 //
 //	→ 58 01 a0 06 0c 0b 0a 09 08 07
 //	← 59 01 a0 06 0c 0b 0a 09 08 07   (notification of the new state)
-func writeBands(conn *mdr.Conn, eq *model.Equalizer) error {
+//
+// An XM4 ignores that write, over AAC as well as LDAC, and reads back the
+// bands it had. It takes the same bands sent to preset ff, which writes them
+// to the selected preset when that is editable and otherwise moves to manual
+// carrying them over — the same outcome by a different address:
+//
+//	→ 58 01 ff 06 0b 0a 0a 0a 0a 0a   on bright
+//	→ 56 01
+//	← 57 01 a0 06 0b 0a 0a 0a 0a 0a
+func (d driver) writeBands(conn *mdr.Conn, eq *model.Equalizer) error {
 	preset := byte(0xA0)
 	for _, p := range eqPresets {
 		if p.slug == eq.Preset && p.editable {
 			preset = p.wire
 		}
+	}
+	if d.bandsToSelected {
+		preset = 0xFF
 	}
 	payload := []byte{0x58, 0x01, preset, byte(len(eq.Bands))}
 	for _, band := range eq.Bands {

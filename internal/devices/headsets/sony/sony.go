@@ -16,6 +16,8 @@ const vendor = 0x054C
 const (
 	// WH1000XM3 was observed as usb:v054Cp0CD3d0452.
 	WH1000XM3 = 0x0CD3
+	// WH1000XM4 was observed as usb:v054Cp0D58d0301.
+	WH1000XM4 = 0x0D58
 )
 
 // Entries are the models catalogued for this brand.
@@ -36,5 +38,23 @@ var Entries = []model.Entry{
 			model.CapCodec,
 		},
 		Driver: driver.MDR,
+	},
+	{
+		Model:    "WH-1000XM4",
+		Slug:     "wh-1000xm4",
+		Brand:    model.Sony,
+		Category: model.Headset,
+		USB:      []model.USBID{{Vendor: vendor, Product: WH1000XM4}},
+		// The XM4 publishes the XM3's control service and answers every request
+		// the driver makes with the same layout. Partial: like the XM3 it has
+		// settings that are not driven yet, and it adds speak-to-chat.
+		Support: model.SupportPartial,
+		Capabilities: []model.Capability{
+			model.CapBattery,
+			model.CapNoiseControl,
+			model.CapEqualizer,
+			model.CapCodec,
+		},
+		Driver: driver.MDRXM4,
 	},
 }
