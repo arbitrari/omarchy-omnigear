@@ -364,6 +364,18 @@ Rectangle {
             }
         }
 
+        // --- power ---------------------------------------------------------
+        AutoPowerOffControl {
+            bar: root.bar
+            busy: root.busy
+            visible: root.showingDetail && root.currentTab === "power"
+                && root.device && root.device.autoPowerOff !== null
+            autoPowerOff: root.device ? root.device.autoPowerOff : null
+            onRequested: function (choice) {
+                root.settingRequested("auto-power-off", choice);
+            }
+        }
+
         // --- not supported, and what to do about it ------------------------
         //
         // Sits above the errors so the offer to report it is the last word on

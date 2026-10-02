@@ -22,7 +22,7 @@ var MDR model.Driver = driver{eqCodecs: []string{"sbc", "sbc-xq", "aac"}}
 
 // MDRXM4 is MDR as the WH-1000XM4 speaks it. It addresses a band write to
 // whichever preset is selected, and applies an equalizer over any codec.
-var MDRXM4 model.Driver = driver{bandsToSelected: true}
+var MDRXM4 model.Driver = driver{bandsToSelected: true, autoPowerOff: xm4AutoPowerOff}
 
 type driver struct {
 	// eqCodecs are the host's codecs over which the headset applies an
@@ -31,6 +31,8 @@ type driver struct {
 	// bandsToSelected writes bands to preset ff, the selected one, rather than
 	// to an editable preset by its id.
 	bandsToSelected bool
+	// autoPowerOff are the model's auto power off choices.
+	autoPowerOff []autoPowerOffChoice
 }
 
 func (driver) Name() string { return "Sony MDR" }
@@ -70,6 +72,13 @@ func (d driver) Read(device *model.Device) model.DeviceState {
 			state.Fail(model.CapEqualizer, err)
 		} else {
 			state.Equalizer = eq
+		}
+	}
+	if device.Entry.Has(model.CapAutoPowerOff) {
+		if off, err := d.readAutoPowerOff(conn); err != nil {
+			state.Fail(model.CapAutoPowerOff, err)
+		} else {
+			state.AutoPowerOff = off
 		}
 	}
 	return state
@@ -144,6 +153,16 @@ func (d driver) Write(device *model.Device, setting *model.Setting) error {
 			return fmt.Errorf("%s has no %q preset", device.Entry.Model, model.EQPresetSlug(setting.Value))
 		}
 		return conn.Send(0x58, 0x01, wire, 0x00)
+	}
+
+	if setting.Key == model.SettingAutoPowerOff {
+		slug := model.AutoPowerOffName(setting.Value)
+		for _, c := range d.autoPowerOff {
+			if c.slug == slug {
+				return conn.Send(0xF8, 0x04, 0x01, c.wire[0], c.wire[1])
+			}
+		}
+		return fmt.Errorf("%s has no %q auto power off", device.Entry.Model, slug)
 	}
 
 	if slug, ok := model.EQBandSlugOf(setting.Key); ok {
@@ -453,4 +472,49 @@ func (d driver) writeBands(conn *mdr.Conn, eq *model.Equalizer) error {
 		payload = append(payload, byte(band.Value+eqCentre))
 	}
 	return conn.Send(payload...)
+}
+
+type autoPowerOffChoice struct {
+	slug, label string
+	wire        [2]byte
+}
+
+// xm4AutoPowerOff are the two choices an XM4 keeps. Every other pair written
+// to it, the XM3's timers among them (00 00, 01 01, 02 02, 03 03), is not
+// refused but read back as 10 00.
+//
+// That 10 00 means "when taken off" is inferred, not observed: on the XM4 this
+// was read from, taking the headset off sent no notification and neither
+// powered it off nor paused playback, whichever value was set.
+var xm4AutoPowerOff = []autoPowerOffChoice{
+	{"never", "Never", [2]byte{0x11, 0x00}},
+	{"when-taken-off", "When Taken Off", [2]byte{0x10, 0x00}},
+}
+
+// readAutoPowerOff reads when the headset switches itself off.
+//
+//	→ f6 04
+//	← f7 04 01 11 00   never
+//	← f7 04 01 10 00   when taken off
+//
+// It is set by the same record with f8 in place of f7.
+func (d driver) readAutoPowerOff(conn *mdr.Conn) (*model.AutoPowerOff, error) {
+	reply, err := conn.Call(0xF7, 0xF6, 0x04)
+	if err != nil {
+		return nil, err
+	}
+	if len(reply) < 5 {
+		return nil, fmt.Errorf("short auto power off reply % x", reply)
+	}
+	off := &model.AutoPowerOff{}
+	for _, c := range d.autoPowerOff {
+		off.Options = append(off.Options, model.AutoPowerOffOption{Slug: c.slug, Label: c.label})
+		if c.wire == [2]byte{reply[3], reply[4]} {
+			off.Current = c.slug
+		}
+	}
+	if off.Current == "" {
+		return nil, fmt.Errorf("unknown auto power off % x", reply[3:5])
+	}
+	return off, nil
 }

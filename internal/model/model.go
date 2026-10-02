@@ -141,6 +141,8 @@ const (
 	// CapCodec — which Bluetooth codec the audio is played over. Chosen by
 	// this machine's sound server, not stored in the headset.
 	CapCodec Capability = "codec"
+	// CapAutoPowerOff — when a headset switches itself off.
+	CapAutoPowerOff Capability = "auto-power-off"
 )
 
 // USBID is a vendor/product pair a model shows up as. A model that enumerates
@@ -660,6 +662,38 @@ func CodecName(value uint32) string {
 	return ""
 }
 
+// AutoPowerOff is when a headset switches itself off, and the choices it
+// offers. Which choices exist differs by model, so the driver lists them.
+type AutoPowerOff struct {
+	Current string               `json:"current"`
+	Options []AutoPowerOffOption `json:"options"`
+}
+
+type AutoPowerOffOption struct {
+	Slug  string `json:"slug"`
+	Label string `json:"label"`
+}
+
+// autoPowerOffSlugs are every auto power off choice any driver knows. The
+// index is what a Setting carries.
+var autoPowerOffSlugs = []string{"never", "when-taken-off"}
+
+func AutoPowerOffValue(slug string) (uint32, bool) {
+	for i, candidate := range autoPowerOffSlugs {
+		if strings.EqualFold(candidate, slug) {
+			return uint32(i), true
+		}
+	}
+	return 0, false
+}
+
+func AutoPowerOffName(value uint32) string {
+	if int(value) < len(autoPowerOffSlugs) {
+		return autoPowerOffSlugs[value]
+	}
+	return ""
+}
+
 // DeviceState is everything a driver managed to read. Every field is optional:
 // a capability the device claims but the read failed for comes back null with
 // a line in Errors, rather than failing the whole device.
@@ -686,6 +720,7 @@ type DeviceState struct {
 	NoiseControl   *NoiseControl `json:"noiseControl"`
 	Equalizer      *Equalizer    `json:"equalizer"`
 	Codec          *Codec        `json:"codec"`
+	AutoPowerOff   *AutoPowerOff `json:"autoPowerOff"`
 	// Errors holds non-fatal problems, one per capability that could not be
 	// read. Never nil, so it marshals as [] rather than null.
 	Errors []string `json:"errors"`
@@ -754,6 +789,8 @@ const (
 	SettingEQPreset SettingKey = "eq-preset"
 
 	SettingCodec SettingKey = "codec"
+
+	SettingAutoPowerOff SettingKey = "auto-power-off"
 
 	// HITS is per click and per field, so each combination is its own key.
 	// Three fields across two buttons is small enough to name outright, and
@@ -865,6 +902,13 @@ func ParseSetting(key, value string) (Setting, error) {
 				value, strings.Join(codecSlugs, ", "))
 		}
 		return Setting{Key: SettingCodec, Value: codec}, nil
+	case "auto-power-off":
+		choice, ok := AutoPowerOffValue(value)
+		if !ok {
+			return Setting{}, fmt.Errorf("%q is not an auto power off choice (expected one of: %s)",
+				value, strings.Join(autoPowerOffSlugs, ", "))
+		}
+		return Setting{Key: SettingAutoPowerOff, Value: choice}, nil
 	case "eq-preset":
 		preset, ok := EQPresetValue(value)
 		if !ok {
@@ -912,7 +956,7 @@ func ParseSetting(key, value string) (Setting, error) {
 		return Setting{}, fmt.Errorf("unknown setting %q (expected one of: dpi, "+
 			"polling-rate, profile-mode, smart-shift-mode, smart-shift-threshold, "+
 			"wheel-hi-res, wheel-invert, host, thumbwheel, button-<name>, "+
-			"noise-mode, ambient-level, focus-on-voice, eq-preset, eq-<band>, codec, "+
+			"noise-mode, ambient-level, focus-on-voice, eq-preset, eq-<band>, codec, auto-power-off, "+
 			"hits-{left,right}-{actuation,rapid-trigger,haptics})", key)
 	}
 
@@ -1035,6 +1079,11 @@ func (s *DeviceState) Reading(key SettingKey) (uint32, bool) {
 	case SettingCodec:
 		if s.Codec != nil {
 			return CodecValue(s.Codec.Current)
+		}
+
+	case SettingAutoPowerOff:
+		if s.AutoPowerOff != nil {
+			return AutoPowerOffValue(s.AutoPowerOff.Current)
 		}
 
 	case SettingEQPreset:

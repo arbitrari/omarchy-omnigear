@@ -504,6 +504,12 @@ shares the driver, as `drivers/sony.MDRXM4`. Where it differs:
 - It refuses no equalizer change over LDAC. Presets and bands are taken and
   read back, so its equalizer is not gated on the codec.
 
+**Auto power off is per model.** It is one record (`f6 04`, set with `f8 04`),
+but which values it keeps differs: an XM4 keeps only `11 00` (never) and `10 00`
+(when taken off), and reads anything else back as `10 00` rather than refusing
+it. So the driver lists each model's choices and the panel draws whatever it
+is given, under a Power tab.
+
 ## Writes are verified, never assumed
 
 A device can accept a write and quietly ignore it. `omnigear set` therefore

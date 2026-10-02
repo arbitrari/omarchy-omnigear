@@ -54,6 +54,7 @@ var Entries = []model.Entry{
 			model.CapNoiseControl,
 			model.CapEqualizer,
 			model.CapCodec,
+			model.CapAutoPowerOff,
 		},
 		Driver: driver.MDRXM4,
 	},
