@@ -22,7 +22,8 @@ var MDR model.Driver = driver{eqCodecs: []string{"sbc", "sbc-xq", "aac"}}
 
 // MDRXM4 is MDR as the WH-1000XM4 speaks it. It addresses a band write to
 // whichever preset is selected, and applies an equalizer over any codec.
-var MDRXM4 model.Driver = driver{bandsToSelected: true, autoPowerOff: xm4AutoPowerOff}
+var MDRXM4 model.Driver = driver{bandsToSelected: true, autoPowerOff: xm4AutoPowerOff,
+	dsee: "DSEE Extreme"}
 
 type driver struct {
 	// eqCodecs are the host's codecs over which the headset applies an
@@ -33,6 +34,8 @@ type driver struct {
 	bandsToSelected bool
 	// autoPowerOff are the model's auto power off choices.
 	autoPowerOff []autoPowerOffChoice
+	// dsee is what the model calls its upscaling.
+	dsee string
 }
 
 func (driver) Name() string { return "Sony MDR" }
@@ -72,6 +75,13 @@ func (d driver) Read(device *model.Device) model.DeviceState {
 			state.Fail(model.CapEqualizer, err)
 		} else {
 			state.Equalizer = eq
+		}
+	}
+	if device.Entry.Has(model.CapDSEE) {
+		if dsee, err := d.readDSEE(conn); err != nil {
+			state.Fail(model.CapDSEE, err)
+		} else {
+			state.DSEE = dsee
 		}
 	}
 	if device.Entry.Has(model.CapAutoPowerOff) {
@@ -153,6 +163,10 @@ func (d driver) Write(device *model.Device, setting *model.Setting) error {
 			return fmt.Errorf("%s has no %q preset", device.Entry.Model, model.EQPresetSlug(setting.Value))
 		}
 		return conn.Send(0x58, 0x01, wire, 0x00)
+	}
+
+	if setting.Key == model.SettingDSEE {
+		return conn.Send(0xE8, 0x02, 0x00, byte(setting.Value))
 	}
 
 	if setting.Key == model.SettingAutoPowerOff {
@@ -517,4 +531,26 @@ func (d driver) readAutoPowerOff(conn *mdr.Conn) (*model.AutoPowerOff, error) {
 		return nil, fmt.Errorf("unknown auto power off % x", reply[3:5])
 	}
 	return off, nil
+}
+
+// readDSEE reads whether upscaling is on.
+//
+//	→ e6 02
+//	← e7 02 00 01   on
+//	← e7 02 00 00   off
+//
+// It is set by the same record with e8 in place of e7. That this is DSEE
+// Extreme is unconfirmed: it is the switch Sony's protocol is understood to
+// keep upsampling in, and it keeps what is written, but nothing here has seen
+// the Sony app agree. e6 01 is a second switch of the same shape, off on the
+// XM4 this was read from, whose meaning is unknown.
+func (d driver) readDSEE(conn *mdr.Conn) (*model.DSEE, error) {
+	reply, err := conn.Call(0xE7, 0xE6, 0x02)
+	if err != nil {
+		return nil, err
+	}
+	if len(reply) < 4 {
+		return nil, fmt.Errorf("short DSEE reply % x", reply)
+	}
+	return &model.DSEE{On: reply[3] != 0, Label: d.dsee}, nil
 }

@@ -177,14 +177,16 @@ Updates can be done directly in the plugin.
 <details>
 <summary><b>Sony</b></summary>
 
-|  | Name | Battery | Noise Control* | Equalizer | Codec** | DSEE HX | Auto Power Off | Touch Panel | Notes
+|  | Name | Battery | Noise Control* | Equalizer | Codec** | DSEE*** | Auto Power Off | Touch Panel | Notes
 |------|-----|-----|-----|-----|-----|-----|-----|-----|-----|
 | 🟨 | WH-1000XM3 |🟩|🟩|🟩|🟩|🟥|🟥|🟥|Bluetooth only; Equalizer only over SBC or AAC|
-| 🟨 | WH-1000XM4 |🟩|🟩|🟩|🟩|🟥|🟩|🟥|Bluetooth only; Auto Power Off is never or when taken off|
+| 🟨 | WH-1000XM4 |🟩|🟩|🟩|🟩|🟩|🟩|🟥|Bluetooth only; Auto Power Off is never or when taken off|
 
 ***Noise Control:** noise cancelling, ambient sound or off, with ambient level and focus on voice. In the plugin, this appears as a Sound tab
 
 ****Codec:** which Bluetooth codec the audio plays over (SBC, AAC, aptX, LDAC, …). This is chosen by your computer's sound server rather than stored in the headset. In the plugin, this appears in the Sound tab
+
+*****DSEE:** Sony's upscaling of compressed audio, sold as DSEE HX on the WH-1000XM3 and DSEE Extreme on the WH-1000XM4. In the plugin, this appears in the Sound tab
 
 </details>
 

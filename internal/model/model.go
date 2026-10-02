@@ -143,6 +143,10 @@ const (
 	CapCodec Capability = "codec"
 	// CapAutoPowerOff — when a headset switches itself off.
 	CapAutoPowerOff Capability = "auto-power-off"
+	// CapDSEE — Sony's upscaling of compressed audio, which restores the
+	// high frequencies lossy formats drop. DSEE HX on an XM3, DSEE Extreme on
+	// an XM4.
+	CapDSEE Capability = "dsee"
 )
 
 // USBID is a vendor/product pair a model shows up as. A model that enumerates
@@ -694,6 +698,13 @@ func AutoPowerOffName(value uint32) string {
 	return ""
 }
 
+// DSEE is whether a Sony headset's upscaling is on. Label is the model's own
+// name for it, since the same switch is sold under more than one.
+type DSEE struct {
+	On    bool   `json:"on"`
+	Label string `json:"label"`
+}
+
 // DeviceState is everything a driver managed to read. Every field is optional:
 // a capability the device claims but the read failed for comes back null with
 // a line in Errors, rather than failing the whole device.
@@ -721,6 +732,7 @@ type DeviceState struct {
 	Equalizer      *Equalizer    `json:"equalizer"`
 	Codec          *Codec        `json:"codec"`
 	AutoPowerOff   *AutoPowerOff `json:"autoPowerOff"`
+	DSEE           *DSEE         `json:"dsee"`
 	// Errors holds non-fatal problems, one per capability that could not be
 	// read. Never nil, so it marshals as [] rather than null.
 	Errors []string `json:"errors"`
@@ -791,6 +803,8 @@ const (
 	SettingCodec SettingKey = "codec"
 
 	SettingAutoPowerOff SettingKey = "auto-power-off"
+
+	SettingDSEE SettingKey = "dsee"
 
 	// HITS is per click and per field, so each combination is its own key.
 	// Three fields across two buttons is small enough to name outright, and
@@ -902,6 +916,12 @@ func ParseSetting(key, value string) (Setting, error) {
 				value, strings.Join(codecSlugs, ", "))
 		}
 		return Setting{Key: SettingCodec, Value: codec}, nil
+	case "dsee":
+		on, ok := parseSwitch(value)
+		if !ok {
+			return Setting{}, fmt.Errorf("%q is not on or off", value)
+		}
+		return Setting{Key: SettingDSEE, Value: on}, nil
 	case "auto-power-off":
 		choice, ok := AutoPowerOffValue(value)
 		if !ok {
@@ -956,7 +976,7 @@ func ParseSetting(key, value string) (Setting, error) {
 		return Setting{}, fmt.Errorf("unknown setting %q (expected one of: dpi, "+
 			"polling-rate, profile-mode, smart-shift-mode, smart-shift-threshold, "+
 			"wheel-hi-res, wheel-invert, host, thumbwheel, button-<name>, "+
-			"noise-mode, ambient-level, focus-on-voice, eq-preset, eq-<band>, codec, auto-power-off, "+
+			"noise-mode, ambient-level, focus-on-voice, eq-preset, eq-<band>, codec, auto-power-off, dsee, "+
 			"hits-{left,right}-{actuation,rapid-trigger,haptics})", key)
 	}
 
@@ -1084,6 +1104,11 @@ func (s *DeviceState) Reading(key SettingKey) (uint32, bool) {
 	case SettingAutoPowerOff:
 		if s.AutoPowerOff != nil {
 			return AutoPowerOffValue(s.AutoPowerOff.Current)
+		}
+
+	case SettingDSEE:
+		if s.DSEE != nil {
+			return boolToValue(s.DSEE.On), true
 		}
 
 	case SettingEQPreset:

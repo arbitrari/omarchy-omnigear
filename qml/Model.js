@@ -148,6 +148,10 @@ function parseDevice(raw) {
         return { slug: safeText(o.slug, "", 24), label: safeText(o.label, "", 24) }
       })
     } : null,
+    dsee: s.dsee ? {
+      on: s.dsee.on === true,
+      label: safeText(s.dsee.label, "DSEE", 32)
+    } : null,
     autoPowerOff: s.autoPowerOff ? {
       current: safeText(s.autoPowerOff.current, "", 24),
       options: (Array.isArray(s.autoPowerOff.options) ? s.autoPowerOff.options : []).map(function (o) {
@@ -468,7 +472,7 @@ var TAB_GROUPS = [
   { id: "triggers", label: "Triggers", capabilities: ["hits"] },
   { id: "buttons", label: "Buttons", capabilities: ["buttons"] },
   { id: "hosts", label: "Hosts", capabilities: ["host"] },
-  { id: "sound", label: "Sound", capabilities: ["noise-control", "codec"] },
+  { id: "sound", label: "Sound", capabilities: ["noise-control", "dsee", "codec"] },
   { id: "equalizer", label: "Equalizer", capabilities: ["equalizer"] },
   { id: "power", label: "Power", capabilities: ["auto-power-off"] }
 ]
@@ -509,6 +513,7 @@ function capabilityLabel(capability) {
   case "equalizer": return "Equalizer"
   case "codec": return "Codec"
   case "auto-power-off": return "Auto Power Off"
+  case "dsee": return "DSEE"
   default: return capability
   }
 }
@@ -532,7 +537,7 @@ function unsupportedCapabilities(device) {
   if (!device) return []
   var handled = ["battery", "dpi", "polling-rate", "onboard-profile", "hits",
                  "smart-shift", "hi-res-wheel", "host", "thumbwheel", "buttons",
-                 "noise-control", "equalizer", "codec", "auto-power-off"]
+                 "noise-control", "equalizer", "codec", "auto-power-off", "dsee"]
   return device.capabilities.filter(function (c) {
     return handled.indexOf(c) === -1
   })

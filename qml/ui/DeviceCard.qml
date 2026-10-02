@@ -333,6 +333,15 @@ Rectangle {
                 }
             }
 
+            DseeControl {
+                bar: root.bar
+                busy: root.busy
+                dsee: root.device ? root.device.dsee : null
+                onRequested: function (on) {
+                    root.settingRequested("dsee", on ? "on" : "off");
+                }
+            }
+
             // The codec decides whether the equalizer can be used at all.
             // The Equalizer tab says so when it cannot, and offers to switch.
             CodecControl {
