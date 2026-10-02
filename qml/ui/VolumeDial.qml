@@ -14,6 +14,10 @@ import qs.Ui
 //
 // Drawn in the squared slider's colours, flat-ended, so the two read as one
 // family.
+//
+// A double-click mutes or unmutes it. Muted, it says so in the middle and
+// the arc dims rather than emptying: the level is kept, and the arc shows
+// where unmuting will put it back.
 Item {
     id: root
 
@@ -23,6 +27,7 @@ Item {
     property int minimum: 0
     property int maximum: 100
     property string tooltip: "Drag up or down to change."
+    property bool muted: false
 
     // What is shown while dragging, before the release is sent.
     property int liveValue: value
@@ -32,6 +37,7 @@ Item {
     // them as they happen; released is the one to verify.
     signal moved(int value)
     signal released(int value)
+    signal muteToggled()
 
     readonly property color foreground: bar ? bar.foreground : Color.foreground
     readonly property color trackColor: bar ? Style.selectedFillFor(bar.foreground, Color.accent) : "#333"
@@ -48,6 +54,7 @@ Item {
     onLiveValueChanged: arc.requestPaint()
     onForegroundChanged: arc.requestPaint()
     onTrackColorChanged: arc.requestPaint()
+    onMutedChanged: arc.requestPaint()
 
     Item {
         id: dial
@@ -81,7 +88,7 @@ Item {
                 ctx.stroke();
 
                 if (progress > 0) {
-                    ctx.strokeStyle = root.foreground;
+                    ctx.strokeStyle = root.muted ? Qt.darker(root.foreground, 2.2) : root.foreground;
                     ctx.beginPath();
                     ctx.arc(cx, cy, r, start, start + sweep * progress, false);
                     ctx.stroke();
@@ -93,9 +100,9 @@ Item {
         // channel over 100%, and the knob should not pretend otherwise.
         Text {
             anchors.centerIn: parent
-            text: root.liveValue + "%"
+            text: root.muted ? "Muted" : root.liveValue + "%"
             textFormat: Text.PlainText
-            color: root.foreground
+            color: root.muted ? Qt.darker(root.foreground, 1.4) : root.foreground
             font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall
             font.bold: true
@@ -132,6 +139,10 @@ Item {
                 if (root.liveValue !== root.value)
                     root.released(root.liveValue);
             }
+            // A double-click never moves the knob, so it changes nothing
+            // but the mute: the drag it began ends where it started, and an
+            // unmoved release sends nothing.
+            onDoubleClicked: root.muteToggled()
             onCanceled: {
                 root.dragging = false;
                 root.liveValue = root.value;

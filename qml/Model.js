@@ -171,6 +171,7 @@ function parseDevice(raw) {
           sink: safeText(c.sink, "", 64),
           mixed: c.mixed === true,
           volume: Math.max(0, Number(c.volume) || 0),
+          muted: c.muted === true,
           equalizer: parseEqualizer(c.equalizer)
         }
       }),

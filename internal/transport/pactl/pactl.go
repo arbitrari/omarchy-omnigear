@@ -139,6 +139,7 @@ type Sink struct {
 	Product uint16
 	// Volume is the louder channel's, in percent.
 	Volume int
+	Muted  bool
 }
 
 // Sinks lists every output the sound server has.
@@ -150,6 +151,7 @@ func Sinks() ([]Sink, error) {
 	var sinks []struct {
 		Name       string            `json:"name"`
 		Properties map[string]string `json:"properties"`
+		Mute       bool              `json:"mute"`
 		Volume     map[string]struct {
 			Percent string `json:"value_percent"`
 		} `json:"volume"`
@@ -159,7 +161,7 @@ func Sinks() ([]Sink, error) {
 	}
 	found := make([]Sink, 0, len(sinks))
 	for _, s := range sinks {
-		sink := Sink{Name: s.Name}
+		sink := Sink{Name: s.Name, Muted: s.Mute}
 		// "75%", per channel. The louder one is what a mixer's single
 		// slider shows.
 		for _, channel := range s.Volume {
@@ -196,6 +198,16 @@ func SetDefaultSink(name string) error {
 // SetSinkVolume sets an output's volume, in percent, on every channel.
 func SetSinkVolume(name string, percent int) error {
 	_, err := run("set-sink-volume", name, fmt.Sprintf("%d%%", percent))
+	return err
+}
+
+// SetSinkMute mutes or unmutes an output.
+func SetSinkMute(name string, muted bool) error {
+	value := "0"
+	if muted {
+		value = "1"
+	}
+	_, err := run("set-sink-mute", name, value)
 	return err
 }
 

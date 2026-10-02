@@ -488,6 +488,9 @@ Rectangle {
             onVolumeMoved: function (channel, volume) {
                 root.channelVolumeMoved(channel, volume);
             }
+            onMuteRequested: function (channel, muted) {
+                root.settingRequested("sonar-mute-" + channel, muted ? "on" : "off");
+            }
         }
 
         // --- wireless ------------------------------------------------------

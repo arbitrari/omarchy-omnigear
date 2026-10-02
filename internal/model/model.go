@@ -853,6 +853,19 @@ func SonarAppKey(name string) SettingKey { return SettingKey("sonar-app-" + name
 // SonarVolumeKey is the setting key for one channel's volume.
 func SonarVolumeKey(slug string) SettingKey { return SettingKey("sonar-volume-" + slug) }
 
+// SonarMuteKey is the setting key for one channel's mute.
+func SonarMuteKey(slug string) SettingKey { return SettingKey("sonar-mute-" + slug) }
+
+// SonarMuteSlugOf is the inverse of SonarMuteKey.
+func SonarMuteSlugOf(key SettingKey) (string, bool) {
+	slug, found := strings.CutPrefix(string(key), "sonar-mute-")
+	if !found {
+		return "", false
+	}
+	_, known := SonarChannelValue(slug)
+	return slug, known
+}
+
 // SonarVolumeSlugOf is the inverse of SonarVolumeKey.
 func SonarVolumeSlugOf(key SettingKey) (string, bool) {
 	slug, found := strings.CutPrefix(string(key), "sonar-volume-")
@@ -899,7 +912,8 @@ type SonarChannel struct {
 	// Volume is the channel's own level, in percent: the one a mixer shows
 	// for it, which the dial scales rather than replaces. Zero while Sonar
 	// is not live.
-	Volume int `json:"volume"`
+	Volume int  `json:"volume"`
+	Muted  bool `json:"muted"`
 	// Equalizer is the channel's own, applied in software.
 	Equalizer *Equalizer `json:"equalizer"`
 }
@@ -1214,6 +1228,13 @@ func ParseSetting(key, value string) (Setting, error) {
 			settingKey = SettingKey(key)
 			break
 		}
+		if _, ok := SonarMuteSlugOf(SettingKey(key)); ok {
+			muted, ok := parseSwitch(value)
+			if !ok {
+				return Setting{}, fmt.Errorf("%q is not on or off", value)
+			}
+			return Setting{Key: SettingKey(key), Value: muted}, nil
+		}
 		if _, band, ok := SonarEQOf(SettingKey(key)); ok {
 			if band == "preset" {
 				preset, ok := EQPresetValue(value)
@@ -1249,7 +1270,7 @@ func ParseSetting(key, value string) (Setting, error) {
 			"polling-rate, profile-mode, smart-shift-mode, smart-shift-threshold, "+
 			"wheel-hi-res, wheel-invert, host, thumbwheel, button-<name>, "+
 			"noise-mode, ambient-level, focus-on-voice, eq-preset, eq-<band>, codec, auto-power-off, dsee, speak-to-chat, touch-panel, "+
-			"sidetone, mic-volume, mute-light, gain, wireless-mode, sonar, sonar-app-<app>, sonar-volume-<channel>, sonar-eq-<channel>-{preset,<band>}, "+
+			"sidetone, mic-volume, mute-light, gain, wireless-mode, sonar, sonar-app-<app>, sonar-volume-<channel>, sonar-mute-<channel>, sonar-eq-<channel>-{preset,<band>}, "+
 			"hits-{left,right}-{actuation,rapid-trigger,haptics})", key)
 	}
 
@@ -1455,6 +1476,15 @@ func (s *DeviceState) Reading(key SettingKey) (uint32, bool) {
 	if slug, ok := EQBandSlugOf(key); ok && s.Equalizer != nil {
 		if band := s.Equalizer.Band(slug); band != nil {
 			return uint32(band.Value + EQBias), true
+		}
+		return 0, false
+	}
+
+	if slug, ok := SonarMuteSlugOf(key); ok && s.Sonar != nil && s.Sonar.Live {
+		for _, channel := range s.Sonar.Channels {
+			if channel.Slug == slug {
+				return boolToValue(channel.Muted), true
+			}
 		}
 		return 0, false
 	}

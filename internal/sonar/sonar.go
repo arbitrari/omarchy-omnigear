@@ -360,20 +360,38 @@ func MoveApp(name, slug string) error {
 // amplifies in software, which clips; a mixer can still go there.
 const MaxVolume = 100
 
-// Volumes reads each channel's own volume, by slug. This is the listener's
-// level for the channel, which the dial scales rather than replaces.
-func Volumes() (map[string]int, error) {
+// Level is a channel's own volume and whether it is muted.
+type Level struct {
+	Volume int
+	Muted  bool
+}
+
+// Levels reads each channel's own volume and mute, by slug. This is the
+// listener's level for the channel, which the dial scales rather than
+// replaces.
+func Levels() (map[string]Level, error) {
 	sinks, err := pactl.Sinks()
 	if err != nil {
 		return nil, err
 	}
-	volumes := map[string]int{}
+	levels := map[string]Level{}
 	for _, sink := range sinks {
 		if slug := channelOf(sink.Name); slug != "" {
-			volumes[slug] = sink.Volume
+			levels[slug] = Level{Volume: sink.Volume, Muted: sink.Muted}
 		}
 	}
-	return volumes, nil
+	return levels, nil
+}
+
+// SetMute mutes or unmutes a channel. Its volume is kept, so unmuting puts
+// it back where it was.
+func SetMute(slug string, muted bool) error {
+	for _, c := range Channels {
+		if c.Slug == slug {
+			return pactl.SetSinkMute(c.SinkName(), muted)
+		}
+	}
+	return fmt.Errorf("%q is not a Sonar channel", slug)
 }
 
 // SetVolume sets a channel's own volume, in percent.

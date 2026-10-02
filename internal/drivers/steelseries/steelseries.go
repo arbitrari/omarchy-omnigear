@@ -362,6 +362,9 @@ func (d driver) Write(device *model.Device, setting *model.Setting) error {
 	if _, volume := model.SonarVolumeSlugOf(setting.Key); volume {
 		capability, ok = model.CapSonar, true
 	}
+	if _, mute := model.SonarMuteSlugOf(setting.Key); mute {
+		capability, ok = model.CapSonar, true
+	}
 	if _, _, eq := model.SonarEQOf(setting.Key); eq {
 		capability, ok = model.CapSonar, true
 	}
@@ -384,6 +387,9 @@ func (d driver) Write(device *model.Device, setting *model.Setting) error {
 		clamped := min(max(gain, sonar.MinGain), sonar.MaxGain)
 		setting.Value = uint32(clamped + model.EQBias)
 		return sonar.SetBand(channel, band, clamped)
+	}
+	if slug, ok := model.SonarMuteSlugOf(setting.Key); ok {
+		return sonar.SetMute(slug, setting.Value != 0)
 	}
 	if slug, ok := model.SonarVolumeSlugOf(setting.Key); ok {
 		if setting.Value > sonar.MaxVolume {
@@ -530,12 +536,14 @@ func readSonar() (*model.Sonar, error) {
 	if err != nil || !status.Live {
 		return out, err
 	}
-	volumes, err := sonar.Volumes()
+	levels, err := sonar.Levels()
 	if err != nil {
 		return out, err
 	}
 	for i := range out.Channels {
-		out.Channels[i].Volume = volumes[out.Channels[i].Slug]
+		level := levels[out.Channels[i].Slug]
+		out.Channels[i].Volume = level.Volume
+		out.Channels[i].Muted = level.Muted
 	}
 	apps, err := sonar.Apps()
 	for _, app := range apps {

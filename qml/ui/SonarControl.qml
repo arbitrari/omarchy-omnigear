@@ -26,6 +26,7 @@ Column {
     signal volumeRequested(string channel, int volume)
     // While a knob is dragged, every level it passes through.
     signal volumeMoved(string channel, int volume)
+    signal muteRequested(string channel, bool muted)
 
     readonly property color foreground: bar ? bar.foreground : Color.foreground
     readonly property color muted: Qt.darker(foreground, 1.4)
@@ -190,7 +191,11 @@ Column {
                     bar: root.bar
                     label: modelData.label
                     value: modelData.volume
-                    tooltip: modelData.label + " volume. Drag up or down to change."
+                    muted: modelData.muted
+                    tooltip: modelData.label + (modelData.muted ? " is muted. " : " volume. ")
+                        + "Drag up or down to change; double-click to "
+                        + (modelData.muted ? "unmute." : "mute.")
+                    onMuteToggled: root.muteRequested(modelData.slug, !modelData.muted)
                     onMoved: function (v) {
                         root.volumeMoved(modelData.slug, v);
                     }

@@ -646,7 +646,9 @@ it reads the whole device before and after, and the panel greys out while it
 runs, cancelling the drag. So a knob being dragged uses `omnigear
 sonar-volume`, which only tells the sound server — about ten milliseconds —
 with the newest level held while one is in flight. Letting go sends an
-ordinary `set`, so the knob still ends on a verified figure.
+ordinary `set`, so the knob still ends on a verified figure. A double-click
+mutes the channel's sink (`sonar-mute-<channel>`) and leaves its volume
+alone, so unmuting puts it back where it was.
 
 **The dial is only reported as it turns.** `07 45 gg cc`, game and chat each
 0–100; turning toward one side lowers the other, never both. There is no
