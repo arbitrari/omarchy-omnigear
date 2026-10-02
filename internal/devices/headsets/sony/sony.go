@@ -20,8 +20,32 @@ const (
 	WH1000XM4 = 0x0D58
 )
 
-// Entries are the models catalogued for this brand.
+// Entries are the models catalogued for this brand, newest first.
 var Entries = []model.Entry{
+	// Catalogued, not yet driven.
+	planned("WH-1000XM6", "wh-1000xm6"),
+	planned("WH-1000XM5", "wh-1000xm5"),
+	{
+		Model:    "WH-1000XM4",
+		Slug:     "wh-1000xm4",
+		Brand:    model.Sony,
+		Category: model.Headset,
+		USB:      []model.USBID{{Vendor: vendor, Product: WH1000XM4}},
+		// The XM4 publishes the XM3's control service and answers every request
+		// the driver makes with the same layout.
+		Support: model.SupportFull,
+		Capabilities: []model.Capability{
+			model.CapBattery,
+			model.CapNoiseControl,
+			model.CapEqualizer,
+			model.CapCodec,
+			model.CapAutoPowerOff,
+			model.CapDSEE,
+			model.CapSpeakToChat,
+			model.CapTouchPanel,
+		},
+		Driver: driver.MDRXM4,
+	},
 	{
 		Model:    "WH-1000XM3",
 		Slug:     "wh-1000xm3",
@@ -39,25 +63,16 @@ var Entries = []model.Entry{
 		},
 		Driver: driver.MDR,
 	},
-	{
-		Model:    "WH-1000XM4",
-		Slug:     "wh-1000xm4",
+}
+
+// planned describes a model that is catalogued and nothing more: no driver,
+// no ids yet.
+func planned(name, slug string) model.Entry {
+	return model.Entry{
+		Model:    name,
+		Slug:     slug,
 		Brand:    model.Sony,
 		Category: model.Headset,
-		USB:      []model.USBID{{Vendor: vendor, Product: WH1000XM4}},
-		// The XM4 publishes the XM3's control service and answers every request
-		// the driver makes with the same layout. Partial: like the XM3 it has
-		// settings that are not driven yet, among them the touch panel switch.
-		Support: model.SupportPartial,
-		Capabilities: []model.Capability{
-			model.CapBattery,
-			model.CapNoiseControl,
-			model.CapEqualizer,
-			model.CapCodec,
-			model.CapAutoPowerOff,
-			model.CapDSEE,
-			model.CapSpeakToChat,
-		},
-		Driver: driver.MDRXM4,
-	},
+		Support:  model.SupportPlanned,
+	}
 }

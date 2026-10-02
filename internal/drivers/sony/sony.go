@@ -84,6 +84,13 @@ func (d driver) Read(device *model.Device) model.DeviceState {
 			state.SpeakToChat = &on
 		}
 	}
+	if device.Entry.Has(model.CapTouchPanel) {
+		if on, err := readTouchPanel(conn); err != nil {
+			state.Fail(model.CapTouchPanel, err)
+		} else {
+			state.TouchPanel = &on
+		}
+	}
 	if device.Entry.Has(model.CapDSEE) {
 		if dsee, err := d.readDSEE(conn); err != nil {
 			state.Fail(model.CapDSEE, err)
@@ -174,6 +181,10 @@ func (d driver) Write(device *model.Device, setting *model.Setting) error {
 
 	if setting.Key == model.SettingSpeakToChat {
 		return conn.Send(0xF8, 0x05, 0x01, byte(setting.Value))
+	}
+
+	if setting.Key == model.SettingTouchPanel {
+		return conn.Send(0xD8, 0xD1, 0x01, byte(setting.Value))
 	}
 
 	if setting.Key == model.SettingDSEE {
@@ -589,6 +600,26 @@ func readSpeakToChat(conn *mdr.Conn) (bool, error) {
 	}
 	if len(reply) < 4 {
 		return false, fmt.Errorf("short speak-to-chat reply % x", reply)
+	}
+	return reply[3] != 0, nil
+}
+
+// readTouchPanel reads whether the earcup's touch panel takes gestures.
+//
+//	→ d6 d1
+//	← d7 d1 01 01   on
+//	← d7 d1 01 00   off
+//
+// Set with d8 d1 01 <on>. Confirmed on an XM4: with 00 written, swipes and
+// taps did nothing, and with 01 they worked again. d6 d2 answers in the same
+// shape (01 00) but keeps no write; what it is is unknown.
+func readTouchPanel(conn *mdr.Conn) (bool, error) {
+	reply, err := conn.Call(0xD7, 0xD6, 0xD1)
+	if err != nil {
+		return false, err
+	}
+	if len(reply) < 4 {
+		return false, fmt.Errorf("short touch panel reply % x", reply)
 	}
 	return reply[3] != 0, nil
 }

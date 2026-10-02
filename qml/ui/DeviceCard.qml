@@ -382,6 +382,18 @@ Rectangle {
             }
         }
 
+        // --- controls ------------------------------------------------------
+        TouchPanelControl {
+            bar: root.bar
+            busy: root.busy
+            visible: root.showingDetail && root.currentTab === "controls"
+                && root.device && root.device.touchPanel !== null
+            on: root.device ? root.device.touchPanel : null
+            onRequested: function (on) {
+                root.settingRequested("touch-panel", on ? "on" : "off");
+            }
+        }
+
         // --- power ---------------------------------------------------------
         AutoPowerOffControl {
             bar: root.bar

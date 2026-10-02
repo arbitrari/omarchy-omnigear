@@ -150,6 +150,9 @@ const (
 	// CapSpeakToChat — a headset that pauses and lets the room in when its
 	// wearer starts talking.
 	CapSpeakToChat Capability = "speak-to-chat"
+	// CapTouchPanel — whether a headset's touch-sensitive earcup takes
+	// gestures.
+	CapTouchPanel Capability = "touch-panel"
 )
 
 // USBID is a vendor/product pair a model shows up as. A model that enumerates
@@ -737,6 +740,7 @@ type DeviceState struct {
 	AutoPowerOff   *AutoPowerOff `json:"autoPowerOff"`
 	DSEE           *DSEE         `json:"dsee"`
 	SpeakToChat    *bool         `json:"speakToChat"`
+	TouchPanel     *bool         `json:"touchPanel"`
 	// Errors holds non-fatal problems, one per capability that could not be
 	// read. Never nil, so it marshals as [] rather than null.
 	Errors []string `json:"errors"`
@@ -811,6 +815,8 @@ const (
 	SettingDSEE SettingKey = "dsee"
 
 	SettingSpeakToChat SettingKey = "speak-to-chat"
+
+	SettingTouchPanel SettingKey = "touch-panel"
 
 	// HITS is per click and per field, so each combination is its own key.
 	// Three fields across two buttons is small enough to name outright, and
@@ -922,7 +928,7 @@ func ParseSetting(key, value string) (Setting, error) {
 				value, strings.Join(codecSlugs, ", "))
 		}
 		return Setting{Key: SettingCodec, Value: codec}, nil
-	case "dsee", "speak-to-chat":
+	case "dsee", "speak-to-chat", "touch-panel":
 		on, ok := parseSwitch(value)
 		if !ok {
 			return Setting{}, fmt.Errorf("%q is not on or off", value)
@@ -982,7 +988,7 @@ func ParseSetting(key, value string) (Setting, error) {
 		return Setting{}, fmt.Errorf("unknown setting %q (expected one of: dpi, "+
 			"polling-rate, profile-mode, smart-shift-mode, smart-shift-threshold, "+
 			"wheel-hi-res, wheel-invert, host, thumbwheel, button-<name>, "+
-			"noise-mode, ambient-level, focus-on-voice, eq-preset, eq-<band>, codec, auto-power-off, dsee, speak-to-chat, "+
+			"noise-mode, ambient-level, focus-on-voice, eq-preset, eq-<band>, codec, auto-power-off, dsee, speak-to-chat, touch-panel, "+
 			"hits-{left,right}-{actuation,rapid-trigger,haptics})", key)
 	}
 
@@ -1120,6 +1126,11 @@ func (s *DeviceState) Reading(key SettingKey) (uint32, bool) {
 	case SettingSpeakToChat:
 		if s.SpeakToChat != nil {
 			return boolToValue(*s.SpeakToChat), true
+		}
+
+	case SettingTouchPanel:
+		if s.TouchPanel != nil {
+			return boolToValue(*s.TouchPanel), true
 		}
 
 	case SettingEQPreset:
