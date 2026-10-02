@@ -259,3 +259,102 @@ func hasSink(sinks []pactl.Sink, name string) bool {
 	}
 	return false
 }
+
+// App is an application playing sound, and the channel it plays to.
+type App struct {
+	Name string
+	// Channel is a channel's slug, or empty when the app plays somewhere
+	// that is not a channel — straight to the headset, say.
+	Channel string
+}
+
+// moveTimeout bounds the wait for a moved stream to land. A move is
+// asynchronous, and the stream was still on its old sink when read straight
+// afterwards.
+const moveTimeout = 2 * time.Second
+
+// Apps lists what is playing, one entry per application.
+//
+// By application rather than by stream: a music player can open a new
+// stream for every track, and WirePlumber remembers an output per
+// application name anyway, so the application is what a choice applies to.
+// The channels' own loopbacks are left out; they are plumbing, not apps.
+func Apps() ([]App, error) {
+	streams, err := pactl.Streams()
+	if err != nil {
+		return nil, err
+	}
+	var apps []App
+	seen := map[string]bool{}
+	for _, stream := range streams {
+		if stream.App == "" || strings.HasPrefix(stream.Node, "omnigear_") || seen[stream.App] {
+			continue
+		}
+		seen[stream.App] = true
+		apps = append(apps, App{Name: stream.App, Channel: channelOf(stream.Sink)})
+	}
+	return apps, nil
+}
+
+func channelOf(sink string) string {
+	for _, c := range Channels {
+		if c.SinkName() == sink {
+			return c.Slug
+		}
+	}
+	return ""
+}
+
+// MoveApp moves every stream an application has to a channel, and waits
+// until they are there.
+func MoveApp(name, slug string) error {
+	var target string
+	for _, c := range Channels {
+		if c.Slug == slug {
+			target = c.SinkName()
+		}
+	}
+	if target == "" {
+		return fmt.Errorf("%q is not a Sonar channel", slug)
+	}
+
+	streams, err := pactl.Streams()
+	if err != nil {
+		return err
+	}
+	found, moved := false, 0
+	for _, stream := range streams {
+		if stream.App != name {
+			continue
+		}
+		found = true
+		if stream.Sink == target {
+			continue
+		}
+		if err := pactl.MoveStream(stream.Index, target); err != nil {
+			return err
+		}
+		moved++
+	}
+	if !found {
+		// Stopped since the panel last looked. WirePlumber has nothing to
+		// move, and would not remember a choice for it.
+		return fmt.Errorf("%s is not playing anything", name)
+	}
+	if moved == 0 {
+		return nil
+	}
+
+	deadline := time.Now().Add(moveTimeout)
+	for time.Now().Before(deadline) {
+		if apps, err := Apps(); err == nil {
+			for _, app := range apps {
+				if app.Name == name && app.Channel == slug {
+					return nil
+				}
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return nil
+}

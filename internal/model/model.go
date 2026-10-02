@@ -822,6 +822,34 @@ type Sonar struct {
 	// outputs, which needs the headset plugged in.
 	Live     bool           `json:"live"`
 	Channels []SonarChannel `json:"channels"`
+	// Apps is what is playing now, and on which channel. Empty while Sonar
+	// is off.
+	Apps []SonarApp `json:"apps"`
+}
+
+// SonarApp is an application playing sound.
+type SonarApp struct {
+	Name string `json:"name"`
+	// Channel is a channel's slug, or empty for an app playing somewhere
+	// that is not a channel.
+	Channel string `json:"channel"`
+}
+
+// sonarChannelSlugs are Sonar's channels, in order. The index is what a
+// setting carries.
+var sonarChannelSlugs = []string{"game", "chat", "media", "aux"}
+
+func SonarChannelValue(slug string) (uint32, bool) { return choiceValue(sonarChannelSlugs, slug) }
+func SonarChannelName(value uint32) string         { return choiceName(sonarChannelSlugs, value) }
+
+// SonarAppKey is the setting key that moves one application to a channel.
+// Like a button's, the key names something only the device's read knows of.
+func SonarAppKey(name string) SettingKey { return SettingKey("sonar-app-" + name) }
+
+// SonarAppNameOf is the inverse of SonarAppKey.
+func SonarAppNameOf(key SettingKey) (string, bool) {
+	name, found := strings.CutPrefix(string(key), "sonar-app-")
+	return name, found && name != ""
 }
 
 // SonarChannel is one output, and the sink applications are pointed at to
@@ -1140,6 +1168,14 @@ func ParseSetting(key, value string) (Setting, error) {
 			}
 			return Setting{Key: SettingKey(key), Value: uint32(target)}, nil
 		}
+		if _, ok := SonarAppNameOf(SettingKey(key)); ok {
+			channel, ok := SonarChannelValue(value)
+			if !ok {
+				return Setting{}, fmt.Errorf("%q is not a Sonar channel (expected one of: %s)",
+					value, strings.Join(sonarChannelSlugs, ", "))
+			}
+			return Setting{Key: SettingKey(key), Value: channel}, nil
+		}
 		if _, ok := EQBandSlugOf(SettingKey(key)); ok {
 			// Levels are signed, and a Setting is not. Which bands exist is
 			// the device's to say, and is checked against a read.
@@ -1153,7 +1189,7 @@ func ParseSetting(key, value string) (Setting, error) {
 			"polling-rate, profile-mode, smart-shift-mode, smart-shift-threshold, "+
 			"wheel-hi-res, wheel-invert, host, thumbwheel, button-<name>, "+
 			"noise-mode, ambient-level, focus-on-voice, eq-preset, eq-<band>, codec, auto-power-off, dsee, speak-to-chat, touch-panel, "+
-			"sidetone, mic-volume, mute-light, gain, wireless-mode, sonar, "+
+			"sidetone, mic-volume, mute-light, gain, wireless-mode, sonar, sonar-app-<app>, "+
 			"hits-{left,right}-{actuation,rapid-trigger,haptics})", key)
 	}
 
@@ -1356,6 +1392,15 @@ func (s *DeviceState) Reading(key SettingKey) (uint32, bool) {
 	if slug, ok := EQBandSlugOf(key); ok && s.Equalizer != nil {
 		if band := s.Equalizer.Band(slug); band != nil {
 			return uint32(band.Value + EQBias), true
+		}
+		return 0, false
+	}
+
+	if name, ok := SonarAppNameOf(key); ok && s.Sonar != nil {
+		for _, app := range s.Sonar.Apps {
+			if app.Name == name {
+				return SonarChannelValue(app.Channel)
+			}
 		}
 		return 0, false
 	}

@@ -356,6 +356,9 @@ var settingCapabilities = map[model.SettingKey]model.Capability{
 
 func (d driver) Write(device *model.Device, setting *model.Setting) error {
 	capability, ok := settingCapabilities[setting.Key]
+	if _, app := model.SonarAppNameOf(setting.Key); app {
+		capability, ok = model.CapSonar, true
+	}
 	if !ok || !device.Entry.Has(capability) {
 		return fmt.Errorf("%s has no %s", device.Entry.Model, setting.Key)
 	}
@@ -363,6 +366,9 @@ func (d driver) Write(device *model.Device, setting *model.Setting) error {
 	// Sonar is the sound server's, and the base station is not spoken to.
 	if setting.Key == model.SettingSonar {
 		return writeSonar(device, setting.Value != 0)
+	}
+	if name, ok := model.SonarAppNameOf(setting.Key); ok {
+		return sonar.MoveApp(name, model.SonarChannelName(setting.Value))
 	}
 
 	conn, err := open(device.Node)
@@ -484,13 +490,20 @@ func open(node hidraw.Node) (*arctis.Conn, error) {
 
 func readSonar() (*model.Sonar, error) {
 	status, err := sonar.Read()
-	out := &model.Sonar{Enabled: status.Enabled, Live: status.Live}
+	out := &model.Sonar{Enabled: status.Enabled, Live: status.Live, Apps: []model.SonarApp{}}
 	for i, c := range sonar.Channels {
 		out.Channels = append(out.Channels, model.SonarChannel{
 			Slug: c.Slug, Label: c.Label, Sink: c.SinkName(),
 			// Game and Chat, the first two, are what the dial balances.
 			Mixed: i < 2,
 		})
+	}
+	if err != nil || !status.Live {
+		return out, err
+	}
+	apps, err := sonar.Apps()
+	for _, app := range apps {
+		out.Apps = append(out.Apps, model.SonarApp{Name: app.Name, Channel: app.Channel})
 	}
 	return out, err
 }

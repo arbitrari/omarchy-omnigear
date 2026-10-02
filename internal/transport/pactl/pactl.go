@@ -205,3 +205,75 @@ func SetStreamVolume(nodeName string, percent int) error {
 	}
 	return fmt.Errorf("the sound server has no stream %s", nodeName)
 }
+
+// Stream is something playing: an application's output, and the sink it
+// plays to.
+type Stream struct {
+	Index int
+	// App is the application's name, as it gave it. Empty for a stream that
+	// did not say.
+	App string
+	// Node is the stream's node name, which for a loopback is its own.
+	Node string
+	Sink string
+}
+
+// Streams lists everything playing, with each one's sink by name.
+func Streams() ([]Stream, error) {
+	sinks, err := sinkNames()
+	if err != nil {
+		return nil, err
+	}
+	out, err := run("-f", "json", "list", "sink-inputs")
+	if err != nil {
+		return nil, err
+	}
+	var inputs []struct {
+		Index      int               `json:"index"`
+		Sink       int               `json:"sink"`
+		Properties map[string]string `json:"properties"`
+	}
+	if err := json.Unmarshal(out, &inputs); err != nil {
+		return nil, fmt.Errorf("pactl: %w", err)
+	}
+	streams := make([]Stream, 0, len(inputs))
+	for _, input := range inputs {
+		streams = append(streams, Stream{
+			Index: input.Index,
+			App:   input.Properties["application.name"],
+			Node:  input.Properties["node.name"],
+			Sink:  sinks[input.Sink],
+		})
+	}
+	return streams, nil
+}
+
+// MoveStream moves a stream to another sink. WirePlumber remembers the
+// choice for the application, so its next stream goes there too.
+//
+// The move is asynchronous: the stream was still on its old sink when read
+// straight afterwards. The caller waits for it if it needs to.
+func MoveStream(index int, sink string) error {
+	_, err := run("move-sink-input", strconv.Itoa(index), sink)
+	return err
+}
+
+// sinkNames maps a sink's index to its name.
+func sinkNames() (map[int]string, error) {
+	out, err := run("-f", "json", "list", "sinks")
+	if err != nil {
+		return nil, err
+	}
+	var sinks []struct {
+		Index int    `json:"index"`
+		Name  string `json:"name"`
+	}
+	if err := json.Unmarshal(out, &sinks); err != nil {
+		return nil, fmt.Errorf("pactl: %w", err)
+	}
+	names := make(map[int]string, len(sinks))
+	for _, s := range sinks {
+		names[s.Index] = s.Name
+	}
+	return names, nil
+}

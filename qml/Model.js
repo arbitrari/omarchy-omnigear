@@ -171,6 +171,14 @@ function parseDevice(raw) {
           sink: safeText(c.sink, "", 64),
           mixed: c.mixed === true
         }
+      }),
+      // The name is sent back as part of a setting key, so it is bounded but
+      // otherwise left as the app gave it: altering it would point the key at
+      // an app that does not exist.
+      apps: (Array.isArray(s.sonar.apps) ? s.sonar.apps : []).filter(function (a) {
+        return a && typeof a.name === "string" && a.name !== "" && a.name.length <= 128
+      }).map(function (a) {
+        return { name: a.name, channel: safeText(a.channel, "", 16) }
       })
     } : null,
     muteLight: parseLevel(s.muteLight),

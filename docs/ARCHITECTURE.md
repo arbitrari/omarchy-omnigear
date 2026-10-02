@@ -601,6 +601,16 @@ switching it:
   with the headset unplugged and Game the default output, a fallback would
   have Game play into the default — itself.
 
+**An app's channel is chosen per app, not per stream.** The Sonar tab lists
+what is playing and moves it with `omnigear set <device> sonar-app-<app>
+<channel>`. A music player can open a new stream for every track, and
+WirePlumber remembers an output per application name, so the application is
+what the choice applies to and the choice outlives the stream it was made on.
+A move is asynchronous — the stream was still on its old sink when read
+straight afterwards — so the write waits for it to land before the verifying
+read. The list is only as fresh as the last full read, which with the panel
+open is every poll.
+
 **The dial scales the loopback's stream, not its sink.** The sink's volume is
 the listener's own, set in any mixer; the dial works on top of it, so turning
 toward Game quietens chat without losing the level chat was set to.

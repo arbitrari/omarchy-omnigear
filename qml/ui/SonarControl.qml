@@ -7,7 +7,8 @@ import "../Model.js" as Model
 // the rest, with the headset's ChatMix dial balancing game against chat.
 //
 // The switch restarts the sound server, which is said on it rather than left
-// to surprise anyone: every stream drops for a moment. The dial's position
+// to surprise anyone: every stream drops for a moment. Below it, each app
+// playing can be moved to a channel. The dial's position
 // comes from a listener the service keeps running, not from the device's
 // read, because the base station only reports the dial as it turns.
 Column {
@@ -21,6 +22,7 @@ Column {
     property bool busy: false
 
     signal requested(bool on)
+    signal appRequested(string name, string channel)
 
     readonly property color foreground: bar ? bar.foreground : Color.foreground
     readonly property color muted: Qt.darker(foreground, 1.4)
@@ -143,50 +145,81 @@ Column {
         }
     }
 
+    // What is playing, and which channel each app plays to. By app rather
+    // than by stream, because that is what WirePlumber remembers: a choice
+    // here sticks the next time the app plays.
     Column {
         width: parent.width
-        spacing: Style.space(4)
-        visible: root.enabledNow
+        spacing: Style.space(8)
+        visible: root.enabledNow && root.sonar.live
 
         SettingHeader {
             bar: root.bar
-            label: "Outputs"
+            label: "Apps"
         }
 
         Repeater {
-            model: root.sonar ? root.sonar.channels : []
+            model: root.sonar ? root.sonar.apps : []
 
-            delegate: Item {
+            delegate: Column {
                 required property var modelData
 
                 width: parent.width
-                implicitHeight: name.implicitHeight
+                spacing: Style.space(4)
 
                 Text {
-                    id: name
-                    anchors.left: parent.left
-                    text: "OmniGear " + modelData.label
+                    width: parent.width
+                    text: modelData.name
+                    elide: Text.ElideRight
                     textFormat: Text.PlainText
                     color: root.foreground
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.bodySmall
                 }
 
-                Text {
-                    anchors.right: parent.right
-                    anchors.verticalCenter: name.verticalCenter
-                    text: modelData.mixed ? "On The Dial" : ""
-                    textFormat: Text.PlainText
-                    color: root.muted
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.caption
+                ButtonGroup {
+                    width: parent.width
+                    spacing: Style.space(4)
+
+                    foreground: root.foreground
+                    background: root.bar ? root.bar.background : Color.background
+                    accent: Color.accent
+                    fontFamily: root.fontFamily
+                    fontSize: Style.font.caption
+                    focusable: false
+
+                    options: root.sonar.channels.map(function (c) {
+                        return {
+                            value: c.slug,
+                            label: c.label,
+                            tooltip: c.mixed ? "On the ChatMix dial." : "Not affected by the ChatMix dial."
+                        };
+                    })
+                    // Empty when the app plays somewhere that is not a
+                    // channel, so no button claims it.
+                    value: modelData.channel
+
+                    onChanged: function (value) {
+                        root.appRequested(modelData.name, value);
+                    }
                 }
             }
         }
 
         Text {
             width: parent.width
-            text: "Pick an output for each app in your sound settings. New apps play to Game."
+            visible: root.sonar !== null && root.sonar.apps.length === 0
+            text: "Nothing is playing. Apps show here while they play."
+            wrapMode: Text.WordWrap
+            textFormat: Text.PlainText
+            color: root.muted
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+        }
+
+        Text {
+            width: parent.width
+            text: "Game and Chat are on the dial. New apps play to Game."
             wrapMode: Text.WordWrap
             textFormat: Text.PlainText
             color: root.muted

@@ -460,6 +460,9 @@ Rectangle {
             onRequested: function (on) {
                 root.settingRequested("sonar", on ? "on" : "off");
             }
+            onAppRequested: function (name, channel) {
+                root.settingRequested("sonar-app-" + name, channel);
+            }
         }
 
         // --- wireless ------------------------------------------------------
