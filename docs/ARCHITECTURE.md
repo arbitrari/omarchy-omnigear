@@ -626,7 +626,7 @@ also there the next time PipeWire starts. Moving a band on a fixed preset
 carries the preset's curve to Custom first, as a Sony's equalizer does.
 
 **The dial scales the loopback's stream, not its sink.** The sink's volume is
-the listener's own, set in any mixer or with a slider in the Sonar tab
+the listener's own, set in any mixer or with a knob in the Sonar tab
 (`sonar-volume-<channel>`); the dial works on top of it, so turning toward
 Game quietens chat without losing the level chat was set to, and neither ever
 moves the other's number.

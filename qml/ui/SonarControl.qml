@@ -173,34 +173,24 @@ Column {
             label: "Audio Channels"
         }
 
-        Repeater {
-            model: root.sonar ? root.sonar.channels : []
+        // A knob per channel, all four on one line.
+        Row {
+            id: dials
+            width: parent.width
 
-            delegate: Column {
-                required property var modelData
+            Repeater {
+                model: root.sonar ? root.sonar.channels : []
 
-                width: parent.width
-                spacing: Style.space(4)
+                delegate: VolumeDial {
+                    required property var modelData
 
-                SettingHeader {
+                    width: dials.width / Math.max(1, root.sonar.channels.length)
                     bar: root.bar
                     label: modelData.label
-                    value: modelData.volume + "%"
-                }
-
-                SquaredSlider {
-                    width: parent.width
-                    height: Style.spacing.controlHeight
-                    bar: root.bar
-                    minimum: 0
-                    maximum: 100
-                    // A mixer can take a channel past 100%; the slider stops
-                    // there and says the real figure above it.
-                    value: Math.min(modelData.volume, 100)
-                    step: 1
-                    integer: true
+                    value: modelData.volume
+                    tooltip: modelData.label + " volume. Drag up or down to change."
                     onReleased: function (v) {
-                        root.volumeRequested(modelData.slug, Math.round(v));
+                        root.volumeRequested(modelData.slug, v);
                     }
                 }
             }
