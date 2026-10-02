@@ -11,7 +11,22 @@ An [Omarchy](https://omarchy/org) Plugin for monitoring and configuring your per
 
 ## Installation
 
-`omarchy plugin add omni.arbirtari.dev --enable`
+```sh
+omarchy plugin add https://omni.arbitrari.dev --enable
+```
+
+### Device Permissions
+
+HID devices are root-only until a udev rule says otherwise, so OmniGear needs
+one installed before it can read anything. Without it, a device is simply
+invisible and OmniGear cannot open it to ask it anything.
+
+```sh
+sudo cp ~/.config/omarchy/plugins/io.github.arbitrari.omnigear/udev/60-omnigear.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules && sudo udevadm trigger
+```
+> [!IMPORTANT]
+> You must disconnect and reconnect your peripherals after adding this udev rule or else OmniGear still will not see your device
 
 ## Updates
 
@@ -26,29 +41,36 @@ Updates can be done directly in the plugin.
 > [!NOTE]   
 > 🟩 = Fully Supported   
 > 🟨 = Partially Supported   
-> 🟥 = Not Supported, but Planned
+> 🟥 = Not Supported, but Planned   
+> ⬛ = Not Applicable _(the device does not have this feature)_
 
 ### Mice
 
 <details>
 <summary><b>Logitech</b></summary>
 
-|  | Name | Battery | DPI | Polling | HITS* | Notes 
-|------|-----|-----|-----|-----|-----|-----|
-| 🟥 | PRO X2 SUPERSTRIKE  | | | | | |
-| 🟥 | PRO X2 SUPERLIGHT 2 | | | | N/A | |
-| 🟥 | PRO X2 SUPERLIGHT   | | | | N/A | |
-| 🟥 | PRO 2 LIGHTSPEED    | | | | N/A | |
-| 🟥 | G502 X / PLUS       | | | | N/A | |
-| 🟥 | G309 LIGHTSPEED     | | | | N/A | |
-| 🟥 | G305                | | | | N/A | |
-| 🟥 | MX Master 4         | | | | N/A | |
-| 🟥 | MX Master 3S        | | | | N/A | |
-| 🟥 | MX Master 3         | | | | N/A | |
-| 🟥 | MX Master 2         | | | | N/A | |
-| 🟥 | MX Master           | | | | N/A | |
+|  | Name | Battery | DPI | Polling | HITS* | SmartShift** | Hi-Res Wheel | Thumbwheel | Buttons**** | Easy-Switch*** | Notes 
+|------|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|
+| 🟩 | PRO X2 SUPERSTRIKE  |🟩|🟩|🟩|🟩|⬛|⬛|⬛|⬛|⬛|Not configurable when using Onboard memory|
+| 🟥 | PRO X2 SUPERLIGHT 2 | | | |⬛| | | | | | |
+| 🟥 | PRO X2 SUPERLIGHT   | | | |⬛| | | | | | |
+| 🟥 | PRO 2 LIGHTSPEED    | | | |⬛| | | | | | |
+| 🟥 | G502 X / PLUS       | | | |⬛| | | | | | |
+| 🟥 | G309 LIGHTSPEED     | | | |⬛| | | | | | |
+| 🟥 | G305                | | | |⬛| | | | | | |
+| 🟥 | MX Master 4         | | | |⬛| | | | | | |
+| 🟩 | MX Master 3S        |🟩|🟩|⬛|⬛|🟩|🟩|🟩|🟩|🟩| |
+| 🟩 | MX Master 3         |🟨|🟩|⬛|⬛|🟩|🟩|🟩|🟩|🟨|Battery is four levels, not a percentage; no host names or pairing status|
+| 🟥 | MX Master 2         | | | |⬛| | | | | | |
+| 🟥 | MX Master           | | | |⬛| | | | | | |
  
-***Haptic Inductive Trigger System:** configurable actuation points and haptic feedback for left and right click 
+***Haptic Inductive Trigger System:** configurable actuation points and haptic feedback for left and right click. In the plugin, this appears as a Triggers tab in the SUPERSTRIKE's Panel
+
+****Smartshift:** ability for the scroll wheel to automatically switch between ratcheting and smooth scroll. In the plugin, this appears as a Wheel tab in the XM Master family's Panel
+
+*****Easy-Switch:** the host slots a device is paired to, and switching between them. In the plugin, this appears as a Hosts tab in the MX Master family's Panel
+
+******Buttons:** reassigning what a button does, in the device itself rather than in the desktop. In the plugin, this appears as a Buttons tab. Left and right click are never reassignable, so a mouse cannot be left unable to click
 
 </details>
 
@@ -134,6 +156,21 @@ Updates can be done directly in the plugin.
 
 <details>
 <summary><b>Steelseries</b></summary>
+
+|  | Name | Battery* | Noise Control** | Equalizer***** | Gain | Sidetone | Mic Volume | Mute Light | Wireless Mode*** | Auto Power Off | Sonar**** | Mic Mute | Notes
+|------|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|
+| 🟩 | Arctis Nova Pro Wireless |🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩| Only with use of Base Station |
+
+***Battery:** the headset's charge and the spare charging in the base station, in eighths, as the base station counts them
+
+****Noise Control:** noise cancelling, transparency or off, with the transparency level. In the plugin, this appears as a Sound tab
+
+*****Wireless Mode:** whether the headset's link to the base station favours latency (speed) or distance (range). Switching drops the headset for a few seconds while it reconnects. In the plugin, this appears as a Wireless tab
+
+******Sonar:** separate Game, Chat, Media and Aux outputs, with the base station's ChatMix dial balancing Game against Chat, as SteelSeries Sonar does. Each channel's volume can be set, and each app that is playing moved to a channel, from the same tab, and keeps it the next time it plays. Turning Sonar on or off restarts PipeWire, so audio drops for a moment. In the plugin, this appears as a Sonar tab
+
+*******Equalizer:** a 10-band equalizer for each Sonar channel, applied in software as SteelSeries Sonar does, with Flat, Bass Boost, Treble Boost, Vocal and Custom presets. While Sonar is on, the base station hands its own equalizer to the computer. In the plugin, this appears as an Equalizer tab
+
 </details>
 
 <details>
@@ -154,6 +191,20 @@ Updates can be done directly in the plugin.
 
 <details>
 <summary><b>Sony</b></summary>
+
+|  | Name | Battery | Noise Control* | Equalizer | Codec** | DSEE*** | Speak-To-Chat | Auto Power Off | Touch Panel | Notes
+|------|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|
+| 🟥 | WH-1000XM6 | | | | | | | | | |
+| 🟥 | WH-1000XM5 | | | | | | | | | |
+| 🟩 | WH-1000XM4 |🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩|Bluetooth only |
+| 🟩 | WH-1000XM3 |🟩|🟩|🟩|🟩|🟩|⬛|🟩|🟩|Bluetooth only. Equalizer only over SBC or AAC|
+
+***Noise Control:** noise cancelling, ambient sound or off, with ambient level and focus on voice. In the plugin, this appears as a Sound tab
+
+****Codec:** which Bluetooth codec the audio plays over (SBC, AAC, aptX, LDAC, …). This is chosen by your computer's sound server rather than stored in the headset. In the plugin, this appears in the Sound tab
+
+*****DSEE:** Sony's upscaling of compressed audio, sold as DSEE HX on the WH-1000XM3 and DSEE Extreme on the WH-1000XM4. In the plugin, this appears in the Sound tab
+
 </details>
 
 <details>
@@ -185,6 +236,44 @@ Updates can be done directly in the plugin.
 Is your device not currently supported? Feel free to submit a Pull Request to add support for it!
 
 Use of Agents such as Claude Code, Codex, Cursor, Grok, Opencode, etc is encouraged. That said, _please_ make sure to keep PRs concise. Also, _please_ test all changes made as the maintainers most likely do not have the same device to test it themselves.
+
+### Getting Started
+
+On Omarchy, you need nothing but the device you are adding. Omarchy ships with [mise](https://mise.jdx.dev) and this repository's `mise.toml` asks for `Go`. The first `./scripts/dev-install` call pulls `Go` down by itself and there is no toolchain to set up.
+
+Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) first. It explains where a model lives in the tree, why a capability list is all the UI needs, and the hardware quirks that otherwise cost you an evening.
+
+### Testing Changes
+
+As you make frequent changes, you will want to build the plugin. To make this easy, run the following in terminal:
+
+```
+./scripts/dev-install
+```
+That will build the plugin and load it into the current shell automatically.
+
+### Adding a Device
+
+Most mice are one catalog entry and no new code, since the driver for the family already exists.
+
+1. Plug the device in and run `./bin/omnigear probe`. It lists every hidraw node and which HID++ features actually answered. Never copy a USB id off the internet. A wrong one binds a driver to somebody else's hardware.
+2. Add a `model.Entry` to `internal/devices/<category>/<brand>/<brand>.go`, with the ids you observed and only the capabilities you have seen work.
+3. Set `Support` honestly. `SupportPartial` until every capability it claims works.
+4. Update the table in this README to match.
+
+A model that behaves unlike the rest of its family gets its own file next to the catalog. A brand that speaks a protocol nothing else here speaks needs a `transport/` package and a `drivers/` package as well, and that is a much bigger PR. Say so in the description and it can be reviewed in pieces.
+
+### Reporting a Bug
+
+Open an Issue with the output of `probe` and `list`, taken with the device connected. The binary ships inside the installed plugin:
+
+```
+cd ~/.config/omarchy/plugins/io.github.arbitrari.omnigear
+./bin/omnigear probe
+./bin/omnigear list
+```
+
+Serials are in that output, so scrub them if you would rather not publish them. The rest is what makes the report fixable.
 
 ## Disclaimer
 OmniGear is not officially affiliated with the Omarchy Foundation nor any of the brands mentioned in this README or source code. This product is developed in open-source and is provided for free by volunteer contributors. If a brand has an issue with their product(s) being supported, please reach out in an GitHub Issue and it can be taken care of.

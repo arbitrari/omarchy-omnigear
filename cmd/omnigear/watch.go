@@ -1,0 +1,139 @@
+package main
+
+import (
+	"encoding/json"
+	"os"
+	"sync"
+	"time"
+
+	"golang.org/x/sys/unix"
+
+	"github.com/arbitrari/omarchy-omnigear/internal/catalog"
+	"github.com/arbitrari/omarchy-omnigear/internal/discovery"
+	"github.com/arbitrari/omarchy-omnigear/internal/model"
+	"github.com/arbitrari/omarchy-omnigear/internal/sonar"
+	"github.com/arbitrari/omarchy-omnigear/internal/transport/hidraw"
+)
+
+// watchEvent is one line of `omnigear watch`.
+type watchEvent struct {
+	ID string `json:"id"`
+	// Kind is "mix" for the ChatMix dial and "mic" for the mute button.
+	Kind string `json:"kind"`
+	Game uint8  `json:"game,omitempty"`
+	Chat uint8  `json:"chat,omitempty"`
+	// MicMuted is set only on a "mic" event.
+	MicMuted *bool `json:"micMuted,omitempty"`
+	// Error is why the mix could not be applied, when it could not. The
+	// reading is still good.
+	Error string `json:"error,omitempty"`
+}
+
+// rescan is how long to wait before looking for a device to watch again,
+// when there is none or the one there was went away.
+const rescan = 5 * time.Second
+
+// cmdWatch follows what a headset announces as it happens — its ChatMix
+// dial, applied to the Sonar channels, and its mute button — for as long as
+// it runs.
+//
+// It is the one command that does not print a single object and exit. The
+// base station reports these only as they change, so something has to be
+// listening at the time; the bar keeps this running and reads one JSON
+// object per line, one per change.
+//
+// Finding the device is deliberately cheaper than `list`: it matches nodes
+// by USB id and report descriptor and opens nothing else, so waiting for a
+// base station to be plugged in does not ping every mouse on the machine
+// every few seconds.
+func cmdWatch() error {
+	// The bar starts this and should take it down with it. Without this, a
+	// shell that crashed would leave it listening forever.
+	_ = unix.Prctl(unix.PR_SET_PDEATHSIG, uintptr(unix.SIGTERM), 0, 0, 0)
+
+	out := json.NewEncoder(os.Stdout)
+	var mu sync.Mutex
+	print := func(event watchEvent) {
+		mu.Lock()
+		defer mu.Unlock()
+		_ = out.Encode(event)
+	}
+
+	for {
+		node, entry, watcher, ok := findWatched()
+		if !ok {
+			time.Sleep(rescan)
+			continue
+		}
+		id := discovery.IDFor(entry, node.Uniq)
+
+		// The dial reports every step as it turns, faster than the sound
+		// server can be told. Only the newest position matters, so one
+		// worker applies whatever is latest and the rest are dropped.
+		latest := make(chan watchEvent, 1)
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			for event := range latest {
+				if status, err := sonar.Read(); err == nil && status.Live {
+					if err := sonar.ApplyMix(event.Game, event.Chat); err != nil {
+						event.Error = err.Error()
+					}
+				}
+				print(event)
+			}
+		}()
+
+		// A mute is printed only when it changes: it is also read from every
+		// status reply that passes, which arrive with each poll.
+		var lastMuted *bool
+		events := model.WatchEvents{
+			MicMuted: func(muted bool) {
+				if lastMuted != nil && *lastMuted == muted {
+					return
+				}
+				lastMuted = &muted
+				print(watchEvent{ID: id, Kind: "mic", MicMuted: &muted})
+			},
+		}
+		if entry.Has(model.CapSonar) {
+			events.Mix = func(game, chat uint8) {
+				event := watchEvent{ID: id, Kind: "mix", Game: game, Chat: chat}
+				select {
+				case latest <- event:
+				default:
+					// Replace the one waiting with this newer one.
+					select {
+					case <-latest:
+					default:
+					}
+					latest <- event
+				}
+			}
+		}
+		_ = watcher.Watch(node, events)
+		close(latest)
+		<-done
+		time.Sleep(rescan)
+	}
+}
+
+// findWatched finds a catalogued device that announces changes, and the node
+// it announces them on.
+func findWatched() (hidraw.Node, *model.Entry, model.Watcher, bool) {
+	for _, node := range hidraw.Enumerate() {
+		entry := catalog.FindByUSB(node.Vendor, node.Product)
+		if entry == nil || !(entry.Has(model.CapSonar) || entry.Has(model.CapMicMute)) {
+			continue
+		}
+		watcher, ok := entry.Driver.(model.Watcher)
+		if !ok {
+			continue
+		}
+		if speaker, ok := entry.Driver.(model.Speaker); ok && !speaker.Speaks(node) {
+			continue
+		}
+		return node, entry, watcher, true
+	}
+	return hidraw.Node{}, nil, nil, false
+}
