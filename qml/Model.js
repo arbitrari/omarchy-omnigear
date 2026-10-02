@@ -407,6 +407,11 @@ function tooltip(state) {
     }
     if (d.dpi && d.dpi.current > 0) parts.push(d.dpi.current + " DPI")
     if (d.pollingRate && d.pollingRate.current > 0) parts.push(d.pollingRate.current + " Hz")
+    // "Off" alone would read as the headset being off.
+    if (d.noiseControl && d.noiseControl.mode === "off") parts.push("Noise Control Off")
+    else if (d.noiseControl && d.noiseControl.mode) parts.push(noiseModeLabel(d.noiseControl.mode))
+    var codec = codecLabel(d.codec)
+    if (codec) parts.push(codec)
     return parts.join(" · ")
   }).join("\n")
 }
