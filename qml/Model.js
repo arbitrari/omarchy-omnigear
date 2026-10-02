@@ -170,7 +170,8 @@ function parseDevice(raw) {
           label: safeText(c.label, "", 32),
           sink: safeText(c.sink, "", 64),
           mixed: c.mixed === true,
-          volume: Math.max(0, Number(c.volume) || 0)
+          volume: Math.max(0, Number(c.volume) || 0),
+          equalizer: parseEqualizer(c.equalizer)
         }
       }),
       // The name is sent back as part of a setting key, so it is bounded but
@@ -183,26 +184,7 @@ function parseDevice(raw) {
       })
     } : null,
     muteLight: parseLevel(s.muteLight),
-    equalizer: s.equalizer ? {
-      available: s.equalizer.available === true,
-      unavailable: safeText(s.equalizer.unavailable, "", 128),
-      codecs: (Array.isArray(s.equalizer.codecs) ? s.equalizer.codecs : []).map(function (c) {
-        return safeText(c, "", 24)
-      }),
-      preset: safeText(s.equalizer.preset, "", 24),
-      presets: (Array.isArray(s.equalizer.presets) ? s.equalizer.presets : []).map(function (p) {
-        return { slug: safeText(p.slug, "", 24), label: safeText(p.label, "", 32) }
-      }),
-      bands: (Array.isArray(s.equalizer.bands) ? s.equalizer.bands : []).map(function (b) {
-        return {
-          slug: safeText(b.slug, "", 16),
-          label: safeText(b.label, "", 16),
-          value: Number(b.value) || 0
-        }
-      }),
-      min: Number(s.equalizer.min) || 0,
-      max: Number(s.equalizer.max) || 0
-    } : null,
+    equalizer: parseEqualizer(s.equalizer),
     thumbwheel: s.thumbwheel ? {
       mode: safeText(s.thumbwheel.mode, "", 16)
     } : null,
@@ -286,6 +268,32 @@ function parseBattery(raw) {
     status: safeText(raw.status, "unknown", 16),
     // A second battery charging in a base station, where there is one.
     spare: typeof raw.spare === "number" ? raw.spare : UNKNOWN
+  }
+}
+
+/// An equalizer, a headset's own or a Sonar channel's: presets and the bands
+/// the current one sets.
+function parseEqualizer(raw) {
+  if (!raw) return null
+  return {
+    available: raw.available === true,
+    unavailable: safeText(raw.unavailable, "", 128),
+    codecs: (Array.isArray(raw.codecs) ? raw.codecs : []).map(function (c) {
+      return safeText(c, "", 24)
+    }),
+    preset: safeText(raw.preset, "", 24),
+    presets: (Array.isArray(raw.presets) ? raw.presets : []).map(function (p) {
+      return { slug: safeText(p.slug, "", 24), label: safeText(p.label, "", 32) }
+    }),
+    bands: (Array.isArray(raw.bands) ? raw.bands : []).map(function (b) {
+      return {
+        slug: safeText(b.slug, "", 16),
+        label: safeText(b.label, "", 16),
+        value: Number(b.value) || 0
+      }
+    }),
+    min: Number(raw.min) || 0,
+    max: Number(raw.max) || 0
   }
 }
 
@@ -543,7 +551,9 @@ var TAB_GROUPS = [
   { id: "buttons", label: "Buttons", capabilities: ["buttons"] },
   { id: "hosts", label: "Hosts", capabilities: ["host"] },
   { id: "sound", label: "Sound", capabilities: ["noise-control", "speak-to-chat", "dsee", "codec", "gain"] },
-  { id: "equalizer", label: "Equalizer", capabilities: ["equalizer"] },
+  // A Sonar headset's equalizer is per channel and in software, but it is
+  // still the equalizer, and belongs in this tab rather than buried in Sonar's.
+  { id: "equalizer", label: "Equalizer", capabilities: ["equalizer", "sonar"] },
   { id: "mic", label: "Mic", capabilities: ["mic-volume", "sidetone", "mute-light"] },
   { id: "controls", label: "Controls", capabilities: ["touch-panel"] },
   { id: "sonar", label: "Sonar", capabilities: ["sonar"] },

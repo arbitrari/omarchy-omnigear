@@ -157,9 +157,9 @@ Updates can be done directly in the plugin.
 <details>
 <summary><b>Steelseries</b></summary>
 
-|  | Name | Battery* | Noise Control** | Equalizer | Gain | Sidetone | Mic Volume | Mute Light | Wireless Mode*** | Auto Power Off | Sonar**** | Notes
+|  | Name | Battery* | Noise Control** | Equalizer***** | Gain | Sidetone | Mic Volume | Mute Light | Wireless Mode*** | Auto Power Off | Sonar**** | Notes
 |------|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|
-| 🟨 | Arctis Nova Pro Wireless |🟩|🟩|🟥|🟩|🟩|🟩|🟩|🟩|🟩|🟩| Only with use of Base Station |
+| 🟩 | Arctis Nova Pro Wireless |🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩| Only with use of Base Station |
 
 ***Battery:** the headset's charge and the spare charging in the base station, in eighths, as the base station counts them
 
@@ -168,6 +168,8 @@ Updates can be done directly in the plugin.
 *****Wireless Mode:** whether the headset's link to the base station favours latency (speed) or distance (range). Switching drops the headset for a few seconds while it reconnects. In the plugin, this appears as a Wireless tab
 
 ******Sonar:** separate Game, Chat, Media and Aux outputs, with the base station's ChatMix dial balancing Game against Chat, as SteelSeries Sonar does. Each channel's volume can be set, and each app that is playing moved to a channel, from the same tab, and keeps it the next time it plays. Turning Sonar on or off restarts PipeWire, so audio drops for a moment. In the plugin, this appears as a Sonar tab
+
+*******Equalizer:** a 10-band equalizer for each Sonar channel, applied in software as SteelSeries Sonar does, with Flat, Bass Boost, Treble Boost, Vocal and Custom presets. While Sonar is on, the base station hands its own equalizer to the computer. In the plugin, this appears as an Equalizer tab
 
 </details>
 

@@ -362,6 +362,9 @@ func (d driver) Write(device *model.Device, setting *model.Setting) error {
 	if _, volume := model.SonarVolumeSlugOf(setting.Key); volume {
 		capability, ok = model.CapSonar, true
 	}
+	if _, _, eq := model.SonarEQOf(setting.Key); eq {
+		capability, ok = model.CapSonar, true
+	}
 	if !ok || !device.Entry.Has(capability) {
 		return fmt.Errorf("%s has no %s", device.Entry.Model, setting.Key)
 	}
@@ -372,6 +375,15 @@ func (d driver) Write(device *model.Device, setting *model.Setting) error {
 	}
 	if name, ok := model.SonarAppNameOf(setting.Key); ok {
 		return sonar.MoveApp(name, model.SonarChannelName(setting.Value))
+	}
+	if channel, band, ok := model.SonarEQOf(setting.Key); ok {
+		if band == "preset" {
+			return sonar.SetPreset(channel, model.EQPresetSlug(setting.Value))
+		}
+		gain := int(setting.Value) - model.EQBias
+		clamped := min(max(gain, sonar.MinGain), sonar.MaxGain)
+		setting.Value = uint32(clamped + model.EQBias)
+		return sonar.SetBand(channel, band, clamped)
 	}
 	if slug, ok := model.SonarVolumeSlugOf(setting.Key); ok {
 		if setting.Value > sonar.MaxVolume {
@@ -500,12 +512,20 @@ func open(node hidraw.Node) (*arctis.Conn, error) {
 func readSonar() (*model.Sonar, error) {
 	status, err := sonar.Read()
 	out := &model.Sonar{Enabled: status.Enabled, Live: status.Live, Apps: []model.SonarApp{}}
+	eq, eqErr := sonar.ReadEQ()
 	for i, c := range sonar.Channels {
-		out.Channels = append(out.Channels, model.SonarChannel{
+		channel := model.SonarChannel{
 			Slug: c.Slug, Label: c.Label, Sink: c.SinkName(),
 			// Game and Chat, the first two, are what the dial balances.
 			Mixed: i < 2,
-		})
+		}
+		if eqErr == nil {
+			channel.Equalizer = equalizerOf(eq[c.Slug])
+		}
+		out.Channels = append(out.Channels, channel)
+	}
+	if err == nil {
+		err = eqErr
 	}
 	if err != nil || !status.Live {
 		return out, err
@@ -574,4 +594,26 @@ func (driver) WatchChatMix(node hidraw.Node, onMix func(game, chat uint8)) error
 			onMix(min(report[2], 100), min(report[3], 100))
 		}
 	}
+}
+
+// equalizerOf describes a channel's software equalizer the way a headset's
+// own is described, so the panel draws both with the same control.
+func equalizerOf(eq sonar.ChannelEQ) *model.Equalizer {
+	out := &model.Equalizer{
+		Available: true,
+		Codecs:    []string{},
+		Preset:    eq.Preset,
+		Min:       sonar.MinGain,
+		Max:       sonar.MaxGain,
+	}
+	for _, p := range sonar.Presets {
+		out.Presets = append(out.Presets, model.EQPreset{
+			Slug: p.Slug, Label: p.Label, Editable: p.Gains == nil,
+		})
+	}
+	for i, gain := range eq.Gains() {
+		slug := sonar.BandSlug(sonar.Bands[i])
+		out.Bands = append(out.Bands, model.EQBand{Slug: slug, Label: slug, Value: gain})
+	}
+	return out
 }

@@ -26,8 +26,9 @@ var Entries = []model.Entry{
 		Brand:    model.SteelSeries,
 		Category: model.Headset,
 		USB:      []model.USBID{{Vendor: vendor, Product: NovaProWireless}},
-		// The equalizer is not driven yet.
-		Support: model.SupportPartial,
+		// The equalizer is Sonar's, per channel, in software; the base
+		// station's own is handed to the computer while Sonar is on.
+		Support: model.SupportFull,
 		Capabilities: []model.Capability{
 			model.CapBattery,
 			model.CapNoiseControl,

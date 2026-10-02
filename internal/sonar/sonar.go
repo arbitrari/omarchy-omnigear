@@ -2,13 +2,14 @@
 // everything else, the way SteelSeries Sonar does, and lets the headset's
 // ChatMix dial balance the first two.
 //
-// Each channel is a PipeWire loopback: a virtual sink applications can be
-// pointed at, whose output plays into the headset. They are declared in a
+// Each channel is a PipeWire filter-chain: a virtual sink applications can be
+// pointed at, whose output plays into the headset through the channel's own
+// equalizer (see eq.go). They are declared in a
 // PipeWire drop-in rather than created by this program, so PipeWire makes
 // them at login whether OmniGear is running or not, and an application keeps
 // the channel it was moved to across reboots.
 //
-// The dial scales a channel's loopback *stream*, not its sink. The sink's
+// The dial scales a channel's playback *stream*, not its sink. The sink's
 // volume is the listener's own, set in any mixer; the dial works on top of
 // it, so turning it toward Game quietens chat without touching the level
 // chat was set to. WirePlumber restores stream volumes by node name across a
@@ -135,11 +136,15 @@ func Enable(target string) error {
 		wasDefault = true
 	}
 
+	eq, err := ReadEQ()
+	if err != nil {
+		return err
+	}
 	path := ConfigPath()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, []byte(config(target)), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(config(target, eq)), 0o644); err != nil {
 		return fmt.Errorf("writing %s: %w", path, err)
 	}
 	if err := restart(); err != nil {
@@ -180,38 +185,21 @@ func ApplyMix(game, chat uint8) error {
 	return pactl.SetStreamVolume(Channels[1].streamName(), int(chat))
 }
 
-// config is the drop-in.
+// config is the drop-in: one filter-chain per channel, each starting with
+// its saved curve.
 //
-// The loopback's playback side is passive, so a channel with nothing playing
+// The chain's playback side is passive, so a channel with nothing playing
 // does not hold the headset's output open, and will not fall back: were the
 // headset unplugged with Game the default output, a fallback would have the
-// loopback play into the default — itself.
-func config(target string) string {
+// channel play into the default — itself.
+func config(target string, eq EQState) string {
 	var b strings.Builder
 	b.WriteString("# Written by OmniGear: Sonar channels playing into the headset.\n")
-	b.WriteString("# Turn Sonar off in OmniGear to remove it.\n")
+	b.WriteString("# Turn Sonar off in OmniGear to remove it. Equalizer curves are kept in\n")
+	b.WriteString("# ~/.config/omnigear/sonar-eq.json and written here from it.\n")
 	b.WriteString("context.modules = [\n")
 	for _, c := range Channels {
-		fmt.Fprintf(&b, `  { name = libpipewire-module-loopback
-    args = {
-      node.description = "%s"
-      capture.props = {
-        node.name = "%s"
-        media.class = "Audio/Sink"
-        audio.position = [ FL FR ]
-      }
-      playback.props = {
-        node.name = "%s"
-        node.description = "%s Output"
-        target.object = "%s"
-        node.dont-fallback = true
-        node.passive = true
-        stream.dont-remix = true
-        audio.position = [ FL FR ]
-      }
-    }
-  }
-`, c.Description(), c.SinkName(), c.streamName(), c.Description(), target)
+		b.WriteString(chain(c, target, eq[c.Slug].Gains()))
 	}
 	b.WriteString("]\n")
 	return b.String()

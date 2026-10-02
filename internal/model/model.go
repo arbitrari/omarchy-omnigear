@@ -859,6 +859,25 @@ func SonarVolumeSlugOf(key SettingKey) (string, bool) {
 	return slug, known
 }
 
+// SonarEQKey is the setting key for one channel's equalizer: its preset when
+// band is "preset", otherwise one band.
+func SonarEQKey(channel, band string) SettingKey {
+	return SettingKey("sonar-eq-" + channel + "-" + band)
+}
+
+// SonarEQOf is the inverse of SonarEQKey. Band is "preset" for the preset.
+func SonarEQOf(key SettingKey) (channel, band string, ok bool) {
+	rest, found := strings.CutPrefix(string(key), "sonar-eq-")
+	if !found {
+		return "", "", false
+	}
+	channel, band, found = strings.Cut(rest, "-")
+	if _, known := SonarChannelValue(channel); !known || !found || band == "" {
+		return "", "", false
+	}
+	return channel, band, true
+}
+
 // SonarAppNameOf is the inverse of SonarAppKey.
 func SonarAppNameOf(key SettingKey) (string, bool) {
 	name, found := strings.CutPrefix(string(key), "sonar-app-")
@@ -877,6 +896,8 @@ type SonarChannel struct {
 	// for it, which the dial scales rather than replaces. Zero while Sonar
 	// is not live.
 	Volume int `json:"volume"`
+	// Equalizer is the channel's own, applied in software.
+	Equalizer *Equalizer `json:"equalizer"`
 }
 
 // DeviceState is everything a driver managed to read. Every field is optional:
@@ -1189,6 +1210,20 @@ func ParseSetting(key, value string) (Setting, error) {
 			settingKey = SettingKey(key)
 			break
 		}
+		if _, band, ok := SonarEQOf(SettingKey(key)); ok {
+			if band == "preset" {
+				preset, ok := EQPresetValue(value)
+				if !ok {
+					return Setting{}, fmt.Errorf("%q is not an equalizer preset", value)
+				}
+				return Setting{Key: SettingKey(key), Value: preset}, nil
+			}
+			level, err := strconv.ParseInt(value, 10, 32)
+			if err != nil || level <= -EQBias || level >= EQBias {
+				return Setting{}, fmt.Errorf("%q is not a band level", value)
+			}
+			return Setting{Key: SettingKey(key), Value: uint32(level + EQBias)}, nil
+		}
 		if _, ok := SonarAppNameOf(SettingKey(key)); ok {
 			channel, ok := SonarChannelValue(value)
 			if !ok {
@@ -1210,7 +1245,7 @@ func ParseSetting(key, value string) (Setting, error) {
 			"polling-rate, profile-mode, smart-shift-mode, smart-shift-threshold, "+
 			"wheel-hi-res, wheel-invert, host, thumbwheel, button-<name>, "+
 			"noise-mode, ambient-level, focus-on-voice, eq-preset, eq-<band>, codec, auto-power-off, dsee, speak-to-chat, touch-panel, "+
-			"sidetone, mic-volume, mute-light, gain, wireless-mode, sonar, sonar-app-<app>, sonar-volume-<channel>, "+
+			"sidetone, mic-volume, mute-light, gain, wireless-mode, sonar, sonar-app-<app>, sonar-volume-<channel>, sonar-eq-<channel>-{preset,<band>}, "+
 			"hits-{left,right}-{actuation,rapid-trigger,haptics})", key)
 	}
 
@@ -1255,6 +1290,9 @@ func (k SettingKey) Verifiable() bool { return k != SettingHost }
 // unsigned and a band level is not.
 func (k SettingKey) Display(value uint32) any {
 	if _, ok := EQBandSlugOf(k); ok {
+		return int(value) - EQBias
+	}
+	if _, band, ok := SonarEQOf(k); ok && band != "preset" {
 		return int(value) - EQBias
 	}
 	return value
@@ -1421,6 +1459,21 @@ func (s *DeviceState) Reading(key SettingKey) (uint32, bool) {
 		for _, channel := range s.Sonar.Channels {
 			if channel.Slug == slug {
 				return uint32(channel.Volume), true
+			}
+		}
+		return 0, false
+	}
+
+	if channel, band, ok := SonarEQOf(key); ok && s.Sonar != nil {
+		for _, c := range s.Sonar.Channels {
+			if c.Slug != channel || c.Equalizer == nil {
+				continue
+			}
+			if band == "preset" {
+				return EQPresetValue(c.Equalizer.Preset)
+			}
+			if b := c.Equalizer.Band(band); b != nil {
+				return uint32(b.Value + EQBias), true
 			}
 		}
 		return 0, false

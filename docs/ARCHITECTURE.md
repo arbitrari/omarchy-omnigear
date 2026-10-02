@@ -578,7 +578,7 @@ SteelSeries Sonar gives a headset separate outputs for games, chat, media and
 everything else, and the base station's ChatMix dial balances game against
 chat. Here that is two halves that meet at the sound server.
 
-**The outputs are PipeWire's.** Each channel is a loopback: a virtual sink
+**The outputs are PipeWire's.** Each channel is a filter-chain: a virtual sink
 applications are pointed at, playing into the headset's own output. They are
 declared in a drop-in, `~/.config/pipewire/pipewire.conf.d/omnigear-sonar.conf`,
 rather than created by OmniGear, so PipeWire makes them at login whether the
@@ -610,6 +610,20 @@ A move is asynchronous — the stream was still on its old sink when read
 straight afterwards — so the write waits for it to land before the verifying
 read. The list is only as fresh as the last full read, which with the panel
 open is every poll.
+
+**Each channel has its own equalizer, in software.** While Sonar is on, the
+base station hands its equalizer to the computer: its own menu says the EQ is
+"on Sonar" and will not change it. So, as Sonar does, each channel is a
+PipeWire filter-chain of ten octave-wide peaking filters rather than a plain
+loopback, and a gain is changed live with `pw-cli set-param`, no restart.
+
+What the chain cannot do is report a change reliably. One made before it has
+played anything since PipeWire started is held and applied the moment audio
+starts, but reads back as the old value until then. So the curves live in
+`~/.config/omnigear/sonar-eq.json`, which a read reports and the drop-in is
+written from — rewritten on each change without a restart, so the curve is
+also there the next time PipeWire starts. Moving a band on a fixed preset
+carries the preset's curve to Custom first, as a Sony's equalizer does.
 
 **The dial scales the loopback's stream, not its sink.** The sink's volume is
 the listener's own, set in any mixer or with a slider in the Sonar tab

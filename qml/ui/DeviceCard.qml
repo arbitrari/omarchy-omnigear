@@ -437,6 +437,22 @@ Rectangle {
             }
         }
 
+        // A headset whose equalizer is Sonar's draws it here, per channel,
+        // rather than in the Sonar tab.
+        SonarEqualizerControl {
+            bar: root.bar
+            busy: root.busy
+            visible: root.showingDetail && root.currentTab === "equalizer"
+                && root.device && root.device.sonar !== null
+            sonar: root.device ? root.device.sonar : null
+            onPresetRequested: function (channel, preset) {
+                root.settingRequested("sonar-eq-" + channel + "-preset", preset);
+            }
+            onBandRequested: function (channel, band, level) {
+                root.settingRequested("sonar-eq-" + channel + "-" + band, String(level));
+            }
+        }
+
         // --- controls ------------------------------------------------------
         TouchPanelControl {
             bar: root.bar

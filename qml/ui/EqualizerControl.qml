@@ -125,8 +125,7 @@ Column {
                 // byte-for-byte close to upstream, so it is turned rather than
                 // taught a second orientation. A quarter turn anticlockwise
                 // puts the minimum at the bottom; the mouse is mapped through
-                // the rotation, so dragging and the wheel still go the way
-                // they look.
+                // the rotation, so dragging still goes the way it looks.
                 Item {
                     width: parent.width
                     height: bands.sliderLength
