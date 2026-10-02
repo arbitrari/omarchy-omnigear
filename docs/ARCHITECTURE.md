@@ -654,7 +654,7 @@ alone, so unmuting puts it back where it was.
 0–100; turning toward one side lowers the other, never both. There is no
 reading to ask for, so something has to be listening when it moves, and that
 is the one exception to every command being a short-lived process:
-`omnigear chatmix` runs for as long as the bar does, applies each position
+`omnigear watch` runs for as long as the bar does, applies each position
 itself, and prints it as one JSON line for the panel. Three things keep it
 cheap and safe:
 
@@ -670,6 +670,19 @@ The base station never says where the dial is, only that it moved. That would
 leave the mix wrong after every restart, except that WirePlumber restores
 stream volumes by node name: the last position applied is the one that comes
 back.
+
+**The mute button is announced too, and the same listener hears it.** `07 bb
+01` is muted and `07 bb 00` live, sent as the button is pressed; byte 9 of the
+status record says the same, and `bb` is that byte's place in the setters'
+layout. Which value is which was read by pressing once from live and checking
+the light, because an earlier attempt, read from presses made in a hurry,
+had it the wrong way round. `watch` prints a `mic` event on each change, so
+the bar's red microphone appears as the button is pressed rather than at the
+next poll. Unlike the dial the mute has a reading to ask for, so `watch` asks
+once as it starts, and it also takes the mute from any status reply that
+passes on the node — the bar's own battery poll sends one — so a missed press
+is put right at the next. A full read reports it as `micMuted`, under the
+`mic-mute` capability, and only while the headset is on.
 
 ## Writes are verified, never assumed
 
@@ -870,7 +883,7 @@ QML side never has to parse stderr:
 
 `schema` is bumped when the shape changes in a way that would break a reader.
 
-`omnigear chatmix` is the one exception: it streams one object per line, for
+`omnigear watch` is the one exception: it streams one object per line, for
 as long as it runs. See Sonar above.
 
 ## Why Go

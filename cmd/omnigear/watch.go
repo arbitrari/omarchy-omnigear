@@ -15,47 +15,52 @@ import (
 	"github.com/arbitrari/omarchy-omnigear/internal/transport/hidraw"
 )
 
-// chatMixEvent is one line of `omnigear chatmix`.
-type chatMixEvent struct {
-	ID   string `json:"id"`
-	Game uint8  `json:"game"`
-	Chat uint8  `json:"chat"`
+// watchEvent is one line of `omnigear watch`.
+type watchEvent struct {
+	ID string `json:"id"`
+	// Kind is "mix" for the ChatMix dial and "mic" for the mute button.
+	Kind string `json:"kind"`
+	Game uint8  `json:"game,omitempty"`
+	Chat uint8  `json:"chat,omitempty"`
+	// MicMuted is set only on a "mic" event.
+	MicMuted *bool `json:"micMuted,omitempty"`
 	// Error is why the mix could not be applied, when it could not. The
 	// reading is still good.
 	Error string `json:"error,omitempty"`
 }
 
-// rescan is how long to wait before looking for a ChatMix device again, when
-// there is none or the one there was went away.
+// rescan is how long to wait before looking for a device to watch again,
+// when there is none or the one there was went away.
 const rescan = 5 * time.Second
 
-// cmdChatMix follows a headset's ChatMix dial and applies it to the Sonar
-// channels, for as long as it runs.
+// cmdWatch follows what a headset announces as it happens — its ChatMix
+// dial, applied to the Sonar channels, and its mute button — for as long as
+// it runs.
 //
 // It is the one command that does not print a single object and exit. The
-// base station reports the dial only as it turns, so something has to be
+// base station reports these only as they change, so something has to be
 // listening at the time; the bar keeps this running and reads one JSON
-// object per line, one per movement.
+// object per line, one per change.
 //
 // Finding the device is deliberately cheaper than `list`: it matches nodes
 // by USB id and report descriptor and opens nothing else, so waiting for a
 // base station to be plugged in does not ping every mouse on the machine
 // every few seconds.
-func cmdChatMix() error {
+func cmdWatch() error {
 	// The bar starts this and should take it down with it. Without this, a
 	// shell that crashed would leave it listening forever.
 	_ = unix.Prctl(unix.PR_SET_PDEATHSIG, uintptr(unix.SIGTERM), 0, 0, 0)
 
 	out := json.NewEncoder(os.Stdout)
 	var mu sync.Mutex
-	print := func(event chatMixEvent) {
+	print := func(event watchEvent) {
 		mu.Lock()
 		defer mu.Unlock()
 		_ = out.Encode(event)
 	}
 
 	for {
-		node, entry, mixer, ok := findChatMixer()
+		node, entry, watcher, ok := findWatched()
 		if !ok {
 			time.Sleep(rescan)
 			continue
@@ -65,7 +70,7 @@ func cmdChatMix() error {
 		// The dial reports every step as it turns, faster than the sound
 		// server can be told. Only the newest position matters, so one
 		// worker applies whatever is latest and the rest are dropped.
-		latest := make(chan chatMixEvent, 1)
+		latest := make(chan watchEvent, 1)
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
@@ -79,41 +84,56 @@ func cmdChatMix() error {
 			}
 		}()
 
-		_ = mixer.WatchChatMix(node, func(game, chat uint8) {
-			event := chatMixEvent{ID: id, Game: game, Chat: chat}
-			select {
-			case latest <- event:
-			default:
-				// Replace the one waiting with this newer one.
-				select {
-				case <-latest:
-				default:
+		// A mute is printed only when it changes: it is also read from every
+		// status reply that passes, which arrive with each poll.
+		var lastMuted *bool
+		events := model.WatchEvents{
+			MicMuted: func(muted bool) {
+				if lastMuted != nil && *lastMuted == muted {
+					return
 				}
-				latest <- event
+				lastMuted = &muted
+				print(watchEvent{ID: id, Kind: "mic", MicMuted: &muted})
+			},
+		}
+		if entry.Has(model.CapSonar) {
+			events.Mix = func(game, chat uint8) {
+				event := watchEvent{ID: id, Kind: "mix", Game: game, Chat: chat}
+				select {
+				case latest <- event:
+				default:
+					// Replace the one waiting with this newer one.
+					select {
+					case <-latest:
+					default:
+					}
+					latest <- event
+				}
 			}
-		})
+		}
+		_ = watcher.Watch(node, events)
 		close(latest)
 		<-done
 		time.Sleep(rescan)
 	}
 }
 
-// findChatMixer finds a catalogued device with a ChatMix dial and the node
-// that reports it.
-func findChatMixer() (hidraw.Node, *model.Entry, model.ChatMixer, bool) {
+// findWatched finds a catalogued device that announces changes, and the node
+// it announces them on.
+func findWatched() (hidraw.Node, *model.Entry, model.Watcher, bool) {
 	for _, node := range hidraw.Enumerate() {
 		entry := catalog.FindByUSB(node.Vendor, node.Product)
-		if entry == nil || !entry.Has(model.CapSonar) {
+		if entry == nil || !(entry.Has(model.CapSonar) || entry.Has(model.CapMicMute)) {
 			continue
 		}
-		mixer, ok := entry.Driver.(model.ChatMixer)
+		watcher, ok := entry.Driver.(model.Watcher)
 		if !ok {
 			continue
 		}
 		if speaker, ok := entry.Driver.(model.Speaker); ok && !speaker.Speaks(node) {
 			continue
 		}
-		return node, entry, mixer, true
+		return node, entry, watcher, true
 	}
 	return hidraw.Node{}, nil, nil, false
 }

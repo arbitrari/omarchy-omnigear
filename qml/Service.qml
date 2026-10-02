@@ -33,6 +33,10 @@ Item {
     // read, and the dial is only reported as it moves; a read would otherwise
     // wipe a position that will not be said again until the dial is touched.
     readonly property var chatMix: internal.chatMix
+    // Whether each headset's mic is muted, by device id, as the watcher last
+    // heard it. Kept apart from the device list for the same reason: it is
+    // current to the press, and a full read would only catch up later.
+    readonly property var micMuted: internal.micMuted
 
     // What the binary was built from. Fixed for the life of the process, so it
     // is asked once at startup rather than riding along on every poll.
@@ -158,6 +162,7 @@ Item {
         property string pendingId: ""
         property string pendingKey: ""
         property var chatMix: ({})
+        property var micMuted: ({})
         property var pendingVolume: null
 
         // Counts completed writes. A read that started before a write finished
@@ -286,53 +291,60 @@ Item {
         }
     }
 
-    // --- ChatMix ---------------------------------------------------------
+    // --- watching -------------------------------------------------------
     //
     // The one process that is kept running rather than run per poll. A
-    // ChatMix dial is reported only as it turns, so something has to be
-    // listening at the time; `omnigear chatmix` applies each position to the
-    // Sonar channels itself and prints it here, one JSON line per movement.
-    // It is started only while a device with a dial is present, and the CLI
-    // asks the kernel to stop it if the shell goes away.
-    readonly property bool wantsChatMix: binaryChecked && !binaryMissing
-        && Model.wantsChatMix(internal.state.devices)
+    // ChatMix dial and a mute button are reported only as they change, so
+    // something has to be listening at the time; `omnigear watch` applies
+    // each dial position to the Sonar channels itself and prints every
+    // change here, one JSON line each. It is started only while a device
+    // that announces changes is present, and the CLI asks the kernel to stop
+    // it if the shell goes away.
+    readonly property bool wantsWatch: binaryChecked && !binaryMissing
+        && Model.wantsWatch(internal.state.devices)
 
-    onWantsChatMixChanged: {
-        if (wantsChatMix && !chatMixProcess.running)
-            chatMixProcess.running = true;
-        else if (!wantsChatMix && chatMixProcess.running)
-            chatMixProcess.running = false;
+    onWantsWatchChanged: {
+        if (wantsWatch && !watchProcess.running)
+            watchProcess.running = true;
+        else if (!wantsWatch && watchProcess.running)
+            watchProcess.running = false;
     }
 
     Process {
-        id: chatMixProcess
-        command: [root.binary, "chatmix"]
+        id: watchProcess
+        command: [root.binary, "watch"]
 
         stdout: SplitParser {
             onRead: function (line) {
-                var mix = Model.parseChatMix(line);
-                if (!mix)
+                var event = Model.parseWatchEvent(line);
+                if (!event)
                     return;
                 var next = {};
-                for (var id in internal.chatMix)
-                    next[id] = internal.chatMix[id];
-                next[mix.id] = { game: mix.game, chat: mix.chat, error: mix.error };
-                internal.chatMix = next;
+                var source = event.kind === "mic" ? internal.micMuted : internal.chatMix;
+                for (var id in source)
+                    next[id] = source[id];
+                if (event.kind === "mic") {
+                    next[event.id] = event.micMuted;
+                    internal.micMuted = next;
+                } else {
+                    next[event.id] = { game: event.game, chat: event.chat, error: event.error };
+                    internal.chatMix = next;
+                }
             }
         }
 
         // It only ever stops on purpose or by failing. A failure is retried
         // after a pause rather than at once, so a binary that cannot run does
         // not spin.
-        onExited: if (root.wantsChatMix)
-            chatMixRestart.start()
+        onExited: if (root.wantsWatch)
+            watchRestart.start()
     }
 
     Timer {
-        id: chatMixRestart
+        id: watchRestart
         interval: 5000
-        onTriggered: if (root.wantsChatMix && !chatMixProcess.running)
-            chatMixProcess.running = true
+        onTriggered: if (root.wantsWatch && !watchProcess.running)
+            watchProcess.running = true
     }
 
     // Refresh charge without touching the hardware. What comes back is folded

@@ -199,6 +199,20 @@ BarWidget {
                                     font.pixelSize: Math.round(button.fontSize * 0.55)
                                 }
                             }
+
+                            // A red mic beside a headset whose mic is muted, so
+                            // it can be seen from anywhere without opening the
+                            // panel. Updated as the button is pressed, by the
+                            // service's watcher.
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: Model.isMicMuted(reading.modelData, gear.micMuted)
+                                text: Model.MIC_MUTED
+                                textFormat: Text.PlainText
+                                color: root.bar ? root.bar.urgent : Color.urgent
+                                font.family: button.fontFamily
+                                font.pixelSize: button.fontSize
+                            }
                         }
                     }
                 }

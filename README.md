@@ -157,9 +157,9 @@ Updates can be done directly in the plugin.
 <details>
 <summary><b>Steelseries</b></summary>
 
-|  | Name | Battery* | Noise Control** | Equalizer***** | Gain | Sidetone | Mic Volume | Mute Light | Wireless Mode*** | Auto Power Off | Sonar**** | Notes
-|------|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|
-| 🟩 | Arctis Nova Pro Wireless |🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩| Only with use of Base Station |
+|  | Name | Battery* | Noise Control** | Equalizer***** | Gain | Sidetone | Mic Volume | Mute Light | Wireless Mode*** | Auto Power Off | Sonar**** | Mic Mute | Notes
+|------|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|
+| 🟩 | Arctis Nova Pro Wireless |🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩| Only with use of Base Station |
 
 ***Battery:** the headset's charge and the spare charging in the base station, in eighths, as the base station counts them
 

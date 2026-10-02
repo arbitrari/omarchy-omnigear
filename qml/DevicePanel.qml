@@ -462,6 +462,7 @@ Panel {
                                     device: modelData
                                     chatMix: root.gear && root.gear.chatMix
                                         ? (root.gear.chatMix[modelData.id] || null) : null
+                                    micMuted: Model.isMicMuted(modelData, root.gear ? root.gear.micMuted : null)
                                     activeTab: root.tabFor(modelData.id)
                                     collapsed: root.isCollapsed(modelData.id)
                                     onCollapseToggled: root.toggleCollapsed(modelData.id)

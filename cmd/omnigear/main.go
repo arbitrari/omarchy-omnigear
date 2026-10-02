@@ -63,9 +63,10 @@ USAGE:
                                            set a Sonar channel's volume at once, with
                                            no device read and no verifying one; for
                                            a knob being dragged
-    omnigear chatmix                       follow a ChatMix dial and apply it to the
-                                           Sonar channels; one JSON line per change,
-                                           until stopped
+    omnigear watch                         follow a headset's ChatMix dial, applied
+                                           to the Sonar channels, and its mute
+                                           button; one JSON line per change, until
+                                           stopped
     omnigear probe                         diagnostics: hidraw nodes and what answered
     omnigear report [device]               write up a device to request support;
                                            with no device, every node on the machine
@@ -92,8 +93,8 @@ func main() {
 	}
 
 	// The one command that streams rather than replying once.
-	if args[0] == "chatmix" {
-		if err := cmdChatMix(); err != nil {
+	if args[0] == "watch" {
+		if err := cmdWatch(); err != nil {
 			emit(reply{"ok": false, "error": err.Error()})
 			os.Exit(1)
 		}

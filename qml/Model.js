@@ -161,6 +161,7 @@ function parseDevice(raw) {
     gain: parseChoice(s.gain),
     wirelessMode: parseChoice(s.wirelessMode),
     micVolume: parseLevel(s.micVolume),
+    micMuted: typeof s.micMuted === "boolean" ? s.micMuted : null,
     sonar: s.sonar ? {
       enabled: s.sonar.enabled === true,
       live: s.sonar.live === true,
@@ -485,6 +486,7 @@ function tooltip(state) {
     if (d.dpi && d.dpi.current > 0) parts.push(d.dpi.current + " DPI")
     if (d.pollingRate && d.pollingRate.current > 0) parts.push(d.pollingRate.current + " Hz")
     // "Off" alone would read as the headset being off.
+    if (d.micMuted === true && d.connected) parts.push("Mic Muted")
     if (d.noiseControl && d.noiseControl.mode === "off") parts.push("Noise Control Off")
     else if (d.noiseControl && d.noiseControl.mode) parts.push(noiseModeLabel(d.noiseControl.mode, d.noiseControl))
     var codec = codecLabel(d.codec)
@@ -611,6 +613,7 @@ function capabilityLabel(capability) {
   case "gain": return "Gain"
   case "wireless-mode": return "Wireless Mode"
   case "sonar": return "Sonar"
+  case "mic-mute": return "Mic Mute"
   default: return capability
   }
 }
@@ -635,7 +638,8 @@ function unsupportedCapabilities(device) {
   var handled = ["battery", "dpi", "polling-rate", "onboard-profile", "hits",
                  "smart-shift", "hi-res-wheel", "host", "thumbwheel", "buttons",
                  "noise-control", "equalizer", "codec", "auto-power-off", "dsee", "speak-to-chat", "touch-panel",
-                 "sidetone", "mic-volume", "mute-light", "gain", "wireless-mode", "sonar"]
+                 "sidetone", "mic-volume", "mute-light", "gain", "wireless-mode", "sonar",
+                 "mic-mute"]
   return device.capabilities.filter(function (c) {
     return handled.indexOf(c) === -1
   })
@@ -1029,22 +1033,45 @@ function missingBinaryState(pluginDir) {
 }
 
 
-/// One line of `omnigear chatmix`: where a device's ChatMix dial is, as game
-/// and chat levels from 0 to 100. Null for a line that is not one.
-function parseChatMix(line) {
+/// One line of `omnigear watch`: a ChatMix dial's position ("mix": game and
+/// chat levels, 0 to 100) or a microphone's mute ("mic"). Null for a line
+/// that is neither.
+function parseWatchEvent(line) {
   if (typeof line !== "string" || line === "" || line.length > 1024) return null
   var data
   try { data = JSON.parse(line) } catch (e) { return null }
   if (!data || typeof data.id !== "string") return null
-  return {
-    id: safeText(data.id, "", 128),
-    game: Math.max(0, Math.min(100, Number(data.game) || 0)),
-    chat: Math.max(0, Math.min(100, Number(data.chat) || 0)),
-    error: safeText(data.error, "", 256)
+  var id = safeText(data.id, "", 128)
+  if (data.kind === "mic" && typeof data.micMuted === "boolean") {
+    return { id: id, kind: "mic", micMuted: data.micMuted }
   }
+  if (data.kind === "mix") {
+    return {
+      id: id,
+      kind: "mix",
+      game: Math.max(0, Math.min(100, Number(data.game) || 0)),
+      chat: Math.max(0, Math.min(100, Number(data.chat) || 0)),
+      error: safeText(data.error, "", 256)
+    }
+  }
+  return null
 }
 
-/// Whether any device has a ChatMix dial worth listening to.
-function wantsChatMix(devices) {
-  return (devices || []).some(function (d) { return has(d, "sonar") })
+/// Whether any device announces changes worth listening for: a ChatMix dial,
+/// or a mute button.
+function wantsWatch(devices) {
+  return (devices || []).some(function (d) { return has(d, "sonar") || has(d, "mic-mute") })
 }
+
+/// Whether a device's microphone is muted: the listener's word if it has
+/// spoken, which is current to the press, and the last full read's
+/// otherwise. False for a device that is off, whose mute means nothing.
+function isMicMuted(device, live) {
+  if (!device || !device.connected || !has(device, "mic-mute")) return false
+  if (live && typeof live[device.id] === "boolean") return live[device.id]
+  return device.micMuted === true
+}
+
+/// Nerd Font nf-md-microphone_off (U+F036D), written as its surrogate pair
+/// since it is past what a single \u escape reaches.
+var MIC_MUTED = "\uDB80\uDF6D"

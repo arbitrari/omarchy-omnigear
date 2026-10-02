@@ -78,7 +78,7 @@ const (
 //	                  │  │  │  │  │  │  └ auto power off, 00–06
 //	                  │  │  │  │  │  └ mute light, 01–0a
 //	                  │  │  │  │  └ noise: 00 off, 01 transparency, 02 cancelling
-//	                  │  │  │  └ microphone muted
+//	                  │  │  │  └ microphone muted: 01 muted, 00 live
 //	                  │  │  └ transparency level, 01–0a
 //	                  │  └ spare battery in the base, in eighths; 00 when empty
 //	                  └ headset battery, in eighths
@@ -90,6 +90,7 @@ type status struct {
 	headsetBattery byte
 	spareBattery   byte
 	ambientLevel   byte
+	micMuted       byte
 	noiseMode      byte
 	muteLight      byte
 	autoPowerOff   byte
@@ -109,6 +110,7 @@ func readStatus(conn *arctis.Conn) (status, error) {
 		headsetBattery: reply[6],
 		spareBattery:   reply[7],
 		ambientLevel:   reply[8],
+		micMuted:       reply[9],
 		noiseMode:      reply[10],
 		muteLight:      reply[11],
 		autoPowerOff:   reply[12],
@@ -288,6 +290,10 @@ func (d driver) Read(device *model.Device) model.DeviceState {
 	}
 	if device.Entry.Has(model.CapMuteLight) {
 		state.MuteLight = level(st.muteLight)
+	}
+	if device.Entry.Has(model.CapMicMute) && st.online() {
+		muted := st.micMuted == micMutedOn
+		state.MicMuted = &muted
 	}
 	if device.Entry.Has(model.CapAutoPowerOff) {
 		if off, err := autoPowerOff(st.autoPowerOff); err != nil {
@@ -578,18 +584,39 @@ func writeSonar(device *model.Device, on bool) error {
 // with the dial turned fully to Game and left there.
 const chatMix = 0x45
 
+// micMute is the base station reporting the mute button, unprompted, as it
+// is pressed: 07 bb 01 muted, 07 bb 00 live. The same byte is 9 of the status
+// record. Read by pressing it once from live, which sent 07 bb 01, and
+// confirmed by the mute light. It sits where the setters' layout puts it:
+// bb is byte 9's setter, beside bd for the noise mode at byte 10.
+const micMute = 0xBB
+
+// micMutedOn is the mute byte while muted.
+const micMutedOn = 0x01
+
 // reportNotice is the report the base station speaks unprompted on.
 const reportNotice = 0x07
 
-// WatchChatMix follows the dial until the base station goes away. Reading
-// alongside other readers is safe: a hidraw node hands every report to all
-// of them.
-func (driver) WatchChatMix(node hidraw.Node, onMix func(game, chat uint8)) error {
+// Watch follows the dial and the mute button until the base station goes
+// away. Reading alongside other readers is safe: a hidraw node hands every
+// report to all of them.
+//
+// The mute is also read once at the start, since unlike the dial it has a
+// reading to ask for, and from any status reply that passes — the bar's own
+// battery poll sends one every twenty seconds or so — so a press missed for
+// any reason is put right at the next.
+func (driver) Watch(node hidraw.Node, events model.WatchEvents) error {
 	handle, err := node.Open()
 	if err != nil {
 		return err
 	}
 	defer handle.Close()
+
+	ask := make([]byte, 64)
+	ask[0], ask[1] = 0x06, queryStatus
+	if err := handle.Write(ask); err != nil {
+		return err
+	}
 	for {
 		report, err := handle.Read(time.Minute)
 		if errors.Is(err, hidraw.ErrTimeout) {
@@ -598,8 +625,20 @@ func (driver) WatchChatMix(node hidraw.Node, onMix func(game, chat uint8)) error
 		if err != nil {
 			return err
 		}
-		if len(report) >= 4 && report[0] == reportNotice && report[1] == chatMix {
-			onMix(min(report[2], 100), min(report[3], 100))
+		switch {
+		case len(report) >= 4 && report[0] == reportNotice && report[1] == chatMix:
+			if events.Mix != nil {
+				events.Mix(min(report[2], 100), min(report[3], 100))
+			}
+		case len(report) >= 3 && report[0] == reportNotice && report[1] == micMute:
+			if events.MicMuted != nil {
+				events.MicMuted(report[2] == micMutedOn)
+			}
+		case len(report) >= statusLength && report[0] == 0x06 && report[1] == queryStatus:
+			// Only while the headset is there; off, the byte means nothing.
+			if events.MicMuted != nil && report[15] == headsetOnline {
+				events.MicMuted(report[9] == micMutedOn)
+			}
 		}
 	}
 }

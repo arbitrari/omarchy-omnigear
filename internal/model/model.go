@@ -170,6 +170,9 @@ const (
 	// ChatMix dial on the device balancing game against chat. The outputs
 	// are the sound server's; the dial is the device's.
 	CapSonar Capability = "sonar"
+	// CapMicMute — whether the microphone is muted, from the headset's own
+	// mute button. Reported, not set.
+	CapMicMute Capability = "mic-mute"
 )
 
 // USBID is a vendor/product pair a model shows up as. A model that enumerates
@@ -227,15 +230,23 @@ type BatteryReader interface {
 	Battery(node hidraw.Node) (reading BatteryReading, ok bool)
 }
 
-// ChatMixer is a driver for a device with a ChatMix dial, which reports the
-// dial as it turns.
+// Watcher is a driver for a device that announces changes as they happen —
+// a ChatMix dial turning, a mute button pressed — rather than only when
+// asked.
 //
-// Watch blocks, calling onMix with the game and chat levels, each 0–100,
-// every time the dial moves, and returns only when the device can no longer
-// be read. The device says nothing until the dial moves; there is no reading
-// to ask for.
-type ChatMixer interface {
-	WatchChatMix(node hidraw.Node, onMix func(game, chat uint8)) error
+// Watch blocks, calling whichever of events applies each time the device
+// says something changed, and returns only when the device can no longer be
+// read.
+type Watcher interface {
+	Watch(node hidraw.Node, events WatchEvents) error
+}
+
+// WatchEvents are what a Watcher reports. Either may be nil.
+type WatchEvents struct {
+	// Mix is the ChatMix dial's game and chat levels, each 0–100.
+	Mix func(game, chat uint8)
+	// MicMuted is the microphone's mute, as it changes.
+	MicMuted func(muted bool)
 }
 
 // BatteryReading is a cheap battery answer. Battery is nil when the device is
@@ -954,6 +965,7 @@ type DeviceState struct {
 	Gain           *Choice       `json:"gain"`
 	WirelessMode   *Choice       `json:"wirelessMode"`
 	Sonar          *Sonar        `json:"sonar"`
+	MicMuted       *bool         `json:"micMuted"`
 	// Errors holds non-fatal problems, one per capability that could not be
 	// read. Never nil, so it marshals as [] rather than null.
 	Errors []string `json:"errors"`

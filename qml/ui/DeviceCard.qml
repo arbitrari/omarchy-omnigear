@@ -19,6 +19,8 @@ Rectangle {
     // Where the device's ChatMix dial is, from the service's listener; null
     // until it has moved.
     property var chatMix: null
+    // Whether the microphone is muted, as current as the service knows.
+    property bool micMuted: false
     property QtObject bar: null
     property bool busy: false
 
@@ -171,6 +173,20 @@ Rectangle {
                             color: Qt.darker(root.foreground, 1.5)
                             font.family: root.fontFamily
                             font.pixelSize: Style.font.caption
+                        }
+
+                        // A muted mic is the one thing on a headset worth
+                        // shouting about: it is the setting that makes you
+                        // talk to nobody. Red, like the light on the mic.
+                        Text {
+                            anchors.baseline: subtitle.baseline
+                            visible: root.micMuted
+                            text: "· " + Model.MIC_MUTED + " Mic Muted"
+                            textFormat: Text.PlainText
+                            color: root.bar ? root.bar.urgent : Color.urgent
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
+                            font.bold: true
                         }
                     }
                 }
