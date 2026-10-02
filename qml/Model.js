@@ -148,6 +148,7 @@ function parseDevice(raw) {
         return { slug: safeText(o.slug, "", 24), label: safeText(o.label, "", 24) }
       })
     } : null,
+    speakToChat: typeof s.speakToChat === "boolean" ? s.speakToChat : null,
     dsee: s.dsee ? {
       on: s.dsee.on === true,
       label: safeText(s.dsee.label, "DSEE", 32)
@@ -472,7 +473,7 @@ var TAB_GROUPS = [
   { id: "triggers", label: "Triggers", capabilities: ["hits"] },
   { id: "buttons", label: "Buttons", capabilities: ["buttons"] },
   { id: "hosts", label: "Hosts", capabilities: ["host"] },
-  { id: "sound", label: "Sound", capabilities: ["noise-control", "dsee", "codec"] },
+  { id: "sound", label: "Sound", capabilities: ["noise-control", "speak-to-chat", "dsee", "codec"] },
   { id: "equalizer", label: "Equalizer", capabilities: ["equalizer"] },
   { id: "power", label: "Power", capabilities: ["auto-power-off"] }
 ]
@@ -514,6 +515,7 @@ function capabilityLabel(capability) {
   case "codec": return "Codec"
   case "auto-power-off": return "Auto Power Off"
   case "dsee": return "DSEE"
+  case "speak-to-chat": return "Speak-To-Chat"
   default: return capability
   }
 }
@@ -537,7 +539,7 @@ function unsupportedCapabilities(device) {
   if (!device) return []
   var handled = ["battery", "dpi", "polling-rate", "onboard-profile", "hits",
                  "smart-shift", "hi-res-wheel", "host", "thumbwheel", "buttons",
-                 "noise-control", "equalizer", "codec", "auto-power-off", "dsee"]
+                 "noise-control", "equalizer", "codec", "auto-power-off", "dsee", "speak-to-chat"]
   return device.capabilities.filter(function (c) {
     return handled.indexOf(c) === -1
   })

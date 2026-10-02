@@ -47,7 +47,7 @@ var Entries = []model.Entry{
 		USB:      []model.USBID{{Vendor: vendor, Product: WH1000XM4}},
 		// The XM4 publishes the XM3's control service and answers every request
 		// the driver makes with the same layout. Partial: like the XM3 it has
-		// settings that are not driven yet, and it adds speak-to-chat.
+		// settings that are not driven yet, among them the touch panel switch.
 		Support: model.SupportPartial,
 		Capabilities: []model.Capability{
 			model.CapBattery,
@@ -56,6 +56,7 @@ var Entries = []model.Entry{
 			model.CapCodec,
 			model.CapAutoPowerOff,
 			model.CapDSEE,
+			model.CapSpeakToChat,
 		},
 		Driver: driver.MDRXM4,
 	},

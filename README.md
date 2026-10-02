@@ -177,10 +177,10 @@ Updates can be done directly in the plugin.
 <details>
 <summary><b>Sony</b></summary>
 
-|  | Name | Battery | Noise Control* | Equalizer | Codec** | DSEE*** | Auto Power Off | Touch Panel | Notes
-|------|-----|-----|-----|-----|-----|-----|-----|-----|-----|
-| 🟨 | WH-1000XM3 |🟩|🟩|🟩|🟩|🟥|🟥|🟥|Bluetooth only; Equalizer only over SBC or AAC|
-| 🟨 | WH-1000XM4 |🟩|🟩|🟩|🟩|🟩|🟩|🟥|Bluetooth only; Auto Power Off is never or when taken off|
+|  | Name | Battery | Noise Control* | Equalizer | Codec** | DSEE*** | Speak-To-Chat | Auto Power Off | Touch Panel | Notes
+|------|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|
+| 🟨 | WH-1000XM3 |🟩|🟩|🟩|🟩|🟥|⬛|🟥|🟥|Bluetooth only; Equalizer only over SBC or AAC|
+| 🟨 | WH-1000XM4 |🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟥|Bluetooth only; Auto Power Off is never or when taken off|
 
 ***Noise Control:** noise cancelling, ambient sound or off, with ambient level and focus on voice. In the plugin, this appears as a Sound tab
 

@@ -47,7 +47,7 @@ USAGE:
                                            noise-mode noise-cancelling|ambient|off
                                            ambient-level <1-20> | focus-on-voice on|off
                                            auto-power-off never|when-taken-off
-                                           dsee on|off
+                                           dsee on|off | speak-to-chat on|off
                                              host <n>  (switches away from
                                                         this machine)
     omnigear catalog                       the support matrix, hardware or not

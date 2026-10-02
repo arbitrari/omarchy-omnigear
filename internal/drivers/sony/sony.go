@@ -77,6 +77,13 @@ func (d driver) Read(device *model.Device) model.DeviceState {
 			state.Equalizer = eq
 		}
 	}
+	if device.Entry.Has(model.CapSpeakToChat) {
+		if on, err := readSpeakToChat(conn); err != nil {
+			state.Fail(model.CapSpeakToChat, err)
+		} else {
+			state.SpeakToChat = &on
+		}
+	}
 	if device.Entry.Has(model.CapDSEE) {
 		if dsee, err := d.readDSEE(conn); err != nil {
 			state.Fail(model.CapDSEE, err)
@@ -163,6 +170,10 @@ func (d driver) Write(device *model.Device, setting *model.Setting) error {
 			return fmt.Errorf("%s has no %q preset", device.Entry.Model, model.EQPresetSlug(setting.Value))
 		}
 		return conn.Send(0x58, 0x01, wire, 0x00)
+	}
+
+	if setting.Key == model.SettingSpeakToChat {
+		return conn.Send(0xF8, 0x05, 0x01, byte(setting.Value))
 	}
 
 	if setting.Key == model.SettingDSEE {
@@ -553,4 +564,31 @@ func (d driver) readDSEE(conn *mdr.Conn) (*model.DSEE, error) {
 		return nil, fmt.Errorf("short DSEE reply % x", reply)
 	}
 	return &model.DSEE{On: reply[3] != 0, Label: d.dsee}, nil
+}
+
+// readSpeakToChat reads whether speak-to-chat is on.
+//
+//	→ f6 05
+//	← f7 05 00 01   on
+//	← f7 05 00 00   off
+//
+// Set with f8 05 01 <on>. The 01 is required: f8 05 00 01 is taken and
+// ignored, reading back 00. A write plays no voice prompt; toggling it from
+// the touch panel does, and arrives as f9 05 01 <on>.
+//
+// Read off an XM4 by toggling it from the touch panel while listening, then
+// confirmed by talking: with 01 written, talking switched the headset to
+// ambient sound, and with 00 it did nothing. Two neighbours belong to the
+// same feature and are not driven yet: f5 05 00 <active> is sent while it
+// has the room let in, and fa 05 → fb 05 00 00 00 01 looks to be its
+// sensitivity, voice focus and timeout.
+func readSpeakToChat(conn *mdr.Conn) (bool, error) {
+	reply, err := conn.Call(0xF7, 0xF6, 0x05)
+	if err != nil {
+		return false, err
+	}
+	if len(reply) < 4 {
+		return false, fmt.Errorf("short speak-to-chat reply % x", reply)
+	}
+	return reply[3] != 0, nil
 }

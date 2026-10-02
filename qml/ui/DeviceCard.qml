@@ -333,6 +333,15 @@ Rectangle {
                 }
             }
 
+            SpeakToChatControl {
+                bar: root.bar
+                busy: root.busy
+                on: root.device ? root.device.speakToChat : null
+                onRequested: function (on) {
+                    root.settingRequested("speak-to-chat", on ? "on" : "off");
+                }
+            }
+
             DseeControl {
                 bar: root.bar
                 busy: root.busy
