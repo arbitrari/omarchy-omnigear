@@ -92,6 +92,7 @@ Column {
 
         SettingHeader {
             bar: root.bar
+            group: true
             label: "ChatMix"
             value: root.chatMix
                 ? "Game " + root.chatMix.game + "% · Chat " + root.chatMix.chat + "%"
@@ -132,15 +133,27 @@ Column {
             }
         }
 
+        // Said every time, not only before the dial has moved: the balance
+        // is the base station's, and nothing on this side can set it.
         Text {
             width: parent.width
-            visible: root.chatMix === null || (root.chatMix.error || "") !== ""
             text: root.chatMix === null
-                ? "Turn the ChatMix dial on the base station to balance Game against Chat."
-                : root.chatMix.error
+                ? "Set with the ChatMix dial on the base station. It cannot be changed from here; turn the dial to show where it is."
+                : "Set with the ChatMix dial on the base station. It cannot be changed from here."
             wrapMode: Text.WordWrap
             textFormat: Text.PlainText
-            color: root.chatMix !== null ? (root.bar ? root.bar.urgent : Color.urgent) : root.muted
+            color: root.muted
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+        }
+
+        Text {
+            width: parent.width
+            visible: root.chatMix !== null && (root.chatMix.error || "") !== ""
+            text: root.chatMix ? root.chatMix.error : ""
+            wrapMode: Text.WordWrap
+            textFormat: Text.PlainText
+            color: root.bar ? root.bar.urgent : Color.urgent
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
         }
@@ -153,6 +166,12 @@ Column {
         width: parent.width
         spacing: Style.space(6)
         visible: root.enabledNow && root.sonar.live
+
+        SettingHeader {
+            bar: root.bar
+            group: true
+            label: "Audio Channels"
+        }
 
         Repeater {
             model: root.sonar ? root.sonar.channels : []
@@ -198,7 +217,8 @@ Column {
 
         SettingHeader {
             bar: root.bar
-            label: "Apps"
+            group: true
+            label: "App Routing"
         }
 
         Repeater {
