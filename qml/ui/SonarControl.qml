@@ -277,7 +277,7 @@ Column {
 
         Text {
             width: parent.width
-            text: "Game and Chat are on the dial. New apps play to Game."
+            text: "New apps play to Game automatically."
             wrapMode: Text.WordWrap
             textFormat: Text.PlainText
             color: root.muted
