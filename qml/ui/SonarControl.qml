@@ -23,6 +23,7 @@ Column {
 
     signal requested(bool on)
     signal appRequested(string name, string channel)
+    signal volumeRequested(string channel, int volume)
 
     readonly property color foreground: bar ? bar.foreground : Color.foreground
     readonly property color muted: Qt.darker(foreground, 1.4)
@@ -142,6 +143,48 @@ Column {
             color: root.chatMix !== null ? (root.bar ? root.bar.urgent : Color.urgent) : root.muted
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
+        }
+    }
+
+    // Each channel's own level, the one a mixer shows for it. The dial scales
+    // on top of this rather than moving it, so a slider here stays where it
+    // was put however the dial is turned.
+    Column {
+        width: parent.width
+        spacing: Style.space(6)
+        visible: root.enabledNow && root.sonar.live
+
+        Repeater {
+            model: root.sonar ? root.sonar.channels : []
+
+            delegate: Column {
+                required property var modelData
+
+                width: parent.width
+                spacing: Style.space(4)
+
+                SettingHeader {
+                    bar: root.bar
+                    label: modelData.label
+                    value: modelData.volume + "%"
+                }
+
+                SquaredSlider {
+                    width: parent.width
+                    height: Style.spacing.controlHeight
+                    bar: root.bar
+                    minimum: 0
+                    maximum: 100
+                    // A mixer can take a channel past 100%; the slider stops
+                    // there and says the real figure above it.
+                    value: Math.min(modelData.volume, 100)
+                    step: 1
+                    integer: true
+                    onReleased: function (v) {
+                        root.volumeRequested(modelData.slug, Math.round(v));
+                    }
+                }
+            }
         }
     }
 

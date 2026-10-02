@@ -612,8 +612,10 @@ read. The list is only as fresh as the last full read, which with the panel
 open is every poll.
 
 **The dial scales the loopback's stream, not its sink.** The sink's volume is
-the listener's own, set in any mixer; the dial works on top of it, so turning
-toward Game quietens chat without losing the level chat was set to.
+the listener's own, set in any mixer or with a slider in the Sonar tab
+(`sonar-volume-<channel>`); the dial works on top of it, so turning toward
+Game quietens chat without losing the level chat was set to, and neither ever
+moves the other's number.
 
 **The dial is only reported as it turns.** `07 45 gg cc`, game and chat each
 0–100; turning toward one side lowers the other, never both. There is no

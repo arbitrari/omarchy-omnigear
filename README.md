@@ -167,7 +167,7 @@ Updates can be done directly in the plugin.
 
 *****Wireless Mode:** whether the headset's link to the base station favours latency (speed) or distance (range). Switching drops the headset for a few seconds while it reconnects. In the plugin, this appears as a Wireless tab
 
-******Sonar:** separate Game, Chat, Media and Aux outputs, with the base station's ChatMix dial balancing Game against Chat, as SteelSeries Sonar does. Each app that is playing can be moved to a channel from the same tab, and keeps it the next time it plays. Turning Sonar on or off restarts PipeWire, so audio drops for a moment. In the plugin, this appears as a Sonar tab
+******Sonar:** separate Game, Chat, Media and Aux outputs, with the base station's ChatMix dial balancing Game against Chat, as SteelSeries Sonar does. Each channel's volume can be set, and each app that is playing moved to a channel, from the same tab, and keeps it the next time it plays. Turning Sonar on or off restarts PipeWire, so audio drops for a moment. In the plugin, this appears as a Sonar tab
 
 </details>
 

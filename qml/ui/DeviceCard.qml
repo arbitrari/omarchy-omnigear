@@ -463,6 +463,9 @@ Rectangle {
             onAppRequested: function (name, channel) {
                 root.settingRequested("sonar-app-" + name, channel);
             }
+            onVolumeRequested: function (channel, volume) {
+                root.settingRequested("sonar-volume-" + channel, String(volume));
+            }
         }
 
         // --- wireless ------------------------------------------------------

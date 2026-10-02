@@ -137,6 +137,8 @@ type Sink struct {
 	// for a sink that is not a USB device.
 	Vendor  uint16
 	Product uint16
+	// Volume is the louder channel's, in percent.
+	Volume int
 }
 
 // Sinks lists every output the sound server has.
@@ -148,6 +150,9 @@ func Sinks() ([]Sink, error) {
 	var sinks []struct {
 		Name       string            `json:"name"`
 		Properties map[string]string `json:"properties"`
+		Volume     map[string]struct {
+			Percent string `json:"value_percent"`
+		} `json:"volume"`
 	}
 	if err := json.Unmarshal(out, &sinks); err != nil {
 		return nil, fmt.Errorf("pactl: %w", err)
@@ -155,6 +160,13 @@ func Sinks() ([]Sink, error) {
 	found := make([]Sink, 0, len(sinks))
 	for _, s := range sinks {
 		sink := Sink{Name: s.Name}
+		// "75%", per channel. The louder one is what a mixer's single
+		// slider shows.
+		for _, channel := range s.Volume {
+			if v, err := strconv.Atoi(strings.TrimSuffix(strings.TrimSpace(channel.Percent), "%")); err == nil && v > sink.Volume {
+				sink.Volume = v
+			}
+		}
 		// "0x1038", as ALSA writes it.
 		if v, err := strconv.ParseUint(strings.TrimPrefix(s.Properties["device.vendor.id"], "0x"), 16, 16); err == nil {
 			sink.Vendor = uint16(v)
@@ -178,6 +190,12 @@ func DefaultSink() (string, error) {
 
 func SetDefaultSink(name string) error {
 	_, err := run("set-default-sink", name)
+	return err
+}
+
+// SetSinkVolume sets an output's volume, in percent, on every channel.
+func SetSinkVolume(name string, percent int) error {
+	_, err := run("set-sink-volume", name, fmt.Sprintf("%d%%", percent))
 	return err
 }
 

@@ -358,3 +358,33 @@ func MoveApp(name, slug string) error {
 	}
 	return nil
 }
+
+// MaxVolume is the loudest a channel is offered. Past 100% PipeWire
+// amplifies in software, which clips; a mixer can still go there.
+const MaxVolume = 100
+
+// Volumes reads each channel's own volume, by slug. This is the listener's
+// level for the channel, which the dial scales rather than replaces.
+func Volumes() (map[string]int, error) {
+	sinks, err := pactl.Sinks()
+	if err != nil {
+		return nil, err
+	}
+	volumes := map[string]int{}
+	for _, sink := range sinks {
+		if slug := channelOf(sink.Name); slug != "" {
+			volumes[slug] = sink.Volume
+		}
+	}
+	return volumes, nil
+}
+
+// SetVolume sets a channel's own volume, in percent.
+func SetVolume(slug string, percent int) error {
+	for _, c := range Channels {
+		if c.Slug == slug {
+			return pactl.SetSinkVolume(c.SinkName(), min(max(percent, 0), MaxVolume))
+		}
+	}
+	return fmt.Errorf("%q is not a Sonar channel", slug)
+}

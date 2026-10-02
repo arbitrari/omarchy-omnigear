@@ -359,6 +359,9 @@ func (d driver) Write(device *model.Device, setting *model.Setting) error {
 	if _, app := model.SonarAppNameOf(setting.Key); app {
 		capability, ok = model.CapSonar, true
 	}
+	if _, volume := model.SonarVolumeSlugOf(setting.Key); volume {
+		capability, ok = model.CapSonar, true
+	}
 	if !ok || !device.Entry.Has(capability) {
 		return fmt.Errorf("%s has no %s", device.Entry.Model, setting.Key)
 	}
@@ -369,6 +372,12 @@ func (d driver) Write(device *model.Device, setting *model.Setting) error {
 	}
 	if name, ok := model.SonarAppNameOf(setting.Key); ok {
 		return sonar.MoveApp(name, model.SonarChannelName(setting.Value))
+	}
+	if slug, ok := model.SonarVolumeSlugOf(setting.Key); ok {
+		if setting.Value > sonar.MaxVolume {
+			setting.Value = sonar.MaxVolume
+		}
+		return sonar.SetVolume(slug, int(setting.Value))
 	}
 
 	conn, err := open(device.Node)
@@ -500,6 +509,13 @@ func readSonar() (*model.Sonar, error) {
 	}
 	if err != nil || !status.Live {
 		return out, err
+	}
+	volumes, err := sonar.Volumes()
+	if err != nil {
+		return out, err
+	}
+	for i := range out.Channels {
+		out.Channels[i].Volume = volumes[out.Channels[i].Slug]
 	}
 	apps, err := sonar.Apps()
 	for _, app := range apps {

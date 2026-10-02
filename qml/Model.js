@@ -169,7 +169,8 @@ function parseDevice(raw) {
           slug: safeText(c.slug, "", 16),
           label: safeText(c.label, "", 32),
           sink: safeText(c.sink, "", 64),
-          mixed: c.mixed === true
+          mixed: c.mixed === true,
+          volume: Math.max(0, Number(c.volume) || 0)
         }
       }),
       // The name is sent back as part of a setting key, so it is bounded but
