@@ -52,14 +52,15 @@ var Entries = []model.Entry{
 		Brand:    model.Sony,
 		Category: model.Headset,
 		USB:      []model.USBID{{Vendor: vendor, Product: WH1000XM3}},
-		// Partial: the headset also has DSEE HX, auto power off and a touch
-		// panel switch, all of which answer but none of which are driven yet.
-		Support: model.SupportPartial,
+		Support:  model.SupportFull,
 		Capabilities: []model.Capability{
 			model.CapBattery,
 			model.CapNoiseControl,
 			model.CapEqualizer,
 			model.CapCodec,
+			model.CapAutoPowerOff,
+			model.CapDSEE,
+			model.CapTouchPanel,
 		},
 		Driver: driver.MDR,
 	},

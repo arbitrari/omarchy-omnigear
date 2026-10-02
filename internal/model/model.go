@@ -686,7 +686,7 @@ type AutoPowerOffOption struct {
 
 // autoPowerOffSlugs are every auto power off choice any driver knows. The
 // index is what a Setting carries.
-var autoPowerOffSlugs = []string{"never", "when-taken-off"}
+var autoPowerOffSlugs = []string{"never", "when-taken-off", "5-min", "30-min", "1-hour", "3-hours"}
 
 func AutoPowerOffValue(slug string) (uint32, bool) {
 	for i, candidate := range autoPowerOffSlugs {

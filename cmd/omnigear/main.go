@@ -46,7 +46,8 @@ USAGE:
                                              profile-mode onboard|host
                                            noise-mode noise-cancelling|ambient|off
                                            ambient-level <1-20> | focus-on-voice on|off
-                                           auto-power-off never|when-taken-off
+                                           auto-power-off never|when-taken-off|
+                                             5-min|30-min|1-hour|3-hours
                                            dsee on|off | speak-to-chat on|off
                                            touch-panel on|off
                                              host <n>  (switches away from

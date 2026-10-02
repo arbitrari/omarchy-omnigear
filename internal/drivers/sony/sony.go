@@ -18,12 +18,13 @@ import (
 
 // MDR is the driver for headphones that speak Sony's MDR protocol, as the
 // WH-1000XM3 does.
-var MDR model.Driver = driver{eqCodecs: []string{"sbc", "sbc-xq", "aac"}}
+var MDR model.Driver = driver{eqCodecs: []string{"sbc", "sbc-xq", "aac"},
+	autoPowerOff: xm3AutoPowerOff, dsee: "DSEE HX", touchPanel: 0xD2}
 
 // MDRXM4 is MDR as the WH-1000XM4 speaks it. It addresses a band write to
 // whichever preset is selected, and applies an equalizer over any codec.
 var MDRXM4 model.Driver = driver{bandsToSelected: true, autoPowerOff: xm4AutoPowerOff,
-	dsee: "DSEE Extreme"}
+	dsee: "DSEE Extreme", touchPanel: 0xD1}
 
 type driver struct {
 	// eqCodecs are the host's codecs over which the headset applies an
@@ -36,6 +37,8 @@ type driver struct {
 	autoPowerOff []autoPowerOffChoice
 	// dsee is what the model calls its upscaling.
 	dsee string
+	// touchPanel is the d6 record the model keeps its touch panel switch in.
+	touchPanel byte
 }
 
 func (driver) Name() string { return "Sony MDR" }
@@ -85,7 +88,7 @@ func (d driver) Read(device *model.Device) model.DeviceState {
 		}
 	}
 	if device.Entry.Has(model.CapTouchPanel) {
-		if on, err := readTouchPanel(conn); err != nil {
+		if on, err := d.readTouchPanel(conn); err != nil {
 			state.Fail(model.CapTouchPanel, err)
 		} else {
 			state.TouchPanel = &on
@@ -108,7 +111,30 @@ func (d driver) Read(device *model.Device) model.DeviceState {
 	return state
 }
 
+// settingCapabilities are the capabilities a write needs the model to have.
+// Without the check, a model lacking one is sent the write anyway: an XM3
+// asked for speak-to-chat took f8 05 01 01, and only the read-back failed.
+var settingCapabilities = map[model.SettingKey]model.Capability{
+	model.SettingSpeakToChat:  model.CapSpeakToChat,
+	model.SettingTouchPanel:   model.CapTouchPanel,
+	model.SettingDSEE:         model.CapDSEE,
+	model.SettingAutoPowerOff: model.CapAutoPowerOff,
+	model.SettingCodec:        model.CapCodec,
+	model.SettingNoiseMode:    model.CapNoiseControl,
+	model.SettingAmbientLevel: model.CapNoiseControl,
+	model.SettingFocusOnVoice: model.CapNoiseControl,
+	model.SettingEQPreset:     model.CapEqualizer,
+}
+
 func (d driver) Write(device *model.Device, setting *model.Setting) error {
+	capability, ok := settingCapabilities[setting.Key]
+	if _, band := model.EQBandSlugOf(setting.Key); band {
+		capability, ok = model.CapEqualizer, true
+	}
+	if ok && !device.Entry.Has(capability) {
+		return fmt.Errorf("%s has no %s", device.Entry.Model, setting.Key)
+	}
+
 	// The codec is the sound server's to change, and the headset need not be
 	// spoken to at all.
 	if setting.Key == model.SettingCodec {
@@ -184,7 +210,7 @@ func (d driver) Write(device *model.Device, setting *model.Setting) error {
 	}
 
 	if setting.Key == model.SettingTouchPanel {
-		return conn.Send(0xD8, 0xD1, 0x01, byte(setting.Value))
+		return conn.Send(0xD8, d.touchPanel, 0x01, byte(setting.Value))
 	}
 
 	if setting.Key == model.SettingDSEE {
@@ -527,11 +553,27 @@ var xm4AutoPowerOff = []autoPowerOffChoice{
 	{"when-taken-off", "When Taken Off", [2]byte{0x10, 0x00}},
 }
 
+// xm3AutoPowerOff are the five values an XM3 keeps, in the order the Sony app
+// lists its choices. Anything else written is ignored, and the headset keeps
+// what it had: 04 04 left it on 03 03, and 10 00 left it on 11 00.
+//
+// Five values for the app's five choices, and 11 00 is never as on the XM4.
+// Which timer each of the other four is follows from their order and is not
+// timed: 00 00 is assumed shortest.
+var xm3AutoPowerOff = []autoPowerOffChoice{
+	{"5-min", "5 Min", [2]byte{0x00, 0x00}},
+	{"30-min", "30 Min", [2]byte{0x01, 0x01}},
+	{"1-hour", "1 Hour", [2]byte{0x02, 0x02}},
+	{"3-hours", "3 Hours", [2]byte{0x03, 0x03}},
+	{"never", "Never", [2]byte{0x11, 0x00}},
+}
+
 // readAutoPowerOff reads when the headset switches itself off.
 //
 //	→ f6 04
 //	← f7 04 01 11 00   never
-//	← f7 04 01 10 00   when taken off
+//	← f7 04 01 10 00   when taken off (XM4)
+//	← f7 04 01 01 01   30 minutes (XM3)
 //
 // It is set by the same record with f8 in place of f7.
 func (d driver) readAutoPowerOff(conn *mdr.Conn) (*model.AutoPowerOff, error) {
@@ -555,7 +597,8 @@ func (d driver) readAutoPowerOff(conn *mdr.Conn) (*model.AutoPowerOff, error) {
 	return off, nil
 }
 
-// readDSEE reads whether upscaling is on.
+// readDSEE reads whether upscaling is on. An XM3 answers it identically, and
+// keeps writes to e6 01 and e6 02 the same way, so the same doubt applies.
 //
 //	→ e6 02
 //	← e7 02 00 01   on
@@ -606,15 +649,19 @@ func readSpeakToChat(conn *mdr.Conn) (bool, error) {
 
 // readTouchPanel reads whether the earcup's touch panel takes gestures.
 //
-//	→ d6 d1
+//	→ d6 d1          (d6 d2 on an XM3)
 //	← d7 d1 01 01   on
 //	← d7 d1 01 00   off
 //
-// Set with d8 d1 01 <on>. Confirmed on an XM4: with 00 written, swipes and
-// taps did nothing, and with 01 they worked again. d6 d2 answers in the same
-// shape (01 00) but keeps no write; what it is is unknown.
-func readTouchPanel(conn *mdr.Conn) (bool, error) {
-	reply, err := conn.Call(0xD7, 0xD6, 0xD1)
+// Set with d8 <record> 01 <on>. Confirmed on both models: with 00 written,
+// swipes and taps did nothing, and with 01 they worked again.
+//
+// The two models swap the records. On an XM4, d1 is the switch and d2
+// answers 01 00 but keeps no write. On an XM3, d2 is the switch and d1
+// answers 02 00 but keeps no write. What the other record is on either is
+// unknown.
+func (d driver) readTouchPanel(conn *mdr.Conn) (bool, error) {
+	reply, err := conn.Call(0xD7, 0xD6, d.touchPanel)
 	if err != nil {
 		return false, err
 	}

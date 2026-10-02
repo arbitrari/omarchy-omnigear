@@ -507,8 +507,14 @@ shares the driver, as `drivers/sony.MDRXM4`. Where it differs:
 **Auto power off is per model.** It is one record (`f6 04`, set with `f8 04`),
 but which values it keeps differs: an XM4 keeps only `11 00` (never) and `10 00`
 (when taken off), and reads anything else back as `10 00` rather than refusing
-it. So the driver lists each model's choices and the panel draws whatever it
-is given, under a Power tab.
+it. An XM3 keeps five, `00 00` to `03 03` for its timers and `11 00` for never,
+and ignores anything else. So the driver lists each model's choices and the
+panel draws whatever it is given, under a Power tab.
+
+**The touch panel moved.** Both models keep its switch in a `d6` record, but
+the XM3 in `d6 d2` and the XM4 in `d6 d1`. Each answers the other record too,
+with a value it will not change, so a read of the wrong one looks plausible.
+The driver is told which per model.
 
 ## Writes are verified, never assumed
 
