@@ -361,6 +361,20 @@ Rectangle {
                     root.settingRequested("codec", codec);
                 }
             }
+
+            ChoiceControl {
+                bar: root.bar
+                busy: root.busy
+                capability: "gain"
+                choice: root.device ? root.device.gain : null
+                tooltips: ({
+                    "low": "A lower ceiling, with finer steps at quiet volumes.",
+                    "high": "More headroom for listening loud."
+                })
+                onRequested: function (slug) {
+                    root.settingRequested("gain", slug);
+                }
+            }
         }
 
         // --- equalizer -----------------------------------------------------
@@ -382,6 +396,44 @@ Rectangle {
             }
         }
 
+        // --- mic -----------------------------------------------------------
+        Column {
+            width: parent.width
+            spacing: Style.space(10)
+            visible: root.showingDetail && root.currentTab === "mic"
+
+            LevelControl {
+                bar: root.bar
+                busy: root.busy
+                capability: "mic-volume"
+                level: root.device ? root.device.micVolume : null
+                onRequested: function (value) {
+                    root.settingRequested("mic-volume", String(value));
+                }
+            }
+
+            ChoiceControl {
+                bar: root.bar
+                busy: root.busy
+                capability: "sidetone"
+                choice: root.device ? root.device.sidetone : null
+                tooltips: ({ "off": "You hear only the earcups, not your own voice." })
+                onRequested: function (slug) {
+                    root.settingRequested("sidetone", slug);
+                }
+            }
+
+            LevelControl {
+                bar: root.bar
+                busy: root.busy
+                capability: "mute-light"
+                level: root.device ? root.device.muteLight : null
+                onRequested: function (value) {
+                    root.settingRequested("mute-light", String(value));
+                }
+            }
+        }
+
         // --- controls ------------------------------------------------------
         TouchPanelControl {
             bar: root.bar
@@ -394,15 +446,35 @@ Rectangle {
             }
         }
 
+        // --- wireless ------------------------------------------------------
+        ChoiceControl {
+            bar: root.bar
+            busy: root.busy
+            visible: root.showingDetail && root.currentTab === "wireless"
+                && root.device && root.device.wirelessMode !== null
+            capability: "wireless-mode"
+            choice: root.device ? root.device.wirelessMode : null
+            // Said up front, because the drop is otherwise indistinguishable
+            // from the change having broken something.
+            tooltips: ({
+                "speed": "The lowest latency. The headset reconnects for a few seconds when switched.",
+                "range": "Holds the link further from the base station. The headset reconnects for a few seconds when switched."
+            })
+            onRequested: function (slug) {
+                root.settingRequested("wireless-mode", slug);
+            }
+        }
+
         // --- power ---------------------------------------------------------
-        AutoPowerOffControl {
+        ChoiceControl {
             bar: root.bar
             busy: root.busy
             visible: root.showingDetail && root.currentTab === "power"
                 && root.device && root.device.autoPowerOff !== null
-            autoPowerOff: root.device ? root.device.autoPowerOff : null
-            onRequested: function (choice) {
-                root.settingRequested("auto-power-off", choice);
+            capability: "auto-power-off"
+            choice: root.device ? root.device.autoPowerOff : null
+            onRequested: function (slug) {
+                root.settingRequested("auto-power-off", slug);
             }
         }
 

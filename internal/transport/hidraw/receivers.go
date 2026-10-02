@@ -24,6 +24,10 @@ const (
 	Bolt        ReceiverKind = "bolt"
 	Nano        ReceiverKind = "nano"
 	Legacy27MHz ReceiverKind = "27mhz"
+	// BaseStation is a headset's base station: plugged in by USB, and
+	// reaching the headset over its own 2.4 GHz link. That link is the
+	// headset's connection, not the cable.
+	BaseStation ReceiverKind = "base-station"
 	// UnknownReceiver is a dongle that is not in the table.
 	UnknownReceiver ReceiverKind = "receiver"
 )
@@ -41,14 +45,17 @@ func (k ReceiverKind) Label() string {
 		return "Nano"
 	case Legacy27MHz:
 		return "27 MHz"
+	case BaseStation:
+		return "2.4 GHz"
 	default:
 		return "Wireless"
 	}
 }
 
 const (
-	vendorLogitech = 0x046D
-	vendorLenovo   = 0x17EF
+	vendorLogitech    = 0x046D
+	vendorLenovo      = 0x17EF
+	vendorSteelSeries = 0x1038
 )
 
 type receiverID struct {
@@ -86,6 +93,9 @@ var knownReceivers = map[receiverID]ReceiverKind{
 	{vendorLogitech, 0xC54D}: Lightspeed,
 
 	{vendorLogitech, 0xC517}: Legacy27MHz,
+
+	// Not from Solaar: observed. The Arctis Nova Pro Wireless base station.
+	{vendorSteelSeries, 0x12E0}: BaseStation,
 }
 
 // ReceiverKindOf names the dongle a device is paired to. The second result is

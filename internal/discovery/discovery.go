@@ -44,7 +44,7 @@ func Devices() []model.Device {
 		found = append(found, model.Device{
 			Entry: entries[id],
 			ID:    id,
-			Node:  choose(groups[id]),
+			Node:  choose(entries[id], groups[id]),
 		})
 	}
 
@@ -164,16 +164,24 @@ func normalizeSerial(uniq string) string {
 // stays behind when the mouse moves to USB, looking entirely plausible and
 // answering nothing.
 //
-// There is one protocol today, so this asks hidpp directly. A second transport
-// would make the question a per-driver one.
-func choose(nodes []hidraw.Node) hidraw.Node {
+// HID++ is recognised here. A driver for any other protocol says which nodes
+// carry it, as a model.Speaker; for those the descriptor is the whole answer,
+// since a SteelSeries base station has one node per interface and never a
+// stale one to ping out.
+func choose(entry *model.Entry, nodes []hidraw.Node) hidraw.Node {
 	if len(nodes) == 1 {
 		return nodes[0]
 	}
 
+	speaks := hidpp.Speaks
+	speaker, own := entry.Driver.(model.Speaker)
+	if own {
+		speaks = speaker.Speaks
+	}
+
 	speaking := make([]hidraw.Node, 0, len(nodes))
 	for _, node := range nodes {
-		if hidpp.Speaks(node) {
+		if speaks(node) {
 			speaking = append(speaking, node)
 		}
 	}
@@ -183,7 +191,7 @@ func choose(nodes []hidraw.Node) hidraw.Node {
 		// reason here.
 		return nodes[0]
 	}
-	if len(speaking) == 1 {
+	if len(speaking) == 1 || own {
 		return speaking[0]
 	}
 

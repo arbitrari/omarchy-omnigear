@@ -5,6 +5,8 @@ import (
 	"io/fs"
 	"os"
 
+	"github.com/arbitrari/omarchy-omnigear/internal/catalog"
+	"github.com/arbitrari/omarchy-omnigear/internal/model"
 	"github.com/arbitrari/omarchy-omnigear/internal/transport/hidpp"
 	"github.com/arbitrari/omarchy-omnigear/internal/transport/hidraw"
 )
@@ -25,7 +27,7 @@ import (
 func Unreadable() []string {
 	var blocked []string
 	for _, node := range hidraw.Enumerate() {
-		if !hidpp.Speaks(node) {
+		if !speaksAnything(node) {
 			continue
 		}
 		file, err := os.OpenFile(node.Path, os.O_RDWR, 0)
@@ -41,4 +43,18 @@ func Unreadable() []string {
 		}
 	}
 	return blocked
+}
+
+// speaksAnything reports whether node carries HID++, or the protocol of the
+// driver catalogued for it.
+func speaksAnything(node hidraw.Node) bool {
+	if hidpp.Speaks(node) {
+		return true
+	}
+	entry := catalog.FindByUSB(node.Vendor, node.Product)
+	if entry == nil {
+		return false
+	}
+	speaker, ok := entry.Driver.(model.Speaker)
+	return ok && speaker.Speaks(node)
 }

@@ -50,6 +50,9 @@ USAGE:
                                              5-min|30-min|1-hour|3-hours
                                            dsee on|off | speak-to-chat on|off
                                            touch-panel on|off
+                                           sidetone off|low|medium|high
+                                           mic-volume <1-10> | mute-light <1-10>
+                                           gain low|high | wireless-mode speed|range
                                              host <n>  (switches away from
                                                         this machine)
     omnigear catalog                       the support matrix, hardware or not

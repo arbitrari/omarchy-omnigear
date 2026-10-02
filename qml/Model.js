@@ -140,7 +140,9 @@ function parseDevice(raw) {
       ambientLevel: Number(s.noiseControl.ambientLevel) || 0,
       minAmbientLevel: Number(s.noiseControl.minAmbientLevel) || 1,
       maxAmbientLevel: Number(s.noiseControl.maxAmbientLevel) || 1,
-      focusOnVoice: s.noiseControl.focusOnVoice === true
+      // null for a headset with no voice filter, so the switch is not drawn.
+      focusOnVoice: typeof s.noiseControl.focusOnVoice === "boolean" ? s.noiseControl.focusOnVoice : null,
+      ambientLabel: safeText(s.noiseControl.ambientLabel, "", 32)
     } : null,
     codec: s.codec ? {
       current: safeText(s.codec.current, "", 24),
@@ -154,12 +156,12 @@ function parseDevice(raw) {
       on: s.dsee.on === true,
       label: safeText(s.dsee.label, "DSEE", 32)
     } : null,
-    autoPowerOff: s.autoPowerOff ? {
-      current: safeText(s.autoPowerOff.current, "", 24),
-      options: (Array.isArray(s.autoPowerOff.options) ? s.autoPowerOff.options : []).map(function (o) {
-        return { slug: safeText(o.slug, "", 24), label: safeText(o.label, "", 32) }
-      })
-    } : null,
+    autoPowerOff: parseChoice(s.autoPowerOff),
+    sidetone: parseChoice(s.sidetone),
+    gain: parseChoice(s.gain),
+    wirelessMode: parseChoice(s.wirelessMode),
+    micVolume: parseLevel(s.micVolume),
+    muteLight: parseLevel(s.muteLight),
     equalizer: s.equalizer ? {
       available: s.equalizer.available === true,
       unavailable: safeText(s.equalizer.unavailable, "", 128),
@@ -260,8 +262,40 @@ function parseBattery(raw) {
   return {
     percent: percent,
     level: safeText(raw.level, "unknown", 16),
-    status: safeText(raw.status, "unknown", 16)
+    status: safeText(raw.status, "unknown", 16),
+    // A second battery charging in a base station, where there is one.
+    spare: typeof raw.spare === "number" ? raw.spare : UNKNOWN
   }
+}
+
+/// A setting with named values: { current, options: [{ slug, label }] }.
+function parseChoice(raw) {
+  if (!raw) return null
+  return {
+    current: safeText(raw.current, "", 24),
+    options: (Array.isArray(raw.options) ? raw.options : []).map(function (o) {
+      return { slug: safeText(o.slug, "", 24), label: safeText(o.label, "", 32) }
+    })
+  }
+}
+
+/// A setting that is a number in a range: { current, min, max }.
+function parseLevel(raw) {
+  if (!raw) return null
+  return {
+    current: Number(raw.current) || 0,
+    min: Number(raw.min) || 0,
+    max: Number(raw.max) || 1
+  }
+}
+
+/// The label of the option a choice is on.
+function choiceLabel(choice) {
+  if (!choice) return ""
+  for (var i = 0; i < choice.options.length; i++) {
+    if (choice.options[i].slug === choice.current) return choice.options[i].label
+  }
+  return ""
 }
 
 function has(device, capability) {
@@ -317,6 +351,13 @@ function batteryIcon(battery) {
   if (status === "charging") return charging[slot]
   if (status === "full") return "󰂅"
   return idle[slot]
+}
+
+/// The spare battery charging in a base station, shaped as a battery of its
+/// own so it draws the same way as the one in use. Null when there is none.
+function spareBattery(battery) {
+  if (!battery || !(battery.spare >= 0)) return null
+  return { percent: battery.spare, level: "unknown", status: "unknown" }
 }
 
 /// The charge as a number when the device measures one, as a word when it
@@ -406,11 +447,12 @@ function tooltip(state) {
       var state = batteryStatusLabel(d.battery)
       parts.push(state ? charge + " " + state : charge)
     }
+    if (d.battery && d.battery.spare >= 0) parts.push("Spare " + d.battery.spare + "%")
     if (d.dpi && d.dpi.current > 0) parts.push(d.dpi.current + " DPI")
     if (d.pollingRate && d.pollingRate.current > 0) parts.push(d.pollingRate.current + " Hz")
     // "Off" alone would read as the headset being off.
     if (d.noiseControl && d.noiseControl.mode === "off") parts.push("Noise Control Off")
-    else if (d.noiseControl && d.noiseControl.mode) parts.push(noiseModeLabel(d.noiseControl.mode))
+    else if (d.noiseControl && d.noiseControl.mode) parts.push(noiseModeLabel(d.noiseControl.mode, d.noiseControl))
     var codec = codecLabel(d.codec)
     if (codec) parts.push(codec)
     return parts.join(" · ")
@@ -479,9 +521,11 @@ var TAB_GROUPS = [
   { id: "triggers", label: "Triggers", capabilities: ["hits"] },
   { id: "buttons", label: "Buttons", capabilities: ["buttons"] },
   { id: "hosts", label: "Hosts", capabilities: ["host"] },
-  { id: "sound", label: "Sound", capabilities: ["noise-control", "speak-to-chat", "dsee", "codec"] },
+  { id: "sound", label: "Sound", capabilities: ["noise-control", "speak-to-chat", "dsee", "codec", "gain"] },
   { id: "equalizer", label: "Equalizer", capabilities: ["equalizer"] },
+  { id: "mic", label: "Mic", capabilities: ["mic-volume", "sidetone", "mute-light"] },
   { id: "controls", label: "Controls", capabilities: ["touch-panel"] },
+  { id: "wireless", label: "Wireless", capabilities: ["wireless-mode"] },
   { id: "power", label: "Power", capabilities: ["auto-power-off"] }
 ]
 
@@ -524,6 +568,11 @@ function capabilityLabel(capability) {
   case "dsee": return "DSEE"
   case "speak-to-chat": return "Speak-To-Chat"
   case "touch-panel": return "Touch Panel"
+  case "sidetone": return "Sidetone"
+  case "mic-volume": return "Mic Volume"
+  case "mute-light": return "Mute Light"
+  case "gain": return "Gain"
+  case "wireless-mode": return "Wireless Mode"
   default: return capability
   }
 }
@@ -547,7 +596,8 @@ function unsupportedCapabilities(device) {
   if (!device) return []
   var handled = ["battery", "dpi", "polling-rate", "onboard-profile", "hits",
                  "smart-shift", "hi-res-wheel", "host", "thumbwheel", "buttons",
-                 "noise-control", "equalizer", "codec", "auto-power-off", "dsee", "speak-to-chat", "touch-panel"]
+                 "noise-control", "equalizer", "codec", "auto-power-off", "dsee", "speak-to-chat", "touch-panel",
+                 "sidetone", "mic-volume", "mute-light", "gain", "wireless-mode"]
   return device.capabilities.filter(function (c) {
     return handled.indexOf(c) === -1
   })
@@ -581,10 +631,12 @@ function thumbwheelModeLabel(mode) {
   }
 }
 
-function noiseModeLabel(mode) {
+/// What a noise mode is called. A headset can name ambient mode its own way —
+/// SteelSeries calls it Transparency — and noiseControl carries that name.
+function noiseModeLabel(mode, noiseControl) {
   switch (mode) {
   case "noise-cancelling": return "Noise Cancelling"
-  case "ambient": return "Ambient Sound"
+  case "ambient": return (noiseControl && noiseControl.ambientLabel) || "Ambient Sound"
   case "off": return "Off"
   default: return ""
   }
@@ -885,7 +937,10 @@ function parseBatteries(raw) {
       id: safeText(b.id, "", 128),
       percent: typeof b.percent === "number" ? b.percent : UNKNOWN,
       level: safeText(b.level, "", 16),
-      status: safeText(b.status, "unknown", 16)
+      status: safeText(b.status, "unknown", 16),
+      spare: typeof b.spare === "number" ? b.spare : UNKNOWN,
+      // Only a base station says; null means the reply has no opinion.
+      connected: typeof b.connected === "boolean" ? b.connected : null
     }
   })
 }
@@ -905,7 +960,12 @@ function mergeBattery(device, reading) {
     level: reading.level !== "" ? reading.level : existing.level,
     // BlueZ gives a headset's percentage and says nothing about charging, so
     // "unknown" there means "not said", not "no longer charging".
-    status: reading.status !== "unknown" ? reading.status : existing.status
+    status: reading.status !== "unknown" ? reading.status : existing.status,
+    // A base station reports its spare slot on every reading, so a reading
+    // without one means the slot is empty and the old figure must go. Other
+    // sources never report a spare, and leave it as it was.
+    spare: reading.connected !== null ? reading.spare
+         : (existing.spare === undefined ? UNKNOWN : existing.spare)
   }
   var next = {}
   for (var key in device) next[key] = device[key]

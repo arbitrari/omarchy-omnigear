@@ -20,6 +20,9 @@
 # Logitech: mice and keyboards speaking HID++, and the receivers they pair to.
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="046d", TAG+="uaccess"
 
+# SteelSeries: headsets driven through their base station's vendor interface.
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1038", TAG+="uaccess"
+
 # Bluetooth-attached devices have no USB parent to match a vendor id on, so
 # they are matched on the HID id instead: bus 0005 is Bluetooth, and the
 # middle field is the vendor.

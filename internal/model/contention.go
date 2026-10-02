@@ -45,6 +45,7 @@ var contenderLabels = map[string]string{
 	"polychromatic":   "Polychromatic",
 	"razergenie":      "RazerGenie",
 	"libratbag":       "libratbag",
+	"lam-daemon":      "Arctis Manager",
 }
 
 // ownProcess is this project's own binary. A second OmniGear is the bar's poll

@@ -185,7 +185,8 @@ func (d driver) Write(device *model.Device, setting *model.Setting) error {
 			setting.Value = level
 			noise.AmbientLevel = uint8(level)
 		case model.SettingFocusOnVoice:
-			noise.FocusOnVoice = setting.Value != 0
+			on := setting.Value != 0
+			noise.FocusOnVoice = &on
 		}
 		return writeNoiseControl(conn, noise)
 	}
@@ -332,8 +333,9 @@ func readNoiseControl(conn *mdr.Conn) (*model.NoiseControl, error) {
 		AmbientLevel:    reply[7],
 		MinAmbientLevel: minAmbientLevel,
 		MaxAmbientLevel: maxAmbientLevel,
-		FocusOnVoice:    reply[6] != 0,
 	}
+	voice := reply[6] != 0
+	noise.FocusOnVoice = &voice
 	switch {
 	case reply[2] == 0x00:
 		noise.Mode = model.NoiseModeName(model.NoiseOff)
@@ -361,7 +363,7 @@ func writeNoiseControl(conn *mdr.Conn, noise *model.NoiseControl) error {
 		cancelling = 0x02
 	}
 	voice := byte(0)
-	if noise.FocusOnVoice {
+	if noise.FocusOnVoice != nil && *noise.FocusOnVoice {
 		voice = 1
 	}
 	return conn.Send(0x68, 0x02, effect, 0x02, cancelling, 0x01, voice, noise.AmbientLevel)

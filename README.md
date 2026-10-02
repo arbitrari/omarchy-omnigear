@@ -156,6 +156,17 @@ Updates can be done directly in the plugin.
 
 <details>
 <summary><b>Steelseries</b></summary>
+
+|  | Name | Battery* | Noise Control** | Equalizer | Gain | Sidetone | Mic Volume | Mute Light | Wireless Mode*** | Auto Power Off | Notes
+|------|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|
+| 🟨 | Arctis Nova Pro Wireless |🟩|🟩|🟥|🟩|🟩|🟩|🟩|🟩|🟩| Only with use of Base Station |
+
+***Battery:** the headset's charge and the spare charging in the base station, in eighths, as the base station counts them
+
+****Noise Control:** noise cancelling, transparency or off, with the transparency level. In the plugin, this appears as a Sound tab
+
+*****Wireless Mode:** whether the headset's link to the base station favours latency (speed) or distance (range). Switching drops the headset for a few seconds while it reconnects. In the plugin, this appears as a Wireless tab
+
 </details>
 
 <details>

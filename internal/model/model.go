@@ -153,6 +153,19 @@ const (
 	// CapTouchPanel — whether a headset's touch-sensitive earcup takes
 	// gestures.
 	CapTouchPanel Capability = "touch-panel"
+	// CapSidetone — how much of the wearer's own voice the microphone plays
+	// back into the headset.
+	CapSidetone Capability = "sidetone"
+	// CapMicVolume — the microphone's own gain, before anything on the host.
+	CapMicVolume Capability = "mic-volume"
+	// CapMuteLight — how bright the light that says the microphone is muted.
+	CapMuteLight Capability = "mute-light"
+	// CapGain — the headset's output range: low for sensitive ears, high for
+	// headroom.
+	CapGain Capability = "gain"
+	// CapWirelessMode — whether a headset's own wireless link favours
+	// latency or range.
+	CapWirelessMode Capability = "wireless-mode"
 )
 
 // USBID is a vendor/product pair a model shows up as. A model that enumerates
@@ -186,6 +199,36 @@ type Driver interface {
 	// has its value snapped first, and the caller needs the snapped number to
 	// judge whether the write took.
 	Write(device *Device, setting *Setting) error
+}
+
+// Speaker is a driver that can tell, from a node's report descriptor alone,
+// whether the node carries its protocol.
+//
+// A device owns several nodes and usually only one of them is any use. HID++
+// is recognised without a driver's help; any other protocol is the driver's
+// to recognise, and discovery asks it rather than guessing.
+type Speaker interface {
+	Speaks(node hidraw.Node) bool
+}
+
+// BatteryReader is a driver that can report charge cheaply enough for
+// `omnigear battery`, which runs on every tick of the bar and must wake
+// nothing. A base station that keeps its headset's status itself qualifies;
+// asking a wireless mouse does not.
+//
+// It is handed a node of the device rather than a Device, because the cheap
+// path never runs discovery. The second result is false when the node is not
+// one the driver can read.
+type BatteryReader interface {
+	Battery(node hidraw.Node) (reading BatteryReading, ok bool)
+}
+
+// BatteryReading is a cheap battery answer. Battery is nil when the device is
+// present but has nothing to report, as a headset switched off beside its
+// base station does.
+type BatteryReading struct {
+	Battery   *Battery
+	Connected bool
 }
 
 // Entry is one model, as catalogued. Entries live next to the driver that
@@ -331,6 +374,9 @@ type Battery struct {
 	Level string `json:"level,omitempty"`
 	// Status is "discharging", "charging", "full" or "unknown".
 	Status string `json:"status"`
+	// Spare is a second battery's charge, for a headset whose base station
+	// charges one to swap in. Nil for everything else.
+	Spare *int `json:"spare,omitempty"`
 }
 
 type DPI struct {
@@ -538,8 +584,13 @@ type NoiseControl struct {
 	AmbientLevel    uint8 `json:"ambientLevel"`
 	MinAmbientLevel uint8 `json:"minAmbientLevel"`
 	MaxAmbientLevel uint8 `json:"maxAmbientLevel"`
-	// FocusOnVoice filters ambient sound down to speech.
-	FocusOnVoice bool `json:"focusOnVoice"`
+	// FocusOnVoice filters ambient sound down to speech. Nil for a headset
+	// that has no such filter.
+	FocusOnVoice *bool `json:"focusOnVoice"`
+	// AmbientLabel is the model's own name for ambient mode, where it is not
+	// "Ambient Sound": SteelSeries calls it Transparency. Empty means the
+	// usual name.
+	AmbientLabel string `json:"ambientLabel,omitempty"`
 }
 
 // Equalizer is a headset's sound profile.
@@ -672,24 +723,29 @@ func CodecName(value uint32) string {
 	return ""
 }
 
-// AutoPowerOff is when a headset switches itself off, and the choices it
-// offers. Which choices exist differs by model, so the driver lists them.
-type AutoPowerOff struct {
-	Current string               `json:"current"`
-	Options []AutoPowerOffOption `json:"options"`
+// Choice is a setting with a handful of named values, and the ones the device
+// offers.
+type Choice struct {
+	Current string         `json:"current"`
+	Options []ChoiceOption `json:"options"`
 }
 
-type AutoPowerOffOption struct {
+type ChoiceOption struct {
 	Slug  string `json:"slug"`
 	Label string `json:"label"`
 }
 
-// autoPowerOffSlugs are every auto power off choice any driver knows. The
-// index is what a Setting carries.
-var autoPowerOffSlugs = []string{"never", "when-taken-off", "5-min", "30-min", "1-hour", "3-hours"}
+// Level is a setting that is a whole number in a range.
+type Level struct {
+	Current uint8 `json:"current"`
+	Min     uint8 `json:"min"`
+	Max     uint8 `json:"max"`
+}
 
-func AutoPowerOffValue(slug string) (uint32, bool) {
-	for i, candidate := range autoPowerOffSlugs {
+// choiceValue and choiceName turn a choice's slug into the number a Setting
+// carries, its index in slugs, and back.
+func choiceValue(slugs []string, slug string) (uint32, bool) {
+	for i, candidate := range slugs {
 		if strings.EqualFold(candidate, slug) {
 			return uint32(i), true
 		}
@@ -697,12 +753,45 @@ func AutoPowerOffValue(slug string) (uint32, bool) {
 	return 0, false
 }
 
-func AutoPowerOffName(value uint32) string {
-	if int(value) < len(autoPowerOffSlugs) {
-		return autoPowerOffSlugs[value]
+func choiceName(slugs []string, value uint32) string {
+	if int(value) < len(slugs) {
+		return slugs[value]
 	}
 	return ""
 }
+
+// AutoPowerOff is when a headset switches itself off, and the choices it
+// offers. Which choices exist differs by model, so the driver lists them.
+type AutoPowerOff = Choice
+
+type AutoPowerOffOption = ChoiceOption
+
+// autoPowerOffSlugs are every auto power off choice any driver knows. The
+// index is what a Setting carries, so new ones go on the end.
+var autoPowerOffSlugs = []string{"never", "when-taken-off", "5-min", "30-min", "1-hour", "3-hours",
+	"1-min", "10-min", "15-min"}
+
+func AutoPowerOffValue(slug string) (uint32, bool) { return choiceValue(autoPowerOffSlugs, slug) }
+
+func AutoPowerOffName(value uint32) string { return choiceName(autoPowerOffSlugs, value) }
+
+// sidetoneSlugs, gainSlugs and wirelessModeSlugs are the values of the
+// settings by those names. As with auto power off, the index is what a
+// Setting carries.
+var (
+	sidetoneSlugs     = []string{"off", "low", "medium", "high"}
+	gainSlugs         = []string{"low", "high"}
+	wirelessModeSlugs = []string{"speed", "range"}
+)
+
+func SidetoneValue(slug string) (uint32, bool) { return choiceValue(sidetoneSlugs, slug) }
+func SidetoneName(value uint32) string         { return choiceName(sidetoneSlugs, value) }
+
+func GainValue(slug string) (uint32, bool) { return choiceValue(gainSlugs, slug) }
+func GainName(value uint32) string         { return choiceName(gainSlugs, value) }
+
+func WirelessModeValue(slug string) (uint32, bool) { return choiceValue(wirelessModeSlugs, slug) }
+func WirelessModeName(value uint32) string         { return choiceName(wirelessModeSlugs, value) }
 
 // DSEE is whether a Sony headset's upscaling is on. Label is the model's own
 // name for it, since the same switch is sold under more than one.
@@ -741,6 +830,11 @@ type DeviceState struct {
 	DSEE           *DSEE         `json:"dsee"`
 	SpeakToChat    *bool         `json:"speakToChat"`
 	TouchPanel     *bool         `json:"touchPanel"`
+	Sidetone       *Choice       `json:"sidetone"`
+	MicVolume      *Level        `json:"micVolume"`
+	MuteLight      *Level        `json:"muteLight"`
+	Gain           *Choice       `json:"gain"`
+	WirelessMode   *Choice       `json:"wirelessMode"`
 	// Errors holds non-fatal problems, one per capability that could not be
 	// read. Never nil, so it marshals as [] rather than null.
 	Errors []string `json:"errors"`
@@ -817,6 +911,14 @@ const (
 	SettingSpeakToChat SettingKey = "speak-to-chat"
 
 	SettingTouchPanel SettingKey = "touch-panel"
+
+	SettingSidetone  SettingKey = "sidetone"
+	SettingMicVolume SettingKey = "mic-volume"
+	SettingMuteLight SettingKey = "mute-light"
+	SettingGain      SettingKey = "gain"
+	// SettingWirelessMode drops the headset's link while it moves over; see
+	// drivers/steelseries.
+	SettingWirelessMode SettingKey = "wireless-mode"
 
 	// HITS is per click and per field, so each combination is its own key.
 	// Three fields across two buttons is small enough to name outright, and
@@ -941,6 +1043,31 @@ func ParseSetting(key, value string) (Setting, error) {
 				value, strings.Join(autoPowerOffSlugs, ", "))
 		}
 		return Setting{Key: SettingAutoPowerOff, Value: choice}, nil
+	case "sidetone":
+		choice, ok := SidetoneValue(value)
+		if !ok {
+			return Setting{}, fmt.Errorf("%q is not a sidetone level (expected one of: %s)",
+				value, strings.Join(sidetoneSlugs, ", "))
+		}
+		return Setting{Key: SettingSidetone, Value: choice}, nil
+	case "gain":
+		// Not a switch, although parseSwitch would take "low" and "high":
+		// these are the gain's names, not off and on.
+		choice, ok := GainValue(value)
+		if !ok {
+			return Setting{}, fmt.Errorf("%q is not a gain (expected one of: %s)",
+				value, strings.Join(gainSlugs, ", "))
+		}
+		return Setting{Key: SettingGain, Value: choice}, nil
+	case "wireless-mode":
+		choice, ok := WirelessModeValue(value)
+		if !ok {
+			return Setting{}, fmt.Errorf("%q is not a wireless mode (expected one of: %s)",
+				value, strings.Join(wirelessModeSlugs, ", "))
+		}
+		return Setting{Key: SettingWirelessMode, Value: choice}, nil
+	case "mic-volume", "mute-light":
+		settingKey = SettingKey(key)
 	case "eq-preset":
 		preset, ok := EQPresetValue(value)
 		if !ok {
@@ -989,6 +1116,7 @@ func ParseSetting(key, value string) (Setting, error) {
 			"polling-rate, profile-mode, smart-shift-mode, smart-shift-threshold, "+
 			"wheel-hi-res, wheel-invert, host, thumbwheel, button-<name>, "+
 			"noise-mode, ambient-level, focus-on-voice, eq-preset, eq-<band>, codec, auto-power-off, dsee, speak-to-chat, touch-panel, "+
+			"sidetone, mic-volume, mute-light, gain, wireless-mode, "+
 			"hits-{left,right}-{actuation,rapid-trigger,haptics})", key)
 	}
 
@@ -1104,8 +1232,8 @@ func (s *DeviceState) Reading(key SettingKey) (uint32, bool) {
 		}
 
 	case SettingFocusOnVoice:
-		if s.NoiseControl != nil {
-			return boolToValue(s.NoiseControl.FocusOnVoice), true
+		if s.NoiseControl != nil && s.NoiseControl.FocusOnVoice != nil {
+			return boolToValue(*s.NoiseControl.FocusOnVoice), true
 		}
 
 	case SettingCodec:
@@ -1136,6 +1264,31 @@ func (s *DeviceState) Reading(key SettingKey) (uint32, bool) {
 	case SettingEQPreset:
 		if s.Equalizer != nil {
 			return EQPresetValue(s.Equalizer.Preset)
+		}
+
+	case SettingSidetone:
+		if s.Sidetone != nil {
+			return SidetoneValue(s.Sidetone.Current)
+		}
+
+	case SettingGain:
+		if s.Gain != nil {
+			return GainValue(s.Gain.Current)
+		}
+
+	case SettingWirelessMode:
+		if s.WirelessMode != nil {
+			return WirelessModeValue(s.WirelessMode.Current)
+		}
+
+	case SettingMicVolume:
+		if s.MicVolume != nil {
+			return uint32(s.MicVolume.Current), true
+		}
+
+	case SettingMuteLight:
+		if s.MuteLight != nil {
+			return uint32(s.MuteLight.Current), true
 		}
 
 	case SettingHITSLeftActuation, SettingHITSLeftRapidTrigger, SettingHITSLeftHaptics,

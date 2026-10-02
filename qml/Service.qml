@@ -209,16 +209,24 @@ Item {
         // Whether the battery reply names a different set of headsets than
         // the last full read found. It lists every connected one, so a
         // difference either way is an arrival or a departure.
+        //
+        // A headset behind a base station is listed whether it is on or not,
+        // since the base station is always there; the reading says which
+        // instead, and a change in that is an arrival or departure too.
         function headsetsChanged(readings) {
             var known = {};
             state.devices.forEach(function (device) {
                 if (device.category === "headset")
-                    known[device.id] = true;
+                    known[device.id] = device;
             });
             var seen = {};
             var arrived = (readings || []).some(function (reading) {
                 seen[reading.id] = true;
-                return reading.id.indexOf("headset/") === 0 && !known[reading.id];
+                if (reading.id.indexOf("headset/") !== 0)
+                    return false;
+                var device = known[reading.id];
+                return !device
+                    || (reading.connected !== null && reading.connected !== device.connected);
             });
             return arrived || Object.keys(known).some(function (id) {
                 return !seen[id];

@@ -516,6 +516,62 @@ the XM3 in `d6 d2` and the XM4 in `d6 d1`. Each answers the other record too,
 with a value it will not change, so a read of the wrong one looks plausible.
 The driver is told which per model.
 
+## A headset reached through its base station
+
+An Arctis Nova Pro Wireless is never spoken to directly. Its base station is a
+USB device of its own, and the headset's status and settings are whatever the
+base station says they are. It owns two hidraw nodes, and only one is any use:
+
+| interface | report descriptor | carries |
+|---|---|---|
+| 3 | consumer control, report `01` | media keys |
+| 4 | vendor pages `0xFFC0`/`0xFF00`, reports `06` and `07` | the protocol |
+
+`discovery.choose` asks HID++ which node speaks, and that question has no
+answer here. A driver for another protocol now answers it as a
+`model.Speaker`; `drivers/steelseries` looks for the `0xFFC0` usage page in
+the descriptor, and nothing is opened.
+
+The protocol (`transport/arctis`) is two queries and a handful of one-byte
+setters. `06 b0` returns the base station's status record and `06 20` an audio
+settings record; each setter's field was found by writing it and watching the
+records change, with every setting restored afterwards. A write is never
+answered, so every one is verified by reading it back. Report `07` is the base
+station speaking unprompted and arrives interleaved with replies, so a call
+waits on time, not on a report count. Linux-Arctis-Manager's device
+description (GPL-3.0) was the starting point for which commands exist; the
+noise mode (`bd`) and transparency level (`b9`) setters are not in it, and
+were found from the setters' layout: `bf`, `c1` and `c3` write bytes 11, 12
+and 13 of the status record, so `bd` writes byte 10, the noise mode.
+
+Three things follow from the base station being in the middle:
+
+- **Asking wakes nothing.** The base station is powered by its cable and keeps
+  the headset's status itself, so `omnigear battery` asks it, one query,
+  instead of leaving the headset out of the cheap path. A driver that can do
+  that is a `model.BatteryReader`.
+- **Off is known, not guessed.** The status record says whether the headset is
+  on the link, so a headset switched off is `presence: off` without a
+  timeout. The base station is there whether the headset is or not, so the
+  battery reply lists it either way and says which with `connected`; the bar
+  treats a change in that as an arrival or a departure, as it does a Bluetooth
+  headset appearing in the list.
+- **Its link is the connection.** The base station is in the receiver table as
+  a `BaseStation`, so the card says 2.4 GHz rather than Wired.
+
+**Switching the wireless mode drops the headset.** The status record reports
+it off at once, the base station sends `07 b5`/`07 b7` notifications as it
+re-pairs, and it is back some seconds later. The write waits for it, up to
+fifteen seconds, so the panel does not show a headset that is off for a
+change that worked.
+
+**Arctis Manager takes the interface away entirely.** It drives the base
+station through libusb, which unbinds usbhid from interface 4 and binds it to
+usbfs, and the protocol's hidraw node disappears for as long as it runs. What
+is left is the media-key node. Rather than report that as a missing device,
+the driver looks for an interface bound to usbfs and names whoever holds the
+USB device open. Unlike a shared hidraw node, nothing can be read at all.
+
 ## Writes are verified, never assumed
 
 A device can accept a write and quietly ignore it. `omnigear set` therefore

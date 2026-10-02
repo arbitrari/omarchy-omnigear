@@ -8,7 +8,8 @@ import "../Model.js" as Model
 // Three modes, and two settings that belong to only one of them. The level
 // and the voice filter are hidden outside ambient sound rather than greyed
 // out, because the headset does not even report them there: noise cancelling
-// reads both back as zero, and a slider showing that would be a lie.
+// reads both back as zero, and a slider showing that would be a lie. A
+// headset with no voice filter at all reports it as null, and gets no switch.
 Column {
     id: root
 
@@ -23,6 +24,7 @@ Column {
     readonly property color foreground: bar ? bar.foreground : Color.foreground
     readonly property string mode: noiseControl ? noiseControl.mode : ""
     readonly property bool ambient: mode === "ambient"
+    readonly property string ambientLabel: Model.noiseModeLabel("ambient", noiseControl)
 
     width: parent ? parent.width : implicitWidth
     spacing: Style.space(10)
@@ -42,7 +44,7 @@ Column {
             bar: root.bar
             group: true
             label: Model.capabilityLabel("noise-control")
-            value: Model.noiseModeLabel(root.mode)
+            value: Model.noiseModeLabel(root.mode, root.noiseControl)
         }
 
         ButtonGroup {
@@ -64,7 +66,7 @@ Column {
                 },
                 {
                     value: "ambient",
-                    label: Model.noiseModeLabel("ambient"),
+                    label: root.ambientLabel,
                     tooltip: "Lets the sound around you through the microphones."
                 },
                 {
@@ -88,7 +90,8 @@ Column {
 
         SettingHeader {
             bar: root.bar
-            label: "Ambient Level"
+            // "Ambient Sound Level" says nothing "Ambient Level" does not.
+            label: root.ambientLabel === "Ambient Sound" ? "Ambient Level" : root.ambientLabel + " Level"
             value: root.noiseControl ? String(root.noiseControl.ambientLevel) : ""
         }
 
@@ -110,7 +113,8 @@ Column {
     Column {
         width: parent.width
         spacing: Style.space(6)
-        visible: root.ambient
+        visible: root.ambient && root.noiseControl !== null
+            && root.noiseControl.focusOnVoice !== null
 
         SettingHeader {
             bar: root.bar
