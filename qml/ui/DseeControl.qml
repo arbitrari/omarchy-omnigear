@@ -56,4 +56,15 @@ Column {
             root.requested(value === "on");
         }
     }
+
+    Text {
+        width: parent.width
+        text: "Sony's upscaling for compressed music, such as streaming or MP3. "
+            + "The headset restores the high-frequency detail compression throws away."
+        textFormat: Text.PlainText
+        wrapMode: Text.WordWrap
+        color: Qt.darker(root.foreground, 1.7)
+        font.family: root.bar ? root.bar.fontFamily : Style.font.family
+        font.pixelSize: Style.font.caption
+    }
 }
