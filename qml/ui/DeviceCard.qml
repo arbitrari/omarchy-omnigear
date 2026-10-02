@@ -25,6 +25,9 @@ Rectangle {
     // Emitted when the user asks for a change. The card never talks to the
     // hardware itself — the panel owns the service.
     signal settingRequested(string key, string value)
+    // A Sonar channel's volume while its knob is being dragged: applied at
+    // once and unverified, ahead of the settingRequested sent on release.
+    signal channelVolumeMoved(string channel, int percent)
 
     // Asks the panel to fold this card down to its header. The state lives
     // there, not here: this card is a Repeater delegate and every poll
@@ -481,6 +484,9 @@ Rectangle {
             }
             onVolumeRequested: function (channel, volume) {
                 root.settingRequested("sonar-volume-" + channel, String(volume));
+            }
+            onVolumeMoved: function (channel, volume) {
+                root.channelVolumeMoved(channel, volume);
             }
         }
 

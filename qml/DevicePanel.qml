@@ -468,6 +468,10 @@ Panel {
                                     onSettingRequested: function (key, value) {
                                         root.applySetting(modelData.id, key, value);
                                     }
+                                    onChannelVolumeMoved: function (channel, percent) {
+                                        if (root.gear)
+                                            root.gear.setChannelVolume(channel, percent);
+                                    }
                                     onTabSelected: function (id) {
                                         root.selectTab(modelData.id, id);
                                     }

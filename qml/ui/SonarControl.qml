@@ -24,6 +24,8 @@ Column {
     signal requested(bool on)
     signal appRequested(string name, string channel)
     signal volumeRequested(string channel, int volume)
+    // While a knob is dragged, every level it passes through.
+    signal volumeMoved(string channel, int volume)
 
     readonly property color foreground: bar ? bar.foreground : Color.foreground
     readonly property color muted: Qt.darker(foreground, 1.4)
@@ -189,6 +191,9 @@ Column {
                     label: modelData.label
                     value: modelData.volume
                     tooltip: modelData.label + " volume. Drag up or down to change."
+                    onMoved: function (v) {
+                        root.volumeMoved(modelData.slug, v);
+                    }
                     onReleased: function (v) {
                         root.volumeRequested(modelData.slug, v);
                     }

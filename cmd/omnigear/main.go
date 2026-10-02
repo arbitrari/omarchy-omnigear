@@ -15,6 +15,7 @@ import (
 	"github.com/arbitrari/omarchy-omnigear/internal/catalog"
 	"github.com/arbitrari/omarchy-omnigear/internal/discovery"
 	"github.com/arbitrari/omarchy-omnigear/internal/model"
+	"github.com/arbitrari/omarchy-omnigear/internal/sonar"
 	"github.com/arbitrari/omarchy-omnigear/internal/transport/hidpp"
 	"github.com/arbitrari/omarchy-omnigear/internal/transport/hidraw"
 )
@@ -58,6 +59,10 @@ USAGE:
                                                         this machine)
     omnigear catalog                       the support matrix, hardware or not
     omnigear battery                       charge only, from the kernel, waking nothing
+    omnigear sonar-volume <channel> <0-100>
+                                           set a Sonar channel's volume at once, with
+                                           no device read and no verifying one; for
+                                           a knob being dragged
     omnigear chatmix                       follow a ChatMix dial and apply it to the
                                            Sonar channels; one JSON line per change,
                                            until stopped
@@ -119,6 +124,11 @@ func run(args []string) (reply, error) {
 			return nil, fmt.Errorf("usage: omnigear set <device> <key> <value>")
 		}
 		return cmdSet(args[1], args[2], args[3])
+	case "sonar-volume":
+		if len(args) != 3 {
+			return nil, fmt.Errorf("usage: omnigear sonar-volume <channel> <0-100>")
+		}
+		return cmdSonarVolume(args[1], args[2])
 	case "catalog":
 		return cmdCatalog()
 	case "battery":
@@ -296,6 +306,24 @@ func cmdSet(selector, key, value string) (reply, error) {
 	default:
 		return nil, fmt.Errorf("device accepted the change but will not report %s back", setting.Key)
 	}
+}
+
+// cmdSonarVolume sets a Sonar channel's volume and nothing else.
+//
+// It exists for a knob being dragged, which sends a level every few pixels.
+// `set` reads the whole device before and after, to verify, which is far too
+// slow for that, and the panel greys out while one runs, which would cancel
+// the drag. The sound server is told the level and that is all; the panel
+// sends an ordinary `set` when the knob is let go, and that one is verified.
+func cmdSonarVolume(channel, value string) (reply, error) {
+	percent, err := strconv.Atoi(value)
+	if err != nil {
+		return nil, fmt.Errorf("%q is not a whole number", value)
+	}
+	if err := sonar.SetVolume(channel, percent); err != nil {
+		return nil, err
+	}
+	return reply{"ok": true}, nil
 }
 
 func cmdCatalog() (reply, error) {

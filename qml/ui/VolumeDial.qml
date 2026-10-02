@@ -28,6 +28,9 @@ Item {
     property int liveValue: value
     property bool dragging: false
 
+    // Every level passed through while dragging, for a caller that applies
+    // them as they happen; released is the one to verify.
+    signal moved(int value)
     signal released(int value)
 
     readonly property color foreground: bar ? bar.foreground : Color.foreground
@@ -117,8 +120,12 @@ Item {
                 if (!root.dragging)
                     return;
                 var units = (startY - event.y) / root.dragRange * (root.maximum - root.minimum);
-                root.liveValue = Math.max(root.minimum,
+                var next = Math.max(root.minimum,
                     Math.min(root.maximum, Math.round(startValue + units)));
+                if (next !== root.liveValue) {
+                    root.liveValue = next;
+                    root.moved(next);
+                }
             }
             onReleased: {
                 root.dragging = false;

@@ -158,6 +158,7 @@ Item {
         property string pendingId: ""
         property string pendingKey: ""
         property var chatMix: ({})
+        property var pendingVolume: null
 
         // Counts completed writes. A read that started before a write finished
         // is carrying pre-write values, and applying it would undo what the
@@ -255,6 +256,33 @@ Item {
                 note: state.note,
                 unreadable: state.unreadable
             };
+        }
+    }
+
+    // --- Sonar channel volume, while a knob is dragged --------------------
+    //
+    // Sent straight to the sound server through `omnigear sonar-volume`,
+    // which does no device read and no verifying one, so a level lands in
+    // milliseconds and the panel is not greyed out mid-drag. Only the newest
+    // level matters: one dragged faster than they can be sent is held, and
+    // only the last is sent when the one in flight finishes. Letting go sends
+    // an ordinary verified `set`.
+    function setChannelVolume(channel, percent) {
+        if (volumeProcess.running) {
+            internal.pendingVolume = { channel: channel, percent: percent };
+            return;
+        }
+        volumeProcess.command = [root.binary, "sonar-volume", channel, String(percent)];
+        volumeProcess.running = true;
+    }
+
+    Process {
+        id: volumeProcess
+        onExited: {
+            var next = internal.pendingVolume;
+            internal.pendingVolume = null;
+            if (next)
+                root.setChannelVolume(next.channel, next.percent);
         }
     }
 

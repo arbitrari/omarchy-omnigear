@@ -631,6 +631,13 @@ the listener's own, set in any mixer or with a knob in the Sonar tab
 Game quietens chat without losing the level chat was set to, and neither ever
 moves the other's number.
 
+The volume knobs apply as they are dragged, which `set` cannot keep up with:
+it reads the whole device before and after, and the panel greys out while it
+runs, cancelling the drag. So a knob being dragged uses `omnigear
+sonar-volume`, which only tells the sound server — about ten milliseconds —
+with the newest level held while one is in flight. Letting go sends an
+ordinary `set`, so the knob still ends on a verified figure.
+
 **The dial is only reported as it turns.** `07 45 gg cc`, game and chat each
 0–100; turning toward one side lowers the other, never both. There is no
 reading to ask for, so something has to be listening when it moves, and that
