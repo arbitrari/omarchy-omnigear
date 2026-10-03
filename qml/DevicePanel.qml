@@ -178,7 +178,7 @@ Panel {
         focusTarget: keys
         contentWidth: popup.fittedContentWidth(Style.space(400))
         contentHeight: popup.fittedContentHeight(
-            header.height - header.inkTop + content.anchors.topMargin
+            header.height - header.inkTop + flick.anchors.topMargin
             + content.implicitHeight
             + (footer.visible ? footer.height + Style.space(12) : 0), Style.space(720))
 
