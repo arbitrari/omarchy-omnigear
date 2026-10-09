@@ -122,7 +122,7 @@ func describe(node hidraw.Node, index byte) (model.Device, bool) {
 
 	return model.Device{
 		Entry: entry,
-		ID:    deviceID(entry, node.Uniq),
+		ID:    slotID(entry, node.Uniq, index),
 		Node:  node,
 		Index: index,
 	}, true

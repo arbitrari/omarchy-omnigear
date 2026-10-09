@@ -107,7 +107,7 @@ func behindReceivers() []model.Device {
 			}
 			found = append(found, model.Device{
 				Entry: entry,
-				ID:    deviceID(entry, node.Uniq),
+				ID:    slotID(entry, node.Uniq, paired.Index),
 				Node:  node,
 				Index: paired.Index,
 			})
@@ -137,6 +137,17 @@ func deviceID(entry *model.Entry, uniq string) string {
 		return base
 	}
 	return base + "#" + serial
+}
+
+// slotID names a device reached by index on a receiver's node. The serial is
+// the receiver's, not the device's, so two of the same model on one receiver
+// would share an id, and settings for one would reach the other, without the
+// slot in it.
+func slotID(entry *model.Entry, receiverUniq string, index byte) string {
+	if index == 0 {
+		return deviceID(entry, receiverUniq)
+	}
+	return deviceID(entry, fmt.Sprintf("%s-%d", receiverUniq, index))
 }
 
 // normalizeSerial reduces a HID_UNIQ to its bare characters.
