@@ -1,32 +1,48 @@
 # Architecture
 
-OmniGear is two pieces with one seam between them:
+This document explains how OmniGear is built and why. Most sections record
+something learned on real hardware, with the bytes that showed it. To add a
+device, follow [Add support for a device you own](ADDING-A-DEVICE.md) and come
+back here for the sections that match your device.
+
+- [Two processes, one seam](#two-processes-one-seam)
+- [Where the code lives](#where-the-code-lives)
+- [The CLI contract](#the-cli-contract)
+- [Finding devices](#finding-devices)
+- [Power: polling, sleep, and off](#power-polling-sleep-and-off)
+- [HID++ devices](#hid-devices)
+- [Bluetooth headphones](#bluetooth-headphones)
+- [Headsets behind a base station](#headsets-behind-a-base-station)
+- [Sonar](#sonar)
+- [Why Go](#why-go)
+
+## Two processes, one seam
 
 ```
-  qml/            the Omarchy bar widget — draws things, talks to no hardware
+  qml/            the Omarchy bar widget. Draws things, talks to no hardware.
     │
     │  JSON over stdout, one object per invocation
     ▼
-  cmd/omnigear/   a Go CLI — owns every byte that reaches a device
+  cmd/omnigear/   a Go CLI. Owns every byte that reaches a device.
     │
     ▼
-  internal/       transports, drivers and the device catalog
+  internal/       transports, drivers, and the device catalog
 ```
 
-The seam is deliberate. QML runs inside the long-lived `omarchy-shell` process,
-where a blocking read on a wedged USB device would freeze the desktop. The CLI
-is a short-lived process with bounded timeouts; the worst a broken device can do
+QML runs inside `omarchy-shell`, which lives as long as the desktop. A blocking
+read on a wedged USB device there would freeze the desktop. The CLI is a
+short-lived process with bounded timeouts, so the worst a broken device can do
 is make one poll come back empty.
 
-The Go program lives under `cmd/` rather than at the top, because the top of
-this repository is a plugin rather than a Go project: `manifest.json`, `qml/`,
-`assets/` and `udev/` are what Omarchy loads, and the binary is one part of it.
-It is built to `bin/omnigear`, which is where the QML looks and which is not
-committed.
+The top of the repository is the plugin that Omarchy loads: `manifest.json`,
+`qml/`, `assets/`, and `udev/`. The Go program lives under `cmd/` and builds to
+`bin/omnigear`, which is where the QML looks. `bin/` is not committed.
 
-## Finding a device in the source
+## Where the code lives
 
-The tree mirrors the README's support table — category, then brand, then model:
+### The catalog mirrors the README
+
+The tree goes category, then brand, then model:
 
 ```
 internal/devices/
@@ -34,8 +50,7 @@ internal/devices/
     logitech/
       logitech.go                 every Logitech mouse, as catalog entries
       prox2superstrike.go         what is specific to this one model
-    razer/
-    corsair/  glorious/  finalmouse/
+    razer/  corsair/  glorious/  finalmouse/
   keyboards/
     logitech/  razer/  keychron/
   headsets/
@@ -43,7 +58,7 @@ internal/devices/
     sony/  apple/  google/  nothing/  oneplus/
 ```
 
-A device's runtime id is that same path, so a bug report names its own source
+A device's runtime id is the same path, so a bug report names its own source
 directory:
 
 ```
@@ -52,20 +67,20 @@ mouse/logitech/pro-x2-superstrike#5f-ba-c9-65
 category  brand       model        serial
 ```
 
-## The three layers under `internal/`
+### Three layers under `internal/`
 
-| Layer         | Knows about                              | Reused by                       |
-|---------------|------------------------------------------|---------------------------------|
-| `transport/`  | wire formats — hidraw nodes, HID++ 2.0   | every brand that speaks it      |
-| `drivers/`    | how to read/write a family of devices    | every model in that family      |
-| `devices/`    | which models exist and what they can do  | —                               |
+| Layer | Knows about | Reused by |
+|---|---|---|
+| `transport/` | wire formats, such as hidraw nodes and HID++ 2.0 | every brand that speaks it |
+| `drivers/` | how to read and write a family of devices | every model in that family |
+| `devices/` | which models exist and what they can do | nothing |
 
-The split is what keeps the catalog cheap. `transport/hidpp` is the HID++
-protocol and nothing else, so a Logitech *keyboard* will use it unchanged.
-`drivers/logitech` turns that protocol into battery/DPI/polling-rate
-reads, so most new Logitech mice are a catalog entry and no new code.
+`transport/hidpp` is the HID++ protocol and nothing else, so a Logitech
+keyboard can use it unchanged. `drivers/logitech` turns the protocol into
+battery, DPI, and polling-rate reads. That split is why most new Logitech mice
+need one catalog entry and no new code.
 
-## Capabilities are the contract
+### Capabilities are the contract
 
 A catalog entry declares what a model can do:
 
@@ -73,37 +88,286 @@ A catalog entry declares what a model can do:
 Capabilities: []model.Capability{model.CapBattery, model.CapDPI, model.CapPollingRate},
 ```
 
-Everything downstream keys off that list. The driver only probes what is
-claimed. The CLI only emits state for what was probed. The UI renders one
-control per capability. **Adding a device does not mean writing UI** — that is
-the whole point of the arrangement.
+Everything downstream keys off that list. The driver probes only what is
+claimed. The CLI emits state only for what was probed. The UI renders one
+control per capability. Adding a device that uses existing capabilities needs
+no UI work.
 
-## Adding a model
+## The CLI contract
 
-For a model whose family already has a driver:
+### Every command prints one JSON object
 
-1. Add a `model.Entry` to `internal/devices/<category>/<brand>/<brand>.go`.
-2. Give it the USB ids you have *observed* — run `omnigear probe` with the
-   device plugged in. Never guess an id; a wrong one binds a driver to
-   somebody else's hardware.
-3. Set `Support` honestly: `SupportPartial` until every capability it claims
-   works.
+Failures are objects too, so the QML never parses stderr:
 
-For a model that needs new behaviour, add a file beside it
-(`prox2superstrike.go`) and, if a whole new protocol is involved, a
-`transport/` package and a `drivers/` package.
+```jsonc
+{ "ok": true, "schema": 1, "devices": [ … ] }
+{ "ok": false, "error": "no connected device matches 'foo'" }
+```
 
-## Adding a brand
+`schema` goes up when the shape changes in a way that breaks a reader.
+`omnigear watch` is the one exception. It streams one object per line for as
+long as it runs. See [Sonar](#sonar).
 
-A brand that does not speak an existing protocol needs a transport. The shape to
-follow is `transport/hidraw` + `transport/hidpp`: enumeration and framing in
-the transport, meaning in the driver.
+### Writes are verified, never assumed
 
-## Working out a wire format
+A device can accept a write and ignore it. `omnigear set` reads the device back
+and compares:
+
+| Outcome | Result |
+|---|---|
+| The value matches the request | `ok` |
+| The value changed, but rounded | `ok`, with `applied` and a `note` |
+| The value did not change | an error: "accepted the change but kept …" |
+
+The UI shows what the hardware says, not what it was told.
+
+One setting is exempt. Switching the Easy-Switch host (`0x1814`) succeeds by
+making the device leave, so the verifying read finds nothing.
+`SettingKey.Verifiable` marks it, `cmdSet` stops at "the device accepted it",
+and the QML treats an `ok` reply with no device as a cue to re-read. A future
+write with the same shape belongs there too. Nothing else does.
+
+## Finding devices
+
+### Permissions fail with no symptom
+
+hidraw nodes are `crw-------` and root-only by default. Without a udev rule,
+every device enumerates, the kernel drives it as a mouse, and OmniGear cannot
+open it. Nothing errors. The device is just missing.
+
+`udev/60-omnigear.rules` tags the vendors this project drives with `uaccess`,
+so logind gives the node to whoever is logged in at the seat. The ACL follows
+the session, which is safer than a world-writable mode or a group. The rule is
+scoped by vendor. A rule over all of `SUBSYSTEM=="hidraw"` would give every HID
+device on the machine, firmware-update endpoints included, to any process in
+the session.
+
+This was found the hard way. The project worked on a machine that had Solaar
+installed, and Solaar's udev rule was granting the access. After Solaar was
+removed, devices that were already plugged in kept working, because a node
+keeps the ACL it got when it was added. Every newly plugged device vanished.
+
+Because the symptom is absence, `discovery.Unreadable` looks for the cause:
+nodes that carry HID++ and return `EACCES` on open. `list` reports them and the
+panel prints the fix. A node that is only busy is not reported, because no udev
+rule would help.
+
+### One device owns several nodes, and some are stale
+
+A device owns several hidraw nodes, sometimes under more than one USB id at
+once. Plug a wireless mouse in by cable while its dongle is still in, and both
+sets of nodes exist. Only one set carries the mouse. The other answers nothing,
+which shows up as `connect: device did not answer`.
+
+`discovery.choose` filters the nodes, cheapest test first:
+
+1. **The report descriptor.** `hidpp.Speaks` looks for the HID++ report ids in
+   `report_descriptor`. Of the four nodes a wired PRO X2 SUPERSTRIKE owns,
+   exactly one declares them. Nothing is opened.
+2. **A ping.** If more than one node is left, all of them are pinged at once
+   and the first answer wins. A live device replies in milliseconds, and a
+   stale node costs the whole probe budget.
+
+A driver for another protocol recognizes its node by implementing
+`model.Speaker`.
+
+Nodes are grouped by serial, not by USB id, and the serial is normalized first.
+The same mouse reports `5f-ba-c9-65` through its dongle and `5FBAC965` over
+USB. Without normalizing, plugging in a cable would split one mouse into two
+devices.
+
+### Devices behind a receiver the kernel did not expand
+
+The kernel expands a receiver it recognizes into one hidraw node per paired
+device, and those nodes match by USB id. A receiver it does not recognize stays
+one node, and the devices behind it have no USB id to match. A Logi Bolt
+(`046d:c548`) is this case, because `hid-logitech-dj` has no entry for it and
+`hid-generic` binds instead.
+
+`discovery.behindReceivers` finds those devices:
+
+- It scans only receivers the kernel did not expand. Scanning an expanded one
+  would find each device twice, under two identities.
+- It probes the slots concurrently. An empty slot costs the whole wake timeout,
+  so probing six slots in series would make every poll crawl.
+- The receiver's own count (HID++ 1.0 register `0x02`) ends the scan once that
+  many devices have answered. A receiver that answers strangely falls back to
+  scanning every slot.
+
+Such a device identifies itself by name, so its catalog entry carries `Names`
+instead of `USB`. `model.Device.Index` addresses it on the receiver's node.
+
+### Uncatalogued devices still show up
+
+A HID++ device that is not in the catalog still appears. Its entry is built
+from what it says about itself: its name, how it is attached, and a capability
+list derived from its feature table. The driver keys off the capability list,
+so it reads and writes the device unchanged. That is why battery and DPI work
+on an unknown Logitech mouse.
+
+The entry is marked `Discovered` and `SupportUnsupported`, and the panel tints
+and labels its card. "The device advertises this feature" is a weaker claim
+than "someone confirmed it works on this model".
+
+Only HID++ devices are found this way, on purpose. Other devices cannot be
+identified from outside without guessing:
+
+- The report descriptor does not say. A Keychron Q3 keyboard declares a mouse
+  collection for its mouse-keys and would be offered as a mouse.
+- The kernel's input capabilities do not say either. The same keyboard
+  publishes an input device named "… Mouse" with `REL_X`, `REL_Y`, and
+  `BTN_LEFT`.
+- Both tests miss the opposite case. An MX Master 3S behind an unexpanded Bolt
+  receiver declares no usages and publishes no input device.
+
+A HID++ device states its own name and lists its own features. That is
+evidence, not inference. Everything else is left to `omnigear report`.
+
+### `omnigear report` writes the support request
+
+`omnigear report [device]` writes the issue that someone without the hardware
+needs to add support. With a device, it includes the device's identity, its
+whole feature table, and what the driver read. With no device, it lists every
+hidraw node on the machine. That is the path for a device that speaks no
+protocol here, such as a Razer mouse.
+
+The reply carries the text and a prefilled GitHub issue link. The link is
+capped at 8000 characters, because a full feature table and state dump encode
+to more than ten thousand and a query string that long is rejected before it
+reaches GitHub. Past the cap, the link is trimmed and says where the rest is.
+The text is always whole.
+
+The body contains device ids, what answered, the kernel, and the OmniGear
+version. It contains no hostname, username, or serial.
+
+### Other programs share the node
+
+A hidraw node delivers every reply to every open reader. A second HID++ client
+on the same mouse, such as Solaar, libratbag and Piper, or a vendor plugin,
+sees OmniGear's replies mixed with its own. Its writes can revert OmniGear's
+moments after they land. The symptom is a device that reads correctly but will
+not keep a setting.
+
+`omnigear probe` lists who has each node open:
+
+```bash
+omnigear probe
+# → { "path": "/dev/hidraw8", "openedBy": [{"pid": 1234, "name": "solaar"}] }
+```
+
+A write that does not stick names the other client:
+
+```
+device accepted the change but kept 4000 — solaar (pid 1234) also has
+/dev/hidraw8 open, which can revert writes
+```
+
+Every device in `list` and `get` carries a `conflicts` array, and the panel
+shows a red banner that names what it found:
+
+```jsonc
+"conflicts": [{ "pid": 1625, "process": "solaar", "label": "Solaar", "known": true }]
+```
+
+- `hidraw.Holders` takes every path in one `/proc` walk. The bar polls on a
+  timer, and the walk over every pid and descriptor is the whole cost.
+- `contenderLabels` maps known processes to the names a user knows, such as
+  "Solaar". The kernel caps `comm` at 15 characters, so long names are keyed by
+  their truncation: `openrazer-daemon` arrives as `openrazer-daemo`.
+- An unknown holder is still reported, with `known: false`.
+- OmniGear's own processes are filtered out. Otherwise a command run by hand
+  during a poll would trigger the warning.
+
+Only same-user processes are visible in `/proc`, so an empty list means
+"nothing found", not "nothing there". The panel shows nothing when the list is
+empty. A green "no conflicts" badge would claim more than is known.
+
+## Power: polling, sleep, and off
+
+### Polling wakes the mouse
+
+A wireless mouse must power its radio to answer a request, so every poll wakes
+it. One `list` of two mice is 63 HID++ round trips, counted in the transport.
+On the default 20-second timer that is about 11,300 an hour, and the mouse never
+sleeps. Nothing errors. The battery drains faster. A user noticed only because
+their mouse "only falling asleep shortly".
+
+The bar does not need those reads. `hid-logitech-hidpp` keeps a power_supply
+per device, fed by reports the device sends on its own. `omnigear battery`
+reads charge from sysfs and sends the hardware nothing. It takes 0.003 s,
+against 1.149 s for a full read, and wakes nothing.
+
+The timer has two jobs. If the panel is open, or the last full read is more
+than fifteen minutes old, it does a full read. Otherwise it reads charge from
+the kernel and folds it into the devices from the last full read.
+
+- The merge takes only what the kernel knows. A device on the older `0x1000`
+  battery feature gives `capacity_level` as a word and no percentage.
+  Overwriting a real figure with "unknown" would show `--` on the bar between
+  full reads. A fifteen-minute-old number is better, because charge moves
+  slowly.
+- The cheap path covers only devices the kernel drives directly. A device
+  behind an unexpanded receiver has no power_supply, so the occasional full
+  read picks it up.
+
+With the panel shut, an MX Master 3 left alone for 150 seconds answered the
+next poll in 3.42 s and reported `presence: asleep`. Under the old timer it
+never needed the wake sweep.
+
+### Sleeping devices need a long first ping
+
+A sleeping MX Master 3S took more than half a second to answer its first ping.
+The 600 ms call timeout reported it absent, and the 150 ms probe timeout had no
+chance. The wake window is 2.5 s, for the first ping only. Once awake, the
+device answers in milliseconds. A window that is too short can also return
+garbled data. A SUPERSTRIKE once reported its name as `YYYYYYYY`.
+
+Paying 2.5 s on every index would be its own bug. A mouse on index 1 would
+spend the whole window finding out that `0xFF` is silent, on every read. `Open`
+sweeps the indexes quickly first, and sweeps again patiently only if nothing
+answered. The indexes are asked concurrently, so a sweep costs one timeout, not
+seven. `discovery.choose` does the same when it picks between nodes.
+
+### Sleep can only be reported after the fact
+
+A request wakes the device, so every answer comes from an awake device. What
+can be observed is the cost of waking. A device that ignores the quick sweep
+and answers the patient one was asleep. `Device.Woken` records which sweep
+won, and the state reports `presence: "asleep"`. The label means "this was
+asleep when the poll reached it", which also explains why the poll was slow.
+
+### Off and unreachable come from the kernel
+
+`hid-logitech-hidpp` publishes a power_supply per device. Its `online`
+attribute tracks the wireless link: 1 while connected, including idle and
+asleep, and 0 once the device is switched off or out of range.
+`hidraw.Node.LinkOnline` reads it with one sysfs read and wakes nothing.
+
+Before this, a switched-off mouse cost the whole wake budget on every poll:
+2.7 s, every 20 seconds. Now the driver asks the kernel first and returns at
+once. On a switched-off MX Master 3, a read went from 2.72 s to 0.03 s, and a
+full `list` with a live mouse beside it went from about 1.2 s to 0.36 s.
+
+The kernel knows nothing about a device bound by `hid-generic` or behind an
+unexpanded receiver. `LinkOnline` then says it does not know, nothing is
+skipped, and a silent device is reported as `unreachable`, not off.
+
+### A device that is off still has a node
+
+The dongle stays plugged in, so the kernel still lists the mouse. Discovery
+finds it and nothing answers. A timeout sets `connected: false` and adds
+nothing to `errors`, because "Disconnected" says it better. Any other failure,
+such as a permission problem or a broken node, is still reported. The panel
+shows the device as a name and `Disconnected`, with no controls, and the bar
+never picks it.
+
+## HID++ devices
+
+### Working out a wire format
 
 `omnigear probe` lists every hidraw node, whether the catalog claims it, and
-which HID++ features the device actually implements. `omnigear call` then sends
-one raw request:
+which HID++ features the device implements. `omnigear call` sends one raw
+request:
 
 ```bash
 omnigear probe
@@ -111,197 +375,84 @@ omnigear call pro-x2-superstrike 0x2202 5 00 00
 # → { "featureIndex": 9, "hex": "00 0F A0 0F A0 0F A0 0F A0 02 …" }
 ```
 
-Every decoder in `drivers/logitech` carries the bytes it was read off
-in a doc comment. Keep that up: these formats are not documented anywhere
-public, and the bytes are the only proof.
+Every decoder in `drivers/logitech` carries the bytes it was read from in a doc
+comment. Keep it that way. These formats are not documented in public, and the
+bytes are the only proof.
 
-Two things learned the hard way on the PRO X2 SUPERSTRIKE, both noted in the
-source:
+`omnigear call` sends whatever it is given. A function index does not say
+whether it reads or writes. Read a feature's whole function list before you
+call into it, and probe unknown functions only on hardware you can afford to
+reconfigure. [Easy-Switch](#easy-switch-and-a-warning-about-probing) shows what
+goes wrong.
 
-- `setSensorDpi` rejects a lift-off distance of `0`. The write has to carry the
-  device's current LOD, not a placeholder.
-- Feature 0x8061 is *per-link*. Every function but one takes a connection type,
-  and asking about the wrong one is not an error — it answers about the other
-  link. Reading connection 0 on a mouse running 2000 Hz on its dongle returns a
-  confident, wrong 1000, and caps the offered rates at 1000 so the real ones
-  look unsupported. `connectionArg` picks the link; `hidraw.Node.Bus` and
-  `.Link` decide which.
-- `setReportRate` is the exception: index only, no connection byte. Passing one
-  is not refused — the device takes the first byte as the index and sets a rate
-  nobody asked for.
+### Sensor and report rate (PRO X2 SUPERSTRIKE)
 
-## One device, many nodes, and some of them lie
+- `setSensorDpi` rejects a lift-off distance of `0`. The write must carry the
+  device's current LOD.
+- Feature `0x8061` is per link. Every function but one takes a connection
+  type. Asking about the wrong link is not an error. It answers about the
+  other link. Reading connection 0 on a mouse at 2000 Hz on its dongle returns
+  1000, and caps the offered rates at 1000. `connectionArg` picks the link from
+  `hidraw.Node.Bus` and `.Link`.
+- `setReportRate` is the exception. It takes the index only. If you pass a
+  connection byte, the device reads it as the index and sets a rate nobody
+  asked for.
 
-A device owns several hidraw nodes and can own them under more than one USB id
-at once. Plug a wireless mouse in with a cable while its dongle is still in the
-machine and both sets exist side by side — but only one of them carries the
-mouse. The other keeps answering nothing, which surfaces as
-`connect: device did not answer`.
+### Bluetooth changes the rules
 
-`discovery.choose` sorts that out with two filters, cheapest first:
+An MX Master 3S behaves like three different devices:
 
-1. **The report descriptor.** `hidpp.Speaks` looks for the short and long HID++
-   report ids in `report_descriptor`. Of the four nodes a wired PRO X2
-   SUPERSTRIKE owns, exactly one declares both. Nothing is opened.
-2. **A ping.** If more than one node survives, only a ping distinguishes the
-   live one from the leftover. They are probed concurrently and the first
-   answer wins, because a live device replies in milliseconds while a stale
-   node costs the whole probe budget.
-
-Nodes are grouped by serial, not by USB id, and the serial is normalised first:
-the same mouse reports `5f-ba-c9-65` through its dongle and `5FBAC965` over
-USB. Without that, plugging in a cable would split one mouse into two devices.
-
-## Devices with no node of their own
-
-A dongle the kernel recognises is expanded into one hidraw node per paired
-device, and those are matched by USB id like anything else. A dongle it does
-not recognise stays a single node, and the devices behind it are invisible to a
-USB-id match — a Logi Bolt (`046d:c548`) is exactly this case, because
-`hid-logitech-dj` has no entry for that product id and `hid-generic` binds
-instead.
-
-`discovery.behindReceivers` covers them:
-
-- only receivers the kernel did **not** expand are scanned, since scanning an
-  expanded one would find the same device twice under two identities;
-- the slots are probed **concurrently** — an empty one costs the whole wake
-  timeout, and waiting out five in series to find the sixth device would make
-  every poll crawl;
-- the receiver's own count (HID++ 1.0 register `0x02`) ends the scan early once
-  that many have answered. It is an optimisation, not a gate: a receiver that
-  answers strangely falls back to scanning every slot.
-
-Such a device identifies itself by **name** rather than by USB id, so its
-catalog entry carries `Names` instead of `USB`, and `model.Device.Index`
-addresses it on the receiver's node.
-
-## The same mouse is a different animal on each connection
-
-An MX Master 3S is three devices as far as this code is concerned, and the
-differences are not cosmetic:
-
-| | dongle | Bluetooth |
+| | Dongle | Bluetooth |
 |---|---|---|
-| node | none of its own | its own, product `046d:b034` |
-| identified by | the name it reports | USB id |
-| HID++ reports | short **and** long | **long only** |
-| shares the node with mouse input | no | yes |
+| Node | none of its own | its own, product `046d:b034` |
+| Identified by | the name it reports | USB id |
+| HID++ reports | short and long | long only |
+| Shares the node with mouse input | no | yes |
 
-Three things follow, each of which looked like "the device is not there":
+Each difference first looked like "the device is not there":
 
 - **A short report goes nowhere.** Over Bluetooth the descriptor declares only
-  report id `0x11`; a short `0x10` request is not refused, it is simply never
-  delivered. `hidpp.reports` reads the descriptor and the conversation falls
-  back to long reports for the whole exchange.
-- **A reply can be buried.** Where HID++ shares a node with the device's
-  ordinary input, a mouse in use emits well over a hundred movement reports a
-  second. Waiting for a reply is bounded by *time*, not by a count of reports
-  to skip, or the answer is discarded while the device is answering perfectly.
+  report id `0x11`. A short `0x10` request is not refused. It is never
+  delivered. `hidpp.reports` reads the descriptor and uses long reports for the
+  whole exchange.
+- **A reply can be buried.** When HID++ shares a node with mouse input, a mouse
+  in use sends more than a hundred movement reports a second. The wait for a
+  reply is bounded by time, not by a count of reports to skip.
 - **`Speaks` requires only the long report.** Requiring both would rule out
   every Bluetooth device.
 
-**Sleeping devices need a long first word.** A sleeping MX Master 3S took over
-half a second to answer its first ping — the ordinary 600ms call timeout
-reported it as absent, and the 150ms probe timeout never stood a chance. The
-wake window is 2.5s, and only for that first ping; once awake it answers in
-milliseconds. A too-short window does not only lose the device — it can return
-*garbled* data, which is worse; a SUPERSTRIKE once reported its name as
-`YYYYYYYY` under the short budget.
+### Onboard mode refuses writes
 
-Paying that budget on every index would be its own bug: a mouse answering on
-index 1 would spend the whole wake window discovering that `0xFF` is silent, on
-every read. `Open` sweeps the indexes quickly first and only repeats the sweep
-patiently when nothing at all answered. `discovery.choose` does the same when
-picking between nodes.
-
-## Onboard mode refuses writes
-
-Feature 0x8100 says who owns a device's settings. In **onboard** mode it runs
-the profile in its own memory and refuses software writes; in **host** mode
-software owns them. The refusal arrives as error 0x05, "logitech internal",
-which explains nothing — so `writeDPI` reads the mode first and fails with the
+Feature `0x8100` says who owns a device's settings. In onboard mode the device
+runs the profile in its own memory and refuses software writes. In host mode
+software owns them. The refusal arrives as error `0x05`, "logitech internal",
+which explains nothing, so `writeDPI` reads the mode first and fails with the
 real reason.
 
-The mode is not fixed. A PRO X2 SUPERSTRIKE is in host mode on its dongle and
-onboard mode over USB, so the identical write succeeds or fails depending on
-which cable is in.
+The mode depends on the connection. A PRO X2 SUPERSTRIKE is in host mode on its
+dongle and onboard mode over USB.
 
-The mode is settable — `omnigear set <device> profile-mode onboard|host`, and a
-toggle in the panel — but only ever as an explicit choice. It is the one write
-that changes how the device behaves when OmniGear is not running, so a failed
-DPI write says why and stops, rather than quietly flipping the device into host
-mode to get its way.
+`omnigear set <device> profile-mode onboard|host` and a panel toggle change the
+mode. It is the one write that changes how the device behaves when OmniGear is
+not running, so it happens only as an explicit choice. A failed DPI write says
+why and stops. It never flips the device into host mode on its own.
 
-## You are not the only one talking to the device
+### Battery: percentage or steps
 
-A hidraw node delivers every reply to **every** open reader. A second HID++
-client on the same mouse — Solaar, libratbag/Piper, a vendor plugin — is not
-partitioned from OmniGear: its replies arrive interleaved with ours, and its
-writes can revert ours moments after they land.
+Some devices report which of a few steps they are on, and the number attached
+to a step is a boundary, not a reading. An MX Master 3 says `20` when it means
+the third of four levels. Showing "20%" invents precision.
 
-The signature is a device that reads perfectly but will not keep a setting.
-It is unguessable from the outside, so both places that can see it say so:
-
-```bash
-omnigear probe    # every node lists `openedBy`
-# → { "path": "/dev/hidraw8", "openedBy": [{"pid": 1234, "name": "solaar"}] }
-```
-
-and a write that does not stick names the other client in its error rather
-than just reporting the stale value:
-
-```
-device accepted the change but kept 4000 — solaar (pid 1234) also has
-/dev/hidraw8 open, which can revert writes
-```
-
-Only same-user processes are visible through `/proc`, so an empty list means
-"nothing found", not "nothing there". The panel says nothing at all when the
-list is empty, for exactly that reason: silence here is not a clean bill of
-health, and a green "no conflicts" badge would be claiming more than is known.
-
-Since neither `probe` nor a failed write is something a user reads unprompted,
-every device in `list` and `get` also carries a `conflicts` array, and the
-panel puts a red banner above the cards naming what it found:
-
-```jsonc
-"conflicts": [{ "pid": 1625, "process": "solaar", "label": "Solaar", "known": true }]
-```
-
-Three things about how it is gathered:
-
-- **One `/proc` walk, not one per device.** `hidraw.Holders` takes every path
-  at once. The bar polls this on a timer, and the walk — every pid, every open
-  descriptor — is the whole cost of the answer.
-- **Known programs are named properly.** `contenderLabels` maps a process to
-  what a user would call it, so the banner says "Solaar" rather than "solaar".
-  The kernel caps `comm` at 15 characters, so longer names are keyed by their
-  truncation: `openrazer-daemon` arrives as `openrazer-daemo`.
-- **An unrecognised holder is still reported**, with `known: false` and its
-  process name. Whatever it is, it is still sharing every reply.
-
-OmniGear's own processes are filtered out. The CLI is re-run on every poll, so
-a hand-run command overlapping the bar's would otherwise have the panel
-warning about OmniGear.
-
-## Not every device measures its battery
-
-Some report which of a handful of steps they are on, and the number attached
-to a step is a boundary rather than a reading. An MX Master 3 says `20` when
-it means the third of its four levels; printing that as "20%" invents
-precision the hardware never had.
-
-Which kind a device is comes from the device, not from a list of models:
+The device says which kind it is:
 
 ```
 0x1004 fn 0 getCapabilities → [supportedLevels, flags, …]
                               flag bit 0 set: it measures a state of charge
 0x1000 fn 1 getCapability   → [levels, flags, …, criticalLevel]
-                              a handful of levels means steps, not percent
+                              a few levels means steps, not percent
 ```
 
-Read off the two mice this was written against:
+From the two mice this was written against:
 
 ```
 PRO X2 SUPERSTRIKE  0x1004 fn0 → 0F 0F 02        flags 0x0F, bit 0 set
@@ -309,594 +460,363 @@ MX Master 3         0x1000 fn1 → 04 04 C0 78 05  four levels, critical at 5
 MX Master 3         0x1000 fn0 → 14 05 00        on level 20, next step 5
 ```
 
-A device that measures gets `percent`; one that steps gets `level` and no
-percentage at all, and the UI shows the word. The device's own critical point
-anchors the bottom of the mapping rather than a constant.
-
-Everything downstream had assumed a percentage, so it all keys off
-`batteryScore` now — a real percentage where there is one, an approximate
-rank for a step otherwise. That is used to pick the icon, to decide which
-device is lowest and speaks for the bar, and to size the bar label, which is
-measured from the reading rather than assumed to be three characters wide:
-"Critical" is not the width of "91%". The score is never displayed. Showing
-it would be the fiction being avoided.
-
-## Polling is not free: it wakes the mouse
-
-A poll is a conversation. A wireless mouse has to power its radio and
-transmit to answer one, so every poll wakes it — there is no passive read on
-that path. Measured by counting round trips in the transport, one `list` of
-two mice is **63 HID++ round trips**. On the default twenty-second timer that
-is about 11,300 an hour, and a mouse that never gets to sleep.
-
-It is easy to miss, because the symptom is absence: nothing errors, the
-battery just goes down faster. It was noticed here only when someone observed
-their mouse "only falling asleep shortly".
-
-The fix is that the bar does not need any of it. `hid-logitech-hidpp` keeps a
-power_supply per device, fed by reports the device sends of its own accord,
-so `omnigear battery` reads charge from sysfs and sends the hardware nothing:
-**0.003s against 1.149s**, and no wake at all. The expensive read — DPI,
-buttons, hosts, wheel — is only worth doing while the panel is open and
-someone is looking at it.
-
-So the timer has two jobs. Panel open, or no full read in the last fifteen
-minutes: a full read. Otherwise: charge from the kernel, folded into the
-devices from the last full read.
-
-Two details that matter:
-
-- **The merge only takes what the kernel actually knows.** A device on the
-  older 0x1000 battery feature gives `capacity_level` as a word and no
-  percentage; overwriting a real figure with "unknown" would put `--` on the
-  bar between full reads. A number fifteen minutes old is better than no
-  number, because charge moves slowly and the reading it replaces was true.
-- **It covers only devices the kernel drives directly.** One behind a
-  receiver the kernel did not expand has no power_supply, and identifying it
-  needs HID++ anyway, so it is left out of the cheap path and picked up by
-  the occasional full read.
-
-Confirmed end to end: with the panel shut, an MX Master 3 left alone for 150
-seconds answered the next poll in 3.42s and reported `presence: asleep`.
-Under the old timer the same mouse never once needed the wake sweep.
-
-## Sleeping, and why it can only be reported in the past tense
-
-A sleeping device cannot be observed while sleeping. The only way to ask it
-anything is to send it a request, and that wakes it — so by the time there is
-an answer, the answer comes from an awake device. There is no poll that
-observes sleep.
-
-What can be observed is the cost of the waking. `Open` sweeps the indexes
-quickly first and only repeats the sweep patiently when nothing answered at
-all; a device that ignores the quick sweep and answers the patient one was
-asleep, and an awake one never needs the second pass. `Device.Woken` records
-which sweep won, and the state reports `presence: "asleep"`. The label is
-retrospective on purpose: it means "this was asleep when the poll reached
-it", which is also the explanation for why that poll was slow.
-
-The distinction that is *not* retrospective is off versus unreachable, and it
-does not come from the device at all. `hid-logitech-hidpp` publishes a
-power_supply per device it drives, whose `online` attribute tracks the
-wireless link rather than the battery: 1 while connected, 0 once switched off
-or out of range, and 1 throughout an ordinary idle — a sleeping mouse is
-still a connected one. `hidraw.Node.LinkOnline` reads it, which costs a sysfs
-read and wakes nothing.
-
-That is worth more than a nicer label. Before it, a switched-off mouse cost
-the whole wake budget on every single poll to rediscover that it was still
-off: 2.7s, twenty seconds apart, forever. Now the driver asks the kernel
-first and returns immediately. Measured on a switched-off MX Master 3, a read
-went from 2.72s to 0.03s, and a full `list` alongside a live mouse from about
-1.2s to 0.36s.
-
-The kernel has no opinion about a device bound by `hid-generic`, or one
-behind a receiver it did not expand. Then `LinkOnline` says so rather than
-guessing, nothing is skipped, and a device that stays silent is reported as
-`unreachable` rather than as off.
-
-## A device that is off still has a node
-
-Switch a wireless mouse off and its node stays: the dongle it is paired to is
-still plugged in, so the kernel still lists it. Discovery finds it, the driver
-tries to talk to it, and nothing answers.
-
-Two things follow.
-
-**The sweep has to be bounded.** Trying each device index in turn at the wake
-budget is seven timeouts — eighteen seconds, longer than the poll interval,
-which leaves the UI reading forever and never finishing. The indexes are asked
-concurrently, so the whole sweep costs one timeout rather than seven.
-
-**Silence is a state, not an error.** A timeout sets `connected: false` and
-adds nothing to `errors`, because "Disconnected" says it better than an error
-message would. Any other failure — a permission problem, a broken node — is
-still reported. The panel shows such a device as a name and `Disconnected`,
-with no controls to operate and no tabs, and the bar never picks it to speak
-for the widget.
-
-## Headphones are not HID
-
-A pair of Sony WH-1000XM3 never appears under hidraw. It is an audio sink, a
-headset profile and a vendor RFCOMM service, and none of that is a node in
-`/dev`. So a headset takes a different road through every layer:
-
-| | mice and keyboards | headphones |
-|---|---|---|
-| found by | hidraw enumeration | BlueZ over D-Bus (`transport/bluez`) |
-| identified by | USB id from sysfs | vendor and product from the Device ID record (`Modalias`) |
-| addressed by | `Device.Node` | `Device.Address`, the MAC |
-| spoken to | HID++ on the node | Sony's protocol on an RFCOMM channel (`transport/rfcomm`, `transport/mdr`) |
-| cheap battery | kernel power_supply | BlueZ `Battery1`, fed over the hands-free link |
-
-The catalog does not care: the XM3's modalias `usb:v054Cp0CD3` is matched as
-USB id `054C:0CD3` like anything else.
-
-The RFCOMM channel is not fixed. It is looked up on each connection by asking
-the headset's SDP server for the service UUID; an XM3 answered channel 15.
-
-**One client at a time.** Where a hidraw node shares every reply with every
-reader, an RFCOMM service refuses a second connection outright with `EBUSY`.
-The failure is clean, but it names nobody, so the card says that another
-program has the control channel rather than who.
-
-**Writes need the whole record.** Noise cancelling, ambient sound, the ambient
-level and focus on voice are one message, so a write reads first and carries
-the rest over. Two things found on the hardware:
-
-- While noise cancelling, the headset reports the ambient level and voice
-  filter as zero rather than what it will go back to, and ambient at level 0
-  *is* off. Switching to ambient from noise cancelling therefore has to supply
-  a level; it asks for the full room.
-- The on byte must be written as `11`. Written as `01`, as the headset itself
-  reports it, the mode changes and a new level is silently ignored.
-
-**The codec decides whether the equalizer exists.** Over LDAC or aptX an XM3
-still reports its equalizer, but refuses every change with `99 01 01 01` and
-applies nothing. The headset's own answer to "is the equalizer available"
-(`52 01`) says `00` either way, so it is no help; the codec is (`18 00`), and
-each of SBC `01`, AAC `02`, LDAC `10`, aptX `20` and aptX HD `21` was read off
-the headset with PipeWire switched to it. The panel says which codec is in the
-way rather than offering sliders that do nothing.
-
-**The codec is the host's, not the headset's.** Both ends offer what they
-support and PipeWire picks, as the card profile: `a2dp-sink-aac` is AAC. So
-`drivers/a2dp` switches it through `transport/pactl` and says nothing to the
-headset at all, which is also why any Bluetooth headset could reuse it. The
-codec is only named in the profile's description — the default profile is
-plain `a2dp-sink`, whichever codec that is — so it is read from there.
-`set-card-profile` returns before the switch lands; reading straight after it
-sometimes found the old profile, so the write waits until the card reports the
-new one.
-
-A switch takes the audio output away for a moment, and a media player whose
-output disappears pauses — Spotify did, half a second in, before the switch had
-even finished. So `transport/mpris` notes which players are playing before the
-switch and plays the ones that paused, over the session bus. Play is repeated
-until the player says it is playing, because Spotify ignored one sent too soon
-after a pause. A player that was already paused, or that kept playing, is left
-alone.
-
-**The bar reads one device per kind.** A mouse and a headset each get their
-own reading and their own primary (`primaryMouse`, `primaryHeadset`), rather
-than the lowest battery of everything speaking for all of it — a dying headset
-is not less urgent because the mouse is lower.
-
-Headphones come and go far more often than a mouse, and with the panel shut a
-full read is fifteen minutes apart. So `omnigear battery` lists every connected
-headset, with `percent: -1` when BlueZ has no charge for it, and the bar treats
-a change in that set as a reason for a full read now. Without it a pair just
-switched on would be missing from the bar for up to fifteen minutes, and a pair
-just switched off would linger there as long.
-
-Straight after a mode change the headset plays a voice prompt, and a
-connection opened during it occasionally goes unanswered. `mdr.Open` retries
-the init once.
-
-**A WH-1000XM4 is an XM3 with two exceptions.** It publishes the same control
-service (`96cc203e…`) and answers every read with the same layout, so it
-shares the driver, as `drivers/sony.MDRXM4`. Where it differs:
-
-- It ignores the XM3's band write (`58 01 a0 06 …`), over AAC as well as LDAC,
-  and keeps the bands it had. Sent to preset `ff`, the selected one, the same
-  bands are taken: written to that preset if it is editable, otherwise to
-  manual with the headset moved onto it.
-- It refuses no equalizer change over LDAC. Presets and bands are taken and
-  read back, so its equalizer is not gated on the codec.
-
-**Auto power off is per model.** It is one record (`f6 04`, set with `f8 04`),
-but which values it keeps differs: an XM4 keeps only `11 00` (never) and `10 00`
-(when taken off), and reads anything else back as `10 00` rather than refusing
-it. An XM3 keeps five, `00 00` to `03 03` for its timers and `11 00` for never,
-and ignores anything else. So the driver lists each model's choices and the
-panel draws whatever it is given, under a Power tab.
-
-**The touch panel moved.** Both models keep its switch in a `d6` record, but
-the XM3 in `d6 d2` and the XM4 in `d6 d1`. Each answers the other record too,
-with a value it will not change, so a read of the wrong one looks plausible.
-The driver is told which per model.
-
-## A headset reached through its base station
-
-An Arctis Nova Pro Wireless is never spoken to directly. Its base station is a
-USB device of its own, and the headset's status and settings are whatever the
-base station says they are. It owns two hidraw nodes, and only one is any use:
-
-| interface | report descriptor | carries |
-|---|---|---|
-| 3 | consumer control, report `01` | media keys |
-| 4 | vendor pages `0xFFC0`/`0xFF00`, reports `06` and `07` | the protocol |
-
-`discovery.choose` asks HID++ which node speaks, and that question has no
-answer here. A driver for another protocol now answers it as a
-`model.Speaker`; `drivers/steelseries` looks for the `0xFFC0` usage page in
-the descriptor, and nothing is opened.
-
-The protocol (`transport/arctis`) is two queries and a handful of one-byte
-setters. `06 b0` returns the base station's status record and `06 20` an audio
-settings record; each setter's field was found by writing it and watching the
-records change, with every setting restored afterwards. A write is never
-answered, so every one is verified by reading it back. Report `07` is the base
-station speaking unprompted and arrives interleaved with replies, so a call
-waits on time, not on a report count. Linux-Arctis-Manager's device
-description (GPL-3.0) was the starting point for which commands exist; the
-noise mode (`bd`) and transparency level (`b9`) setters are not in it, and
-were found from the setters' layout: `bf`, `c1` and `c3` write bytes 11, 12
-and 13 of the status record, so `bd` writes byte 10, the noise mode.
-
-Three things follow from the base station being in the middle:
-
-- **Asking wakes nothing.** The base station is powered by its cable and keeps
-  the headset's status itself, so `omnigear battery` asks it, one query,
-  instead of leaving the headset out of the cheap path. A driver that can do
-  that is a `model.BatteryReader`.
-- **Off is known, not guessed.** The status record says whether the headset is
-  on the link, so a headset switched off is `presence: off` without a
-  timeout. The base station is there whether the headset is or not, so the
-  battery reply lists it either way and says which with `connected`; the bar
-  treats a change in that as an arrival or a departure, as it does a Bluetooth
-  headset appearing in the list.
-- **Its link is the connection.** The base station is in the receiver table as
-  a `BaseStation`, so the card says 2.4 GHz rather than Wired.
-
-**Switching the wireless mode drops the headset.** The status record reports
-it off at once, the base station sends `07 b5`/`07 b7` notifications as it
-re-pairs, and it is back some seconds later. The write waits for it, up to
-fifteen seconds, so the panel does not show a headset that is off for a
-change that worked.
-
-**Arctis Manager takes the interface away entirely.** It drives the base
-station through libusb, which unbinds usbhid from interface 4 and binds it to
-usbfs, and the protocol's hidraw node disappears for as long as it runs. What
-is left is the media-key node. Rather than report that as a missing device,
-the driver looks for an interface bound to usbfs and names whoever holds the
-USB device open. Unlike a shared hidraw node, nothing can be read at all.
-
-## Sonar, and the one process that stays running
-
-SteelSeries Sonar gives a headset separate outputs for games, chat, media and
-everything else, and the base station's ChatMix dial balances game against
-chat. Here that is two halves that meet at the sound server.
-
-**The outputs are PipeWire's.** Each channel is a filter-chain: a virtual sink
-applications are pointed at, playing into the headset's own output. They are
-declared in a drop-in, `~/.config/pipewire/pipewire.conf.d/omnigear-sonar.conf`,
-rather than created by OmniGear, so PipeWire makes them at login whether the
-bar is running or not, and an application keeps its channel across reboots.
-The drop-in existing is what "on" means. A drop-in is only read at startup, so
-switching Sonar restarts PipeWire, and every stream drops for a moment; the
-switch says so.
-
-The headset's output is found by the USB ids of its sound card, which are the
-base station's own, so the catalog entry is all it takes. Two things learned
-switching it:
-
-- **PipeWire comes back in two halves.** The loopbacks are PipeWire's and
-  appear at once; the headset's output waits on WirePlumber finding the sound
-  card, a second or so later. Waiting on the channels alone returned a sound
-  server that was half up, and the next request failed with a bare "Not
-  supported". The wait is for both.
-- **The loopback cannot fall back.** Its playback side is passive, so an idle
-  channel does not hold the headset open, and `node.dont-fallback` is set:
-  with the headset unplugged and Game the default output, a fallback would
-  have Game play into the default — itself.
-
-**An app's channel is chosen per app, not per stream.** The Sonar tab lists
-what is playing and moves it with `omnigear set <device> sonar-app-<app>
-<channel>`. A music player can open a new stream for every track, and
-WirePlumber remembers an output per application name, so the application is
-what the choice applies to and the choice outlives the stream it was made on.
-A move is asynchronous — the stream was still on its old sink when read
-straight afterwards — so the write waits for it to land before the verifying
-read. The list is only as fresh as the last full read, which with the panel
-open is every poll.
-
-An app names its own stream, and often after its audio library: Discord's
-voice plays as "WEBRTC VoiceEngine" and Valheim as "FMOD Ex App". The list
-shows a better name where one can be found. A process Steam launched carries
-`SteamAppId` in its environment, and Steam's manifest for that app has the
-store name; otherwise the stream's process binary is matched to a desktop
-entry, by window class and then by the program its Exec line runs. Only the
-label changes. Routing still goes by the stream's own name, because that is
-what WirePlumber remembers an output by — which also means two games on the
-same engine, both "FMOD Ex App", share one remembered channel.
-
-**Each channel has its own equalizer, in software.** While Sonar is on, the
-base station hands its equalizer to the computer: its own menu says the EQ is
-"on Sonar" and will not change it. So, as Sonar does, each channel is a
-PipeWire filter-chain of ten octave-wide peaking filters rather than a plain
-loopback, and a gain is changed live with `pw-cli set-param`, no restart.
-
-What the chain cannot do is report a change reliably. One made before it has
-played anything since PipeWire started is held and applied the moment audio
-starts, but reads back as the old value until then. So the curves live in
-`~/.config/omnigear/sonar-eq.json`, which a read reports and the drop-in is
-written from — rewritten on each change without a restart, so the curve is
-also there the next time PipeWire starts. Moving a band on a fixed preset
-carries the preset's curve to Custom first, as a Sony's equalizer does.
-
-**The dial scales the loopback's stream, not its sink.** The sink's volume is
-the listener's own, set in any mixer or with a knob in the Sonar tab
-(`sonar-volume-<channel>`); the dial works on top of it, so turning toward
-Game quietens chat without losing the level chat was set to, and neither ever
-moves the other's number.
-
-The volume knobs apply as they are dragged, which `set` cannot keep up with:
-it reads the whole device before and after, and the panel greys out while it
-runs, cancelling the drag. So a knob being dragged uses `omnigear
-sonar-volume`, which only tells the sound server — about ten milliseconds —
-with the newest level held while one is in flight. Letting go sends an
-ordinary `set`, so the knob still ends on a verified figure. A double-click
-mutes the channel's sink (`sonar-mute-<channel>`) and leaves its volume
-alone, so unmuting puts it back where it was.
-
-**The dial is only reported as it turns.** `07 45 gg cc`, game and chat each
-0–100; turning toward one side lowers the other, never both. There is no
-reading to ask for, so something has to be listening when it moves, and that
-is the one exception to every command being a short-lived process:
-`omnigear watch` runs for as long as the bar does, applies each position
-itself, and prints it as one JSON line for the panel. Three things keep it
-cheap and safe:
-
-- It finds the base station by USB id and report descriptor only, opening
-  nothing else, so waiting for one to be plugged in does not ping every mouse
-  on the machine every few seconds.
-- The dial reports every ~40ms while turning, faster than `pactl` can be run.
-  One worker applies whichever position is newest and the rest are dropped.
-- It asks the kernel for `PR_SET_PDEATHSIG`, so a shell that crashes takes it
-  down rather than orphaning it.
-
-The base station never says where the dial is, only that it moved. That would
-leave the mix wrong after every restart, except that WirePlumber restores
-stream volumes by node name: the last position applied is the one that comes
-back.
-
-**The mute button is announced too, and the same listener hears it.** `07 bb
-01` is muted and `07 bb 00` live, sent as the button is pressed; byte 9 of the
-status record says the same, and `bb` is that byte's place in the setters'
-layout. Which value is which was read by pressing once from live and checking
-the light, because an earlier attempt, read from presses made in a hurry,
-had it the wrong way round. `watch` prints a `mic` event on each change, so
-the bar's red microphone appears as the button is pressed rather than at the
-next poll. Unlike the dial the mute has a reading to ask for, so `watch` asks
-once as it starts, and it also takes the mute from any status reply that
-passes on the node — the bar's own battery poll sends one — so a missed press
-is put right at the next. A full read reports it as `micMuted`, under the
-`mic-mute` capability, and only while the headset is on.
-
-## Writes are verified, never assumed
-
-A device can accept a write and quietly ignore it. `omnigear set` therefore
-reads the device back and compares:
-
-| Outcome                        | Result                                      |
-|--------------------------------|---------------------------------------------|
-| value matches what was asked   | `ok`                                        |
-| value changed, but rounded     | `ok`, with `applied` and a `note`           |
-| value did not change           | **error** — "accepted the change but kept …"|
-
-The UI shows what the hardware says, not what it was told.
-
-One setting is exempt, and only one. Switching Easy-Switch host (`0x1814`)
-succeeds by making the device leave: the verifying read finds nothing, which
-is indistinguishable from the write having failed. `SettingKey.Verifiable`
-marks it, `cmdSet` stops at "the device accepted it", and the QML side treats
-an `ok` reply carrying no device as a cue to re-read rather than as a failure.
-Any future write with the same shape belongs there too; nothing else does.
-
-## Permissions, and the failure with no symptom
-
-hidraw nodes are `crw-------` root-only by default. Without a udev rule
-granting access, every device is invisible: it enumerates, the kernel binds it
-and drives it as a mouse, and this plugin cannot open it to ask it anything.
-Nothing errors. The device just is not there.
-
-`udev/60-omnigear.rules` is the fix, tagging the vendors this project drives
-with `uaccess` so logind hands the node to whoever is logged in at the seat.
-That is preferred over a world-writable mode or a group to join, because the
-ACL follows the session rather than standing open. It is scoped by vendor: a
-blanket rule over `SUBSYSTEM=="hidraw"` would hand every HID device on the
-machine, firmware-update endpoints included, to anything in the session.
-
-This was found the hard way. The project had been working on a machine that
-happened to have Solaar installed, and it was **Solaar's** udev rule granting
-the access. Uninstalling Solaar left already-plugged devices working — a node
-keeps the ACL it was given when it was added — while every newly plugged
-device silently vanished. Nothing here should depend on another project being
-installed, and now nothing does.
-
-Because the symptom is absence, `discovery.Unreadable` looks for the cause
-directly: nodes that carry HID++ and return `EACCES` on open. `list` reports
-them and the panel prints the fix. A node that is merely busy is not reported,
-since no udev rule would help.
-
-## Devices nobody catalogued
-
-A device that is not in the catalog still shows up, described by what it says
-about itself: the name it reports, how it is attached, and a capability list
-derived from its own feature table rather than from anyone's testing. The
-existing driver then reads and writes it unchanged, because the driver keys
-off the capability list and does not care who wrote it. Battery and DPI on an
-unknown Logitech mouse work for exactly that reason.
-
-Such an entry is marked `Discovered` and `SupportUnsupported`, and the panel
-tints its card and labels it, because "the device advertises this feature" is
-a much weaker claim than "someone confirmed this works on this model".
-
-**Only HID++ devices are found this way, and that is a deliberate limit.**
-Identifying an arbitrary mouse from outside cannot be done without guessing:
-
-- The HID report descriptor does not say. A Keychron Q3 keyboard declares a
-  mouse collection, because it has mouse-keys, and would be offered as an
-  unsupported mouse.
-- The kernel's input capabilities do not say either, for the same reason: that
-  keyboard publishes an input device named "… Mouse" carrying `REL_X`,
-  `REL_Y` and `BTN_LEFT`.
-- And both miss the opposite case. The node an MX Master 3S is reached through
-  behind an unexpanded Bolt receiver declares no usages at all and publishes
-  no input device.
-
-A HID++ device will state its own name and list its own features, which is
-evidence rather than inference. Everything else is left to `omnigear report`.
-
-## Reporting a device
-
-`omnigear report [device]` writes the issue somebody else would need in order
-to add support for hardware they do not own.
-
-With a device, it is that device's identity, its whole feature table, and what
-the driver managed to read. With no device, it is every hidraw node on the
-machine — which is the path for a mouse this project cannot identify at all, a
-Razer say, that never appears as a device because it speaks no protocol here.
-
-The reply carries both the text and a prefilled GitHub issue link. The link is
-capped at 8000 characters because a full feature table plus a state dump
-encodes to well over ten thousand and a query string that long gets rejected
-between here and GitHub; past the cap the link is trimmed and says where the
-rest is. The text is always returned whole.
-
-The body contains device ids, what answered, kernel and version, and nothing
-about the person sending it — no hostname, no username, no serial.
-
-## Reassigning buttons
-
-Feature `0x1B04`. The device holds a table of controls, each with a control id,
-a group, and a mask of the groups it will accept a mapping from. Both the list
-of reprogrammable buttons and the list of what each may become are read off
-the device rather than hardcoded, so a mouse with a different button layout
-needs no code.
-
-An MX Master 3S reports eight controls, five of them reprogrammable: middle,
-back, forward, gesture, wheel mode. Left and right carry no reprogrammable
-bit, which is the structural reason nothing set here can leave a mouse unable
-to click.
-
-The group masks differ per model, which is why they are read rather than
-assumed. On a 3S every reprogrammable button accepts all seven targets; on an
-MX Master 3 back and forward accept only left, right, back and forward. So
-"remap forward to middle" works on one and is correctly refused on the other,
-with no special case for either.
-
-Three things learned on hardware, all of them non-obvious:
-
-- **A remap of zero is ignored.** Writing `remap = 0x0000` to put a button
-  back is accepted and does nothing. The reset is to map the control *to
-  itself*. A device that has never been touched still reads `0x0000`, so both
-  spellings count as default on the way in. `ParseSetting` turns the word
-  `default` into the button's own id, so what is asked for and what is written
-  are the same number and a reset is not reported as a snapped value.
-- **The flags byte is left at zero on write.** For a set, divert and persist
-  are each paired with a "change this" bit, and with those clear the device
-  leaves both alone — a read-modify-write for free. It also cannot divert a
-  button by accident, which would stop the button working entirely, exactly as
-  a diverted thumbwheel does.
-- **The keys are per-device, not from a fixed list.** `button-<slug>` is the
-  only setting whose valid keys and values come from the hardware, so `cmdSet`
-  checks both against the read it already did rather than sending them blind.
-  Asking for a button the device will not reassign names the ones it will.
-
-It costs about 170ms of the poll: one `getCount`, one `getCidInfo` per control,
-and one `getCidReporting` per reprogrammable one — fourteen round trips on this
-mouse. That is the price of asking the device instead of assuming, and it is
-paid on every read because the CLI is a fresh process each time with nowhere
-to cache it.
-
-## A diverted wheel is a dead wheel
-
-Both wheel features can hand their movement to HID++ notifications instead of
-ordinary scroll events. Nothing in OmniGear reads those notifications, so
-unless another client is listening the wheel stops working entirely.
-
-The hi-res wheel (`0x2121`) therefore never has its divert bit touched: a
-read-modify-write carries it over as found. The thumbwheel (`0x2150`) is the
-opposite case and gets a control, because the mouse this was written on
-arrived *already* diverted and its thumbwheel did nothing at all. Writing
-reporting mode 0 brought it straight back. Being able to see that state and
-undo it is the whole value of the capability, and it is not diagnosable from
-the desk: the wheel simply does nothing and the device reports no error.
-
-The thumbwheel's invert flag is deliberately not exposed. Setting it sticks
-(`fn 1` reads back `00 01`) and changes nothing about which direction the
-wheel scrolls, so it evidently applies only to the diverted stream. A switch
-that visibly does nothing is worse than no switch. Writes still carry the byte
-over untouched, in case something else set it on purpose.
-
-## Easy-Switch, and a warning about probing
-
-An MX device pairs with three hosts and `0x1814` moves it between them.
-`0x1814` owns the count, the current slot and the switch; `0x1815` adds
-per-slot pairing status and the host's stored name.
-
-**A device can have the first without the second.** That was written here as
-"a device with one has both", on the evidence of a single mouse, and an MX
-Master 3 disproved it: it switches hosts and has no `0x1815` at all. The first
-cut reported every slot as unpaired, because "the call failed" and "the slot
-is empty" had been allowed to look the same. `Hosts.PairingKnown` separates
-them, and the panel offers every slot on such a device rather than claiming
-they are all empty. Slots are 0-based on the wire and 1-based
-everywhere above the driver, matching the buttons on the underside.
-
-The warning is about `0x1815`. Its functions are not symmetrical the way most
-are: fn 3 reads a host's friendly name and **fn 4 writes it**, taking whatever
-bytes it is given. Calling fn 4 with no name bytes, as one would to see what a
-read returns, stores an empty name and destroys what was there. It was found
-that way, on a real mouse, and the names had to be written back:
+A device that measures gets `percent`. A device that steps gets `level` and no
+percentage, and the UI shows a word. The device's own critical level anchors
+the bottom of the mapping.
+
+Everything downstream keys off `batteryScore`: the real percentage where there
+is one, an approximate rank for a step otherwise. It picks the icon, picks the
+lowest device to speak for the bar, and sizes the bar label, because
+"Critical" is wider than "91%". The score is never displayed.
+
+### Reassigning buttons
+
+Feature `0x1B04` holds a table of controls. Each has a control id, a group, and
+a mask of the groups it accepts a mapping from. The driver reads the buttons
+and their allowed targets from the device, so a new button layout needs no
+code.
+
+An MX Master 3S reports eight controls. Five are reprogrammable: middle, back,
+forward, gesture, and wheel mode. Left and right have no reprogrammable bit,
+which is why nothing here can leave a mouse unable to click.
+
+The masks differ per model. On a 3S every reprogrammable button accepts all
+seven targets. On an MX Master 3, back and forward accept only left, right,
+back, and forward. "Remap forward to middle" works on one and is refused on the
+other, with no special case.
+
+- **A remap of zero is ignored.** Writing `remap = 0x0000` is accepted and does
+  nothing. To reset a button, map the control to itself. An untouched device
+  reads `0x0000`, so both values count as default on read. `ParseSetting` turns
+  `default` into the button's own id, so a reset is not reported as a snapped
+  value.
+- **The flags byte is zero on write.** Divert and persist each have a "change
+  this" bit. With those bits clear, the device leaves both alone. That gives a
+  read-modify-write for free, and the driver cannot divert a button by
+  accident. A diverted button stops working.
+- **Keys and values come from the device.** `button-<slug>` is the only setting
+  whose keys and values come from hardware, so `cmdSet` checks both against the
+  read it already did. Asking for a button the device will not reassign names
+  the ones it will.
+
+The read costs about 170 ms per poll: one `getCount`, one `getCidInfo` per
+control, and one `getCidReporting` per reprogrammable control. That is 14 round
+trips on a 3S. The CLI is a fresh process each time and has nowhere to cache.
+
+### A diverted wheel is a dead wheel
+
+Both wheel features can send their movement as HID++ notifications instead of
+scroll events. OmniGear does not read those notifications, so a diverted wheel
+stops working unless another client listens.
+
+The driver never touches the divert bit of the hi-res wheel (`0x2121`). A
+read-modify-write carries it over. The thumbwheel (`0x2150`) gets a control,
+because the mouse this was written on arrived already diverted and its
+thumbwheel did nothing. Writing reporting mode 0 fixed it. The device reports
+no error in that state, so the control is the only way to see and undo it.
+
+The thumbwheel's invert flag is not exposed. Setting it sticks (`fn 1` reads
+back `00 01`) and changes nothing about scroll direction, so it seems to apply
+only to the diverted stream. Writes carry the byte over unchanged.
+
+### Easy-Switch, and a warning about probing
+
+An MX device pairs with three hosts. `0x1814` owns the count, the current slot,
+and the switch. `0x1815` adds per-slot pairing status and each host's stored
+name.
+
+A device can have `0x1814` without `0x1815`. The MX Master 3 switches hosts and
+has no `0x1815`. The first version reported every slot on it as unpaired,
+because "the call failed" and "the slot is empty" looked the same.
+`Hosts.PairingKnown` separates them, and the panel offers every slot on such a
+device. Slots are 0-based on the wire and 1-based above the driver, matching
+the buttons on the underside.
+
+The warning is about `0x1815`. Fn 3 reads a host's name, and fn 4 writes it
+with whatever bytes it gets. Calling fn 4 with no name bytes, to see what it
+returns, stores an empty name. That happened on a real mouse, and the name had
+to be written back:
 
 ```bash
 omnigear call mx-master-3s 0x1815 4 00 00 6d 65 67 61 74 72 6f 6e  # "megatron"
 ```
 
-`omnigear call` is a loaded gun by design, but a function index is not a hint
-about whether it reads or writes. Probe an unknown one on hardware you can
-afford to reconfigure, and read a feature's whole function list before
-sweeping it.
+## Bluetooth headphones
 
-## JSON contract
+### Headphones are not HID
 
-Every command prints exactly one JSON object. Failures are objects too, so the
-QML side never has to parse stderr:
+A Sony WH-1000XM3 never appears under hidraw. It is an audio sink, a headset
+profile, and a vendor RFCOMM service, and none of those is a node in `/dev`. A
+headset takes a different route through every layer:
 
-```jsonc
-{ "ok": true, "schema": 1, "devices": [ … ] }
-{ "ok": false, "error": "no connected device matches 'foo'" }
-```
+| | Mice and keyboards | Headphones |
+|---|---|---|
+| Found by | hidraw enumeration | BlueZ over D-Bus (`transport/bluez`) |
+| Identified by | USB id from sysfs | vendor and product from the Device ID record (`Modalias`) |
+| Addressed by | `Device.Node` | `Device.Address`, the MAC |
+| Spoken to | HID++ on the node | Sony's protocol on RFCOMM (`transport/rfcomm`, `transport/mdr`) |
+| Cheap battery | kernel power_supply | BlueZ `Battery1`, fed over the hands-free link |
 
-`schema` is bumped when the shape changes in a way that would break a reader.
+The catalog does not care. The XM3's modalias `usb:v054Cp0CD3` matches as USB
+id `054C:0CD3`.
 
-`omnigear watch` is the one exception: it streams one object per line, for
-as long as it runs. See Sonar above.
+The RFCOMM channel is looked up on each connection by asking the headset's SDP
+server for the service UUID. An XM3 answered channel 15.
+
+An RFCOMM service refuses a second client with `EBUSY`. The error names nobody,
+so the card says that another program has the control channel, not which one.
+
+Straight after a mode change the headset plays a voice prompt, and a connection
+opened during it sometimes gets no answer. `mdr.Open` retries the init once.
+
+### Noise control writes the whole record
+
+Noise cancelling, ambient sound, the ambient level, and focus on voice are one
+message, so a write reads first and carries the other fields over.
+
+- While noise cancelling, the headset reports the ambient level and voice
+  filter as zero. Ambient at level 0 is off, so a switch from noise cancelling
+  to ambient must supply a level. The driver asks for the full level.
+- The on byte must be written as `11`. Written as `01`, as the headset reports
+  it, the mode changes and the new level is ignored.
+
+### The codec decides whether the XM3 equalizer works
+
+Over LDAC or aptX an XM3 still reports its equalizer, but refuses every change
+with `99 01 01 01`. Its answer to "is the equalizer available" (`52 01`) is
+`00` either way. The codec record (`18 00`) is what tells. Each value was read
+with PipeWire switched to that codec: SBC `01`, AAC `02`, LDAC `10`, aptX `20`,
+and aptX HD `21`. The panel names the codec in the way instead of showing
+sliders that do nothing.
+
+### The codec belongs to the host
+
+Both ends offer what they support and PipeWire picks, as the card profile.
+`a2dp-sink-aac` is AAC. `drivers/a2dp` switches it through `transport/pactl`
+and says nothing to the headset, so any Bluetooth headset can reuse it. The
+codec is named only in the profile description, because the default profile
+is plain `a2dp-sink` whatever the codec. `set-card-profile` returns before the
+switch lands, so the write waits until the card reports the new profile.
+
+A switch removes the audio output for a moment, and a media player whose
+output disappears pauses. Spotify paused half a second in, before the switch
+finished. `transport/mpris` records which players are playing before the switch
+and resumes the ones that paused, over the session bus. It repeats play until
+the player reports playing, because Spotify ignored a play sent too soon after
+a pause. A player that was already paused, or kept playing, is left alone.
+
+### Headphones on the bar
+
+A mouse and a headset each get their own reading and their own primary
+(`primaryMouse`, `primaryHeadset`). A dying headset is not less urgent because
+the mouse is lower.
+
+Headphones come and go more often than a mouse, and with the panel shut full
+reads are fifteen minutes apart. `omnigear battery` lists every connected
+headset, with `percent: -1` when BlueZ has no charge, and the bar does a full
+read when that set changes. Otherwise headphones just switched on would be
+missing from the bar for up to fifteen minutes.
+
+### The WH-1000XM4 is an XM3 with exceptions
+
+It publishes the same control service (`96cc203e…`) and answers every read
+with the same layout, so it shares the driver as `drivers/sony.MDRXM4`. The
+differences:
+
+- It ignores the XM3's band write (`58 01 a0 06 …`), over AAC and LDAC alike.
+  Sent to preset `ff`, the selected one, the bands are taken. They go to that
+  preset if it is editable, otherwise to manual with the headset moved onto
+  it.
+- It accepts equalizer changes over LDAC, so its equalizer is not gated on the
+  codec.
+- **Auto power off.** Both use one record (`f6 04`, set with `f8 04`). An XM4
+  keeps only `11 00` (never) and `10 00` (when taken off), and reads anything
+  else back as `10 00`. An XM3 keeps `00 00` to `03 03` for its timers and
+  `11 00` for never, and ignores anything else. The driver lists each model's
+  choices, and the panel draws what it gets under a Power tab.
+- **Touch panel.** The switch is in `d6 d2` on an XM3 and `d6 d1` on an XM4.
+  Each model answers the other record too, with a value it will not change, so
+  a read of the wrong one looks plausible. The driver is told which per model.
+
+## Headsets behind a base station
+
+### The Arctis Nova Pro Wireless
+
+OmniGear never talks to the headset directly. The base station is a USB device
+of its own, and the headset's status and settings are whatever the base
+station reports. It owns two hidraw nodes, and only one is useful:
+
+| Interface | Report descriptor | Carries |
+|---|---|---|
+| 3 | consumer control, report `01` | media keys |
+| 4 | vendor pages `0xFFC0` and `0xFF00`, reports `06` and `07` | the protocol |
+
+`drivers/steelseries` implements `model.Speaker` and picks interface 4 by the
+`0xFFC0` usage page in its descriptor. Nothing is opened.
+
+The protocol (`transport/arctis`) is two queries and a few one-byte setters.
+`06 b0` returns the base station's status record and `06 20` returns an audio
+settings record. Each setter's field was found by writing it and watching the
+records change, then restoring every setting. A write gets no answer, so each
+one is verified by reading back. Report `07` is the base station speaking
+unprompted, mixed in with replies, so a call waits on time, not on a report
+count.
+
+Linux-Arctis-Manager's device description (GPL-3.0) was the starting point for
+which commands exist. The noise mode (`bd`) and transparency level (`b9`)
+setters are not in it. They came from the setter layout: `bf`, `c1`, and `c3`
+write bytes 11, 12, and 13 of the status record, so `bd` writes byte 10, the
+noise mode.
+
+### What the base station makes possible
+
+- **Asking wakes nothing.** The base station is powered by its cable and keeps
+  the headset's status, so `omnigear battery` asks it with one query. A driver
+  that can do this implements `model.BatteryReader`.
+- **Off is known, not guessed.** The status record says whether the headset is
+  on the link, so a switched-off headset is `presence: off` without a timeout.
+  The battery reply lists the base station either way, with `connected`, and
+  the bar treats a change as an arrival or a departure.
+- **The link is the connection.** The base station is in the receiver table as
+  a `BaseStation`, so the card says 2.4 GHz, not Wired.
+
+### Switching the wireless mode drops the headset
+
+The status record reports the headset off at once. The base station sends
+`07 b5` and `07 b7` as it re-pairs, and the headset is back some seconds later.
+The write waits up to fifteen seconds for it, so the panel does not show a
+headset that is off after a change that worked.
+
+### Arctis Manager takes the interface away
+
+Arctis Manager drives the base station through libusb, which unbinds usbhid
+from interface 4 and binds usbfs. The protocol's hidraw node disappears while
+it runs, and only the media-key node is left. The driver looks for an
+interface bound to usbfs and names whoever holds the USB device open. Unlike a
+shared hidraw node, nothing can be read at all.
+
+## Sonar
+
+SteelSeries Sonar gives a headset separate outputs for game, chat, media, and
+everything else, and the base station's ChatMix dial balances game against
+chat. OmniGear builds it in two halves that meet at the sound server.
+
+### The outputs are PipeWire filter-chains
+
+Each channel is a virtual sink that applications play into, and it plays into
+the headset's output. The channels are declared in a drop-in,
+`~/.config/pipewire/pipewire.conf.d/omnigear-sonar.conf`, so PipeWire creates
+them at login whether or not the bar is running, and an application keeps its
+channel across reboots. Sonar is on when the drop-in exists. PipeWire reads a
+drop-in only at startup, so switching Sonar restarts PipeWire and every stream
+drops for a moment. The switch says so.
+
+The headset's output is found by the USB ids of its sound card, which are the
+base station's own, so the catalog entry is enough.
+
+- **PipeWire comes back in two halves.** The loopbacks appear at once. The
+  headset's output waits for WirePlumber to find the sound card, a second or so
+  later. Waiting on the channels alone returned a half-started sound server,
+  and the next request failed with "Not supported". The wait is for both.
+- **The loopback cannot fall back.** Its playback side is passive, so an idle
+  channel does not hold the headset open. `node.dont-fallback` is set, because
+  with the headset unplugged and Game as the default output, Game would fall
+  back into itself.
+
+### Each app picks a channel
+
+The Sonar tab lists what is playing and moves it with
+`omnigear set <device> sonar-app-<app> <channel>`. A music player can open a
+new stream for every track, and WirePlumber remembers an output per application
+name, so the choice applies to the application and outlives the stream. A move
+is asynchronous, so the write waits for it to land before the verifying read.
+The list is as fresh as the last full read, which is every poll while the panel
+is open.
+
+An app names its own stream, often after its audio library. Discord's voice
+plays as "WEBRTC VoiceEngine" and Valheim as "FMOD Ex App". The list shows a
+better name where it can find one:
+
+1. A process Steam launched carries `SteamAppId` in its environment, and
+   Steam's manifest for that app has the store name.
+2. Otherwise, the stream's process binary is matched to a desktop entry, by
+   window class and then by the program its `Exec` line runs.
+
+Only the label changes. Routing still uses the stream's own name, because that
+is what WirePlumber remembers. Two games on the same engine, both
+"FMOD Ex App", share one remembered channel.
+
+### Each channel has its own equalizer
+
+While Sonar is on, the base station hands its equalizer to the computer. Its
+own menu says the EQ is "on Sonar" and will not change it. So each channel is a
+filter-chain of ten octave-wide peaking filters, and `pw-cli set-param` changes
+a gain live with no restart.
+
+The chain cannot report a change reliably. A change made before the chain has
+played anything since PipeWire started is held and applied when audio starts,
+but reads back as the old value until then. The curves therefore live in
+`~/.config/omnigear/sonar-eq.json`. A read reports that file, and each change
+rewrites the drop-in from it without a restart, so the curve survives the next
+PipeWire start. Moving a band on a fixed preset first copies the preset's curve
+to Custom, as Sony's equalizer does.
+
+### Volume, mute, and the dial
+
+The dial scales each loopback's stream, not its sink. The sink's volume is the
+listener's own, set in any mixer or with a knob in the Sonar tab
+(`sonar-volume-<channel>`). The dial works on top of it, so turning toward Game
+lowers chat without losing chat's level, and neither moves the other's number.
+
+The knobs apply while they are dragged, which `set` cannot keep up with. `set`
+reads the whole device before and after, and the panel greys out while it runs,
+which cancels the drag. A dragged knob uses `omnigear sonar-volume` instead,
+which only tells the sound server and takes about ten milliseconds. The newest
+level is held while one is in flight. Letting go sends an ordinary `set`, so
+the knob ends on a verified value. A double-click mutes the channel's sink
+(`sonar-mute-<channel>`) and leaves its volume alone.
+
+### `omnigear watch` is the one long-lived process
+
+The dial is reported only as it turns: `07 45 gg cc`, game and chat each 0 to
+100. Turning toward one side lowers the other, never both. There is no reading
+to ask for, so something must be listening. `omnigear watch` runs as long as
+the bar does, applies each position, and prints it as one JSON line for the
+panel.
+
+- It finds the base station by USB id and report descriptor only, and opens
+  nothing else. Waiting for a base station does not ping every mouse every few
+  seconds.
+- The dial reports about every 40 ms while turning, faster than `pactl` runs.
+  One worker applies the newest position and drops the rest.
+- It sets `PR_SET_PDEATHSIG`, so a crashed shell takes it down instead of
+  orphaning it.
+
+The base station never says where the dial is, only that it moved. WirePlumber
+restores stream volumes by node name, so the last position applied comes back
+after a restart.
+
+The mute button is announced the same way. `07 bb 01` is muted and `07 bb 00`
+is live, sent on each press. Byte 9 of the status record says the same, and
+`bb` is that byte's place in the setter layout. The values were confirmed by
+pressing once from live and checking the light. An earlier attempt, read from
+hurried presses, had them reversed. `watch` prints a `mic` event on each
+change, so the bar's red microphone appears on the press, not at the next
+poll. `watch` also reads the mute once at start, and takes it from any status
+reply on the node, so a missed press is corrected at the next battery poll. A
+full read reports it as `micMuted`, under the `mic-mute` capability, only while
+the headset is on.
 
 ## Why Go
 
-The first cut of this was Rust, ported early. Nothing here needs what Rust
-buys: a 20-second poll, a few hundred bytes of I/O, no concurrency. What the
-project does need is to be readable by whoever maintains it and cheap to
-contribute a device to — and the catalog is data, which reads better as plain
-Go structs than as `&'static [Capability]`. Cross-compiling the shipped binary
-for another architecture is also one environment variable rather than a
-toolchain.
+The first version was Rust. Nothing here needs what Rust offers: a 20-second
+poll, a few hundred bytes of I/O, and little concurrency. The project needs to
+be readable by its maintainer and cheap to add a device to. The catalog is
+data, and it reads better as plain Go structs than as
+`&'static [Capability]`. Cross-compiling for another architecture takes one
+environment variable.
 
-The one thing lost is exhaustive matching: adding a `Capability` no longer
-makes the compiler point at every place that must handle it. If the capability
-list grows much past a handful, that gap is worth covering with a test that
-walks the catalog.
+Go has no exhaustive matching, so a new `Capability` does not make the
+compiler point at every place that must handle it.
+[Path B](ADDING-A-DEVICE.md#path-b-add-a-capability) lists those places. If the
+capability list keeps growing, add a test that walks the catalog.

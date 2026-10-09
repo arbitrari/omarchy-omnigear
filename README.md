@@ -1,4 +1,3 @@
-
 <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/omnigear-logo-white.png">
     <source media="(prefers-color-scheme: light)" srcset="assets/omnigear-logo-black.png">
@@ -7,51 +6,45 @@
 
 ___
 
-An [Omarchy](https://omarchy/org) Plugin for monitoring and configuring your peripherals in a brand-agnostic way. No longer do you need a seperate plugin for your mouse, keyboard, and headsets; OmniGear handles them all.
+An [Omarchy](https://omarchy.org) plugin that monitors and configures your mice, keyboards, and headsets, whatever the brand. One plugin replaces a plugin per vendor.
 
-## Installation
+## Install
 
 ```sh
 omarchy plugin add https://omni.arbitrari.dev --enable
 ```
 
-### Device Permissions
-
-HID devices are root-only until a udev rule says otherwise, so OmniGear needs
-one installed before it can read anything. Without it, a device is simply
-invisible and OmniGear cannot open it to ask it anything.
+Then let OmniGear open your devices. Linux makes HID devices root-only by default, and without this rule OmniGear cannot see them:
 
 ```sh
 sudo cp ~/.config/omarchy/plugins/io.github.arbitrari.omnigear/udev/60-omnigear.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
+
 > [!IMPORTANT]
-> You must disconnect and reconnect your peripherals after adding this udev rule or else OmniGear still will not see your device
+> Unplug each device and plug it back in after you add the rule. A device keeps the permissions it had when it was connected.
 
-## Updates
+## Update
 
-Updates can be done directly in the plugin.
+Update from the plugin, or run:
 
-**OR**
+```sh
+omarchy plugin update io.github.arbitrari.omnigear
+```
 
-`omarchy plugin update io.github.arbitrari.omnigear`
+## Supported devices
 
-## Supported Devices
-
-> [!NOTE]   
-> 🟩 = Fully Supported   
-> 🟨 = Partially Supported   
-> 🟥 = Not Supported, but Planned   
-> ⬛ = Not Applicable _(the device does not have this feature)_
+> [!NOTE]
+> 🟩 Supported · 🟨 Partly supported · 🟥 Planned · ⬛ The device does not have this feature
 
 ### Mice
 
 <details>
 <summary><b>Logitech</b></summary>
 
-|  | Name | Battery | DPI | Polling | HITS* | SmartShift** | Hi-Res Wheel | Thumbwheel | Buttons**** | Easy-Switch*** | Notes 
-|------|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|
-| 🟩 | PRO X2 SUPERSTRIKE  |🟩|🟩|🟩|🟩|⬛|⬛|⬛|⬛|⬛|Not configurable when using Onboard memory|
+|  | Name | Battery | DPI | Polling | HITS | SmartShift | Hi-Res Wheel | Thumbwheel | Buttons | Easy-Switch | Notes |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 🟩 | PRO X2 SUPERSTRIKE  |🟩|🟩|🟩|🟩|⬛|⬛|⬛|⬛|⬛| Settings are read-only while the mouse uses onboard memory |
 | 🟥 | PRO X2 SUPERLIGHT 2 | | | |⬛| | | | | | |
 | 🟥 | PRO X2 SUPERLIGHT   | | | |⬛| | | | | | |
 | 🟥 | PRO 2 LIGHTSPEED    | | | |⬛| | | | | | |
@@ -60,228 +53,128 @@ Updates can be done directly in the plugin.
 | 🟥 | G305                | | | |⬛| | | | | | |
 | 🟥 | MX Master 4         | | | |⬛| | | | | | |
 | 🟩 | MX Master 3S        |🟩|🟩|⬛|⬛|🟩|🟩|🟩|🟩|🟩| |
-| 🟩 | MX Master 3         |🟨|🟩|⬛|⬛|🟩|🟩|🟩|🟩|🟨|Battery is four levels, not a percentage; no host names or pairing status|
+| 🟩 | MX Master 3         |🟨|🟩|⬛|⬛|🟩|🟩|🟩|🟩|🟨| Battery shows four levels, not a percentage. Hosts show no names or pairing status |
 | 🟥 | MX Master 2         | | | |⬛| | | | | | |
 | 🟥 | MX Master           | | | |⬛| | | | | | |
- 
-***Haptic Inductive Trigger System:** configurable actuation points and haptic feedback for left and right click. In the plugin, this appears as a Triggers tab in the SUPERSTRIKE's Panel
 
-****Smartshift:** ability for the scroll wheel to automatically switch between ratcheting and smooth scroll. In the plugin, this appears as a Wheel tab in the XM Master family's Panel
-
-*****Easy-Switch:** the host slots a device is paired to, and switching between them. In the plugin, this appears as a Hosts tab in the MX Master family's Panel
-
-******Buttons:** reassigning what a button does, in the device itself rather than in the desktop. In the plugin, this appears as a Buttons tab. Left and right click are never reassignable, so a mouse cannot be left unable to click
+- **HITS** (Haptic Inductive Trigger System). Set the actuation point and haptic feedback for left and right click. Shown in the **Triggers** tab.
+- **SmartShift.** The scroll wheel switches between ratcheted and free spin by itself. Shown in the **Wheel** tab.
+- **Buttons.** Reassign a button in the mouse itself. Left and right click cannot be reassigned, so the mouse can always click. Shown in the **Buttons** tab.
+- **Easy-Switch.** See the paired hosts and switch between them. Shown in the **Hosts** tab.
 
 </details>
 
 <details>
 <summary><b>Razer</b></summary>
 
-|  | Name | Battery | DPI | Polling | Notes 
-|------|-----|-----|-----|-----|-----|
+|  | Name | Battery | DPI | Polling | Notes |
+|---|---|---|---|---|---|
 | 🟥 | DeathAdder V4 Pro  | | | | |
 | 🟥 | DeathAdder V3 Pro  | | | | |
-| 🟥 | DeathAdder V3 HS  | | | | |
-| 🟥 | DeathAdder V3  | | | | |
-| 🟥 | DeathAdder V2 X HS  | | | | |
-| 🟥 | Viper V4 Pro | | | | N/A |
-| 🟥 | Viper V3 Pro SE | | | | N/A |
-| 🟥 | Viper V3 Pro | | | | N/A |
-| 🟥 | Naga V3 Pro   | | | | N/A |
-| 🟥 | Naga V2 Pro   | | | | N/A |
-| 🟥 | Naga V2 HS   | | | | N/A |
-| 🟥 | Basilisk V3 Pro   | | | | N/A |
+| 🟥 | DeathAdder V3 HS   | | | | |
+| 🟥 | DeathAdder V3      | | | | |
+| 🟥 | DeathAdder V2 X HS | | | | |
+| 🟥 | Viper V4 Pro       | | | | |
+| 🟥 | Viper V3 Pro SE    | | | | |
+| 🟥 | Viper V3 Pro       | | | | |
+| 🟥 | Naga V3 Pro        | | | | |
+| 🟥 | Naga V2 Pro        | | | | |
+| 🟥 | Naga V2 HS         | | | | |
+| 🟥 | Basilisk V3 Pro    | | | | |
 
 </details>
 
-<details>
-<summary><b>Corsair</b></summary>
-</details>
-
-<details>
-<summary><b>Glorious</b></summary>
-</details>
-
-<details>
-<summary><b>FinalMouse</b></summary>
-</details>
+Planned brands with no models listed yet: Corsair, Glorious, and FinalMouse.
 
 ### Keyboards
 
-<details>
-<summary><b>Logitech</b></summary>
-</details>
+No keyboards are supported yet. Planned brands: Logitech, Razer, Wooting, Keychron, SteelSeries, ASUS ROG, Pulsar, Glorious, Lofree, HyperX, and 8BitDo.
+
+### Headsets and headphones
 
 <details>
-<summary><b>Razer</b></summary>
-</details>
+<summary><b>SteelSeries</b></summary>
 
-<details>
-<summary><b>Wooting</b></summary>
-</details>
+|  | Name | Battery | Noise Control | Equalizer | Gain | Sidetone | Mic Volume | Mute Light | Wireless Mode | Auto Power Off | Sonar | Mic Mute | Notes |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 🟩 | Arctis Nova Pro Wireless |🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩| Needs the base station |
 
-<details>
-<summary><b>Keychron</b></summary>
-</details>
+- **Battery.** The charge of the headset and of the spare battery in the base station, in eighths.
+- **Noise Control.** Noise cancelling, transparency, or off, with the transparency level. Shown in the **Sound** tab.
+- **Equalizer.** A 10-band equalizer for each Sonar channel, with Flat, Bass Boost, Treble Boost, Vocal, and Custom presets. Shown in the **Equalizer** tab.
+- **Wireless Mode.** Favor low latency (speed) or distance (range). The headset drops for a few seconds while it reconnects. Shown in the **Wireless** tab.
+- **Sonar.** Separate Game, Chat, Media, and Aux outputs, like SteelSeries Sonar. The base station's ChatMix dial balances Game against Chat. Set each channel's volume, and move each playing app to a channel. An app keeps its channel the next time it plays. Turning Sonar on or off restarts PipeWire, so audio drops for a moment. Shown in the **Sonar** tab.
 
-<details>
-<summary><b>Steelseries</b></summary>
-</details>
-
-<details>
-<summary><b>ASUS ROG</b></summary>
-</details>
-
-<details>
-<summary><b>Pulsar</b></summary>
-</details>
-
-<details>
-<summary><b>Glorious</b></summary>
-</details>
-
-<details>
-<summary><b>Lofree</b></summary>
-</details>
-
-<details>
-<summary><b>HyperX</b></summary>
-</details>
-
-<details>
-<summary><b>8BitDo</b></summary>
-</details>
-
-### Headsets / Headphones
-
-<details>
-<summary><b>Steelseries</b></summary>
-
-|  | Name | Battery* | Noise Control** | Equalizer***** | Gain | Sidetone | Mic Volume | Mute Light | Wireless Mode*** | Auto Power Off | Sonar**** | Mic Mute | Notes
-|------|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|
-| 🟩 | Arctis Nova Pro Wireless |🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩| Only with use of Base Station |
-
-***Battery:** the headset's charge and the spare charging in the base station, in eighths, as the base station counts them
-
-****Noise Control:** noise cancelling, transparency or off, with the transparency level. In the plugin, this appears as a Sound tab
-
-*****Wireless Mode:** whether the headset's link to the base station favours latency (speed) or distance (range). Switching drops the headset for a few seconds while it reconnects. In the plugin, this appears as a Wireless tab
-
-******Sonar:** separate Game, Chat, Media and Aux outputs, with the base station's ChatMix dial balancing Game against Chat, as SteelSeries Sonar does. Each channel's volume can be set, and each app that is playing moved to a channel, from the same tab, and keeps it the next time it plays. Turning Sonar on or off restarts PipeWire, so audio drops for a moment. In the plugin, this appears as a Sonar tab
-
-*******Equalizer:** a 10-band equalizer for each Sonar channel, applied in software as SteelSeries Sonar does, with Flat, Bass Boost, Treble Boost, Vocal and Custom presets. While Sonar is on, the base station hands its own equalizer to the computer. In the plugin, this appears as an Equalizer tab
-
-</details>
-
-<details>
-<summary><b>Logitech</b></summary>
-</details>
-
-<details>
-<summary><b>Razer</b></summary>
-</details>
-
-<details>
-<summary><b>HyperX</b></summary>
-</details>
-
-<details>
-<summary><b>Turtle Beach</b></summary>
 </details>
 
 <details>
 <summary><b>Sony</b></summary>
 
-|  | Name | Battery | Noise Control* | Equalizer | Codec** | DSEE*** | Speak-To-Chat | Auto Power Off | Touch Panel | Notes
-|------|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|
+|  | Name | Battery | Noise Control | Equalizer | Codec | DSEE | Speak-To-Chat | Auto Power Off | Touch Panel | Notes |
+|---|---|---|---|---|---|---|---|---|---|---|
 | 🟥 | WH-1000XM6 | | | | | | | | | |
 | 🟥 | WH-1000XM5 | | | | | | | | | |
-| 🟩 | WH-1000XM4 |🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩|Bluetooth only |
-| 🟩 | WH-1000XM3 |🟩|🟩|🟩|🟩|🟩|⬛|🟩|🟩|Bluetooth only. Equalizer only over SBC or AAC|
+| 🟩 | WH-1000XM4 |🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩| Bluetooth only |
+| 🟩 | WH-1000XM3 |🟩|🟩|🟩|🟩|🟩|⬛|🟩|🟩| Bluetooth only. Equalizer works over SBC and AAC only |
 
-***Noise Control:** noise cancelling, ambient sound or off, with ambient level and focus on voice. In the plugin, this appears as a Sound tab
-
-****Codec:** which Bluetooth codec the audio plays over (SBC, AAC, aptX, LDAC, …). This is chosen by your computer's sound server rather than stored in the headset. In the plugin, this appears in the Sound tab
-
-*****DSEE:** Sony's upscaling of compressed audio, sold as DSEE HX on the WH-1000XM3 and DSEE Extreme on the WH-1000XM4. In the plugin, this appears in the Sound tab
+- **Noise Control.** Noise cancelling, ambient sound, or off, with the ambient level and focus on voice. Shown in the **Sound** tab.
+- **Codec.** The Bluetooth codec the audio uses, such as SBC, AAC, aptX, or LDAC. Your computer's sound server picks it, not the headset. Shown in the **Sound** tab.
+- **DSEE.** Sony's upscaling of compressed audio. Shown in the **Sound** tab.
 
 </details>
 
-<details>
-<summary><b>Sennheizer</b></summary>
-</details>
+Planned brands with no models listed yet: Logitech, Razer, HyperX, Turtle Beach, Sennheiser, Audio-Technica, Apple, Google, Nothing, and OnePlus.
 
-<details>
-<summary><b>Audio-Technica</b></summary>
-</details>
+## Add your device
 
-<details>
-<summary><b>Apple</b></summary>
-</details>
+If you own a device OmniGear does not support, you can add it. You need the device connected to an Omarchy machine. The maintainers probably do not own it, so your testing is what makes the PR mergeable.
 
-<details>
-<summary><b>Google</b></summary>
-</details>
+1. Clone the repository and build it:
 
-<details>
-<summary><b>Nothing</b></summary>
-</details>
+   ```sh
+   git clone https://github.com/arbitrari/omarchy-omnigear
+   cd omarchy-omnigear
+   ./scripts/dev-install
+   ```
 
-<details>
-<summary><b>OnePlus</b></summary>
-</details>
+   The script installs Go through mise on first run, builds the plugin, installs it into your shell, and restarts the shell.
 
-## Contribute
+2. Follow [Add support for a device you own](docs/ADDING-A-DEVICE.md). It covers finding the ids, writing the code, testing, and opening the PR.
 
-Is your device not currently supported? Feel free to submit a Pull Request to add support for it!
+### Use a coding agent
 
-Use of Agents such as Claude Code, Codex, Cursor, Grok, Opencode, etc is encouraged. That said, _please_ make sure to keep PRs concise. Also, _please_ test all changes made as the maintainers most likely do not have the same device to test it themselves.
+Claude Code, Codex, Cursor, opencode, and other agents read [`AGENTS.md`](AGENTS.md) on their own. Start one in the repository with the device connected, and give it this prompt:
 
-### Getting Started
-
-On Omarchy, you need nothing but the device you are adding. Omarchy ships with [mise](https://mise.jdx.dev) and this repository's `mise.toml` asks for `Go`. The first `./scripts/dev-install` call pulls `Go` down by itself and there is no toolchain to set up.
-
-Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) first. It explains where a model lives in the tree, why a capability list is all the UI needs, and the hardware quirks that otherwise cost you an evening.
-
-### Testing Changes
-
-As you make frequent changes, you will want to build the plugin. To make this easy, run the following in terminal:
-
+```text
+Add OmniGear support for my <brand and model>, which is connected to this
+machine now. Read AGENTS.md, then follow docs/ADDING-A-DEVICE.md one step at a
+time. Use only ids and behavior you observe on this device. Ask me before you
+run anything with sudo or restart my shell, and ask me to confirm anything you
+cannot observe yourself, such as lights or sounds. When every step passes, open
+the pull request with the template from step 8.
 ```
-./scripts/dev-install
-```
-That will build the plugin and load it into the current shell automatically.
 
-### Adding a Device
+Read the diff before the agent opens the PR. Keep the PR to one device.
 
-Most mice are one catalog entry and no new code, since the driver for the family already exists.
+## Report a bug
 
-1. Plug the device in and run `./bin/omnigear probe`. It lists every hidraw node and which HID++ features actually answered. Never copy a USB id off the internet. A wrong one binds a driver to somebody else's hardware.
-2. Add a `model.Entry` to `internal/devices/<category>/<brand>/<brand>.go`, with the ids you observed and only the capabilities you have seen work.
-3. Set `Support` honestly. `SupportPartial` until every capability it claims works.
-4. Update the table in this README to match.
+Open an issue with the output of these commands, run with the device connected:
 
-A model that behaves unlike the rest of its family gets its own file next to the catalog. A brand that speaks a protocol nothing else here speaks needs a `transport/` package and a `drivers/` package as well, and that is a much bigger PR. Say so in the description and it can be reviewed in pieces.
-
-### Reporting a Bug
-
-Open an Issue with the output of `probe` and `list`, taken with the device connected. The binary ships inside the installed plugin:
-
-```
+```sh
 cd ~/.config/omarchy/plugins/io.github.arbitrari.omnigear
-./bin/omnigear probe
+./bin/omnigear report
 ./bin/omnigear list
 ```
 
-Serials are in that output, so scrub them if you would rather not publish them. The rest is what makes the report fixable.
+The output contains serial numbers. Remove them if you do not want them public.
 
 ## Disclaimer
-OmniGear is not officially affiliated with the Omarchy Foundation nor any of the brands mentioned in this README or source code. This product is developed in open-source and is provided for free by volunteer contributors. If a brand has an issue with their product(s) being supported, please reach out in an GitHub Issue and it can be taken care of.
+
+OmniGear is not affiliated with the Omarchy Foundation or with any brand named in this README or the source code. Volunteers build it in the open and give it away. If you represent a brand and object to a product's support, open an issue.
 
 ## License
-OmniGear is licensed under the [*GNU General Public License v3.0*](https://choosealicense.com/licenses/lgpl-3.0/). Permissions of this strong copyleft license are conditioned on making available complete source code of licensed works and modifications, which include larger works using a licensed work, under the same license. Copyright and license notices must be preserved. Contributors provide an express grant of patent rights.
 
-For the betterment of the community, we would prefer you contribute directly to this project, but you are allowed to use your own fork as long as it is public like this project is.
+OmniGear is licensed under the [GNU General Public License v3.0](LICENSE.md). If you distribute a modified version, you must publish its full source under the same license and keep the copyright and license notices. We would rather you contribute here, but a public fork is allowed.
 
 <p align="center">___</p>
 <p align="center">
