@@ -79,7 +79,7 @@ Column {
         Text {
             width: parent.width
             visible: root.enabledNow && !root.sonar.live
-            text: "On, but the sound server has not made the outputs. They appear when the headset is plugged in."
+            text: "On, but the sound server has not made the outputs yet. Turn Sonar off and on to restart audio and load them."
             wrapMode: Text.WordWrap
             textFormat: Text.PlainText
             color: root.muted
