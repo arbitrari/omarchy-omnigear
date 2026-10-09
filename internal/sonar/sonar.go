@@ -144,7 +144,7 @@ func Enable(target string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, []byte(config(target, eq)), 0o644); err != nil {
+	if err := writeAtomic(path, []byte(config(target, eq))); err != nil {
 		return fmt.Errorf("writing %s: %w", path, err)
 	}
 	if err := restart(); err != nil {

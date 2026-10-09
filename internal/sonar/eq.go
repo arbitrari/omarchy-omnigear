@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"golang.org/x/sys/unix"
 )
 
 // Equalizing is done here rather than in the headset. With Sonar on, the
@@ -128,7 +130,48 @@ func writeEQ(state EQState) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, raw, 0o644)
+	return writeAtomic(path, raw)
+}
+
+// writeAtomic replaces a file by renaming a finished copy over it. Written in
+// place, a poll reading it mid-write sees an empty or partial file, and a
+// crash mid-write leaves it that way.
+func writeAtomic(path string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp.Name(), 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
+}
+
+// lockEQ holds the saved curves for one read-change-write, so two changes
+// made at once by separate processes do not each write back a state missing
+// the other's band.
+func lockEQ() (func(), error) {
+	path := eqPath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, err
+	}
+	file, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return nil, err
+	}
+	if err := unix.Flock(int(file.Fd()), unix.LOCK_EX); err != nil {
+		file.Close()
+		return nil, err
+	}
+	return func() { file.Close() }, nil
 }
 
 // SetPreset selects a preset for a channel.
@@ -185,6 +228,11 @@ func changeEQ(channel string, change func(*ChannelEQ)) error {
 	if ch == nil {
 		return fmt.Errorf("%q is not a Sonar channel", channel)
 	}
+	unlock, err := lockEQ()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	state, err := ReadEQ()
 	if err != nil {
 		return err
@@ -209,7 +257,7 @@ func changeEQ(channel string, change func(*ChannelEQ)) error {
 	if !ok {
 		return fmt.Errorf("%s names no headset output", ConfigPath())
 	}
-	if err := os.WriteFile(ConfigPath(), []byte(config(target, state)), 0o644); err != nil {
+	if err := writeAtomic(ConfigPath(), []byte(config(target, state))); err != nil {
 		return err
 	}
 	return applyLive(*ch, eq.Gains())
