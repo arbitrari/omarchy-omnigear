@@ -141,6 +141,7 @@ func Unsupported(err error) bool {
 // Device is an open HID++ conversation with one device.
 type Device struct {
 	handle  *hidraw.Handle
+	unlock  func()
 	index   byte
 	timeout time.Duration
 	// alwaysLong is set for a node that carries only the long report. Sending
@@ -287,22 +288,28 @@ func openWith(node hidraw.Node, ping, call time.Duration) (*Device, error) {
 
 // openAt is the single-index open both entry points are built from.
 func openAt(node hidraw.Node, index byte, ping, call time.Duration) (*Device, error) {
+	unlock := lockNode(node.Path)
 	handle, err := node.Open()
 	if err != nil {
+		unlock()
 		return nil, err
 	}
 
 	short, _ := reports(node)
-	device := &Device{handle: handle, index: index, timeout: ping, alwaysLong: !short}
+	device := &Device{handle: handle, unlock: unlock, index: index, timeout: ping, alwaysLong: !short}
 	if err := device.Ping(); err != nil {
-		handle.Close()
+		device.Close()
 		return nil, err
 	}
 	device.timeout = call
 	return device, nil
 }
 
-func (d *Device) Close() error { return d.handle.Close() }
+func (d *Device) Close() error {
+	err := d.handle.Close()
+	d.unlock()
+	return err
+}
 
 // Index is the device index that answered, for diagnostics.
 func (d *Device) Index() byte { return d.index }
