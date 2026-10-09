@@ -93,6 +93,10 @@ func (c *Conn) Send(command byte, args ...byte) error {
 	return c.handle.Write(report)
 }
 
+// Read returns the next report, a reply or a notification, for a caller
+// that listens rather than asks.
+func (c *Conn) Read(timeout time.Duration) ([]byte, error) { return c.handle.Read(timeout) }
+
 // Call sends a query and returns the reply, report id and command included,
 // so a decoder's byte offsets match the bytes quoted beside it.
 //

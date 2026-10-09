@@ -47,6 +47,20 @@ const (
 	setMuteLight    = 0xBF
 	setAutoPowerOff = 0xC1
 	setWirelessMode = 0xC3
+
+	// The Sonar icon on the base station's screen, and its ChatMix dial: 01
+	// on, 00 off. Neither is answered, neither shows in the b0 or 20 record,
+	// and 8d does not answer as a query, so they are confirmed by the screen
+	// and the dial alone. nova-chatmix-linux's command table was the starting
+	// point. From a power-up with both off:
+	//
+	//	06 8d 01   the screen shows the Sonar icon; ChatMix stays unavailable
+	//	06 49 01   the screen offers ChatMix, and the dial reports again:
+	//	           07 45 64 5b, 07 45 64 64, 07 45 5b 64, 07 45 53 64 …
+	//
+	// 00 turning each off is the table's word, not yet seen.
+	setSonarIcon = 0x8D
+	setChatMix   = 0x49
 )
 
 const (
@@ -399,7 +413,8 @@ func (d driver) Write(device *model.Device, setting *model.Setting) error {
 		return fmt.Errorf("%s has no %s", device.Entry.Model, setting.Key)
 	}
 
-	// Sonar is the sound server's, and the base station is not spoken to.
+	// Sonar lives in the sound server. Only the switch itself is also told
+	// to the base station.
 	if setting.Key == model.SettingSonar {
 		return writeSonar(device, setting.Value != 0)
 	}
@@ -586,16 +601,42 @@ func readSonar() (*model.Sonar, error) {
 // profile there is none, and the channels still have to be removable.
 func writeSonar(device *model.Device, on bool) error {
 	target, err := sonar.SinkFor(device.Node.Vendor, device.Node.Product)
-	if !on {
+	if on {
+		if err != nil {
+			return fmt.Errorf("finding the headset's output: %w", err)
+		}
+		err = sonar.Enable(target)
+	} else {
 		if err != nil {
 			target = ""
 		}
-		return sonar.Disable(target)
+		err = sonar.Disable(target)
 	}
 	if err != nil {
-		return fmt.Errorf("finding the headset's output: %w", err)
+		return err
 	}
-	return sonar.Enable(target)
+
+	conn, err := open(device.Node)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	return announceSonar(conn.Send, on)
+}
+
+// announceSonar tells the base station whether Sonar is on. It shows the
+// Sonar icon and reports the ChatMix dial only while told so, and it forgets
+// both when it loses power, which a replug, a reboot, or a moved cable all
+// cause.
+func announceSonar(send func(command byte, args ...byte) error, on bool) error {
+	var value byte
+	if on {
+		value = 0x01
+	}
+	if err := send(setSonarIcon, value); err != nil {
+		return err
+	}
+	return send(setChatMix, value)
 }
 
 // chatMix is the base station reporting the ChatMix dial, unprompted, every
@@ -632,20 +673,28 @@ const reportNotice = 0x07
 // reading to ask for, and from any status reply that passes — the bar's own
 // battery poll sends one every twenty seconds or so — so a press missed for
 // any reason is put right at the next.
+//
+// Sonar is announced to the base station at the start too. It forgets on
+// power loss, and its node goes away with the power, so every replug ends
+// this watch and the next one restores it. A failed read of whether Sonar is
+// on announces nothing, so a passing error does not turn it off.
 func (driver) Watch(node hidraw.Node, events model.WatchEvents) error {
-	handle, err := node.Open()
+	conn, err := arctis.Open(node)
 	if err != nil {
 		return err
 	}
-	defer handle.Close()
+	defer conn.Close()
 
-	ask := make([]byte, 64)
-	ask[0], ask[1] = 0x06, queryStatus
-	if err := handle.Write(ask); err != nil {
+	if status, err := sonar.Read(); err == nil {
+		if err := announceSonar(conn.Send, status.Enabled); err != nil {
+			return err
+		}
+	}
+	if err := conn.Send(queryStatus); err != nil {
 		return err
 	}
 	for {
-		report, err := handle.Read(time.Minute)
+		report, err := conn.Read(time.Minute)
 		if errors.Is(err, hidraw.ErrTimeout) {
 			continue
 		}

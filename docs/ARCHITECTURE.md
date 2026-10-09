@@ -797,6 +797,16 @@ panel.
 - It sets `PR_SET_PDEATHSIG`, so a crashed shell takes it down instead of
   orphaning it.
 
+The base station reports the dial only when the computer has told it Sonar is
+on. `06 8d 01` shows the Sonar icon on its screen, and `06 49 01` enables
+ChatMix, so the dial starts reporting. Neither is answered, and neither shows
+in a record that can be read. The base station is powered by its cable and
+forgets both on any replug, reboot, or cable move. So `watch` announces Sonar
+on each connect, from whether the drop-in exists, and the Sonar switch
+announces it on each change. A replug always re-enumerates the node, which
+ends one `watch` and starts the next. nova-chatmix-linux's command table was
+the starting point for these commands.
+
 The base station never says where the dial is, only that it moved. WirePlumber
 restores stream volumes by node name, so the last position applied comes back
 after a restart.
