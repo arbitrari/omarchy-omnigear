@@ -122,13 +122,16 @@ func readStatus(conn *arctis.Conn) (status, error) {
 // settings is the base station's record of the headset's audio settings.
 //
 //	06 20 00 02 02 00 00 14 14 14 00 00 00 00 00 00 00 08 03 01 42 64 64 00 64
-//	            │                                      │  └ sidetone, 00–03
-//	            │                                      └ microphone volume, 01–0a
-//	            └ gain: 01 low, 02 high
+//	      │     │                                      │  └ sidetone, 00–03
+//	      │     │                                      └ microphone volume, 01–0a
+//	      │     └ gain: 01 low, 02 high
+//	      └ USB port: 00 USB-1, 01 USB-2
 //
-// Each field was found by writing its setter and watching this record
-// change. The rest is unmapped.
+// Each setting was found by writing its setter and watching this record
+// change, and the port by moving the cable from USB-1 to USB-2 and back. The
+// rest is unmapped.
 type settings struct {
+	port      byte
 	gain      byte
 	micVolume byte
 	sidetone  byte
@@ -142,7 +145,18 @@ func readSettings(conn *arctis.Conn) (settings, error) {
 	if len(reply) < settingsLength {
 		return settings{}, fmt.Errorf("short settings reply % x", reply)
 	}
-	return settings{gain: reply[4], micVolume: reply[17], sidetone: reply[18]}, nil
+	return settings{port: reply[2], gain: reply[4], micVolume: reply[17], sidetone: reply[18]}, nil
+}
+
+// usbPort names the base station's port as its screen does, counting from 1.
+func usbPort(wire byte) (int, error) {
+	switch wire {
+	case 0x00:
+		return 1, nil
+	case 0x01:
+		return 2, nil
+	}
+	return 0, fmt.Errorf("unknown USB port %02x", wire)
 }
 
 // eighths turns the base station's battery bars into a percentage. It is a
@@ -317,13 +331,20 @@ func (d driver) Read(device *model.Device) model.DeviceState {
 	}
 
 	if !device.Entry.Has(model.CapGain) && !device.Entry.Has(model.CapMicVolume) &&
-		!device.Entry.Has(model.CapSidetone) {
+		!device.Entry.Has(model.CapSidetone) && !device.Entry.Has(model.CapUSBPort) {
 		return state
 	}
 	set, err := readSettings(conn)
 	if err != nil {
 		state.Errors = append(state.Errors, err.Error())
 		return state
+	}
+	if device.Entry.Has(model.CapUSBPort) {
+		if port, err := usbPort(set.port); err != nil {
+			state.Fail(model.CapUSBPort, err)
+		} else {
+			state.USBPort = &port
+		}
 	}
 	if device.Entry.Has(model.CapGain) {
 		// The wire counts from 01.

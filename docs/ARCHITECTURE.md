@@ -679,6 +679,9 @@ noise mode.
   the bar treats a change as an arrival or a departure.
 - **The link is the connection.** The base station is in the receiver table as
   a `BaseStation`, so the card says 2.4 GHz, not Wired.
+- **The port is the base station's.** Byte 2 of the settings record says
+  which of its two USB-C ports it is listening on, and the card names it,
+  USB-1 or USB-2, beside the link.
 
 ### Switching the wireless mode drops the headset
 

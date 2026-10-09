@@ -162,6 +162,7 @@ function parseDevice(raw) {
     wirelessMode: parseChoice(s.wirelessMode),
     micVolume: parseLevel(s.micVolume),
     micMuted: typeof s.micMuted === "boolean" ? s.micMuted : null,
+    usbPort: Number(s.usbPort) > 0 ? Number(s.usbPort) : 0,
     sonar: s.sonar ? {
       enabled: s.sonar.enabled === true,
       live: s.sonar.live === true,
@@ -614,6 +615,7 @@ function capabilityLabel(capability) {
   case "wireless-mode": return "Wireless Mode"
   case "sonar": return "Sonar"
   case "mic-mute": return "Mic Mute"
+  case "usb-port": return "USB Port"
   default: return capability
   }
 }
@@ -639,7 +641,7 @@ function unsupportedCapabilities(device) {
                  "smart-shift", "hi-res-wheel", "host", "thumbwheel", "buttons",
                  "noise-control", "equalizer", "codec", "auto-power-off", "dsee", "speak-to-chat", "touch-panel",
                  "sidetone", "mic-volume", "mute-light", "gain", "wireless-mode", "sonar",
-                 "mic-mute"]
+                 "mic-mute", "usb-port"]
   return device.capabilities.filter(function (c) {
     return handled.indexOf(c) === -1
   })
@@ -772,6 +774,7 @@ function deviceSubtitle(device) {
     return parts.concat([presenceLabel(device.presence) || "Disconnected"]).join(" · ")
   }
   if (device.connection && device.connection.label) parts.push(device.connection.label)
+  if (device.usbPort > 0) parts.push("USB-" + device.usbPort)
   var presence = presenceLabel(device.presence)
   if (presence) parts.push(presence)
   var support = supportLabel(device.support)

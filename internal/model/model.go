@@ -173,6 +173,9 @@ const (
 	// CapMicMute — whether the microphone is muted, from the headset's own
 	// mute button. Reported, not set.
 	CapMicMute Capability = "mic-mute"
+	// CapUSBPort — which of a base station's USB ports it is listening on.
+	// Reported, not set.
+	CapUSBPort Capability = "usb-port"
 )
 
 // USBID is a vendor/product pair a model shows up as. A model that enumerates
@@ -966,6 +969,7 @@ type DeviceState struct {
 	WirelessMode   *Choice       `json:"wirelessMode"`
 	Sonar          *Sonar        `json:"sonar"`
 	MicMuted       *bool         `json:"micMuted"`
+	USBPort        *int          `json:"usbPort"`
 	// Errors holds non-fatal problems, one per capability that could not be
 	// read. Never nil, so it marshals as [] rather than null.
 	Errors []string `json:"errors"`
