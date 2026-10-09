@@ -75,8 +75,7 @@ func ConfigPath() string {
 type Status struct {
 	Enabled bool
 	// Live is false when the drop-in exists but PipeWire has not made the
-	// channels — it has not been restarted since, or the headset the
-	// loopbacks target is not plugged in.
+	// channels, because it has not been restarted since.
 	Live bool
 }
 
@@ -193,7 +192,10 @@ func ApplyMix(game, chat uint8) error {
 // The chain's playback side is passive, so a channel with nothing playing
 // does not hold the headset's output open, and will not fall back: were the
 // headset unplugged with Game the default output, a fallback would have the
-// channel play into the default — itself.
+// channel play into the default — itself. It lingers, because without that
+// losing the headset's output destroys the channel outright, and it does not
+// return until PipeWire restarts. Lingering, it waits unlinked and relinks
+// when the headset comes back.
 func config(target string, eq EQState) string {
 	var b strings.Builder
 	b.WriteString("# Written by OmniGear: Sonar channels playing into the headset.\n")

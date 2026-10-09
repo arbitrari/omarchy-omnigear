@@ -345,6 +345,7 @@ func chain(c Channel, target string, gains []int) string {
         node.description = "%s Output"
         target.object = "%s"
         node.dont-fallback = true
+        node.linger = true
         node.passive = true
         stream.dont-remix = true
       }

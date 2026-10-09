@@ -724,7 +724,9 @@ base station's own, so the catalog entry is enough.
 - **The loopback cannot fall back.** Its playback side is passive, so an idle
   channel does not hold the headset open. `node.dont-fallback` is set, because
   with the headset unplugged and Game as the default output, Game would fall
-  back into itself.
+  back into itself. `node.linger` is set too. Without it, losing the headset's
+  output destroys the channel, and it stays gone until PipeWire restarts. With
+  it, the channel waits unlinked and relinks when the headset returns.
 
 ### Each app picks a channel
 
