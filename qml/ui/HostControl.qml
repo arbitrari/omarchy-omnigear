@@ -12,7 +12,8 @@ import "../Model.js" as Model
 //
 // Only paired slots are offered. An empty slot is named but not clickable,
 // because switching to one leaves the device hunting for a host that was
-// never there, and ButtonGroup has no disabled state to say so with.
+// never there, and ButtonGroup has no disabled state to say so with. A
+// device that cannot say which slots are paired has every slot offered.
 Column {
     id: root
 
@@ -24,10 +25,12 @@ Column {
 
     readonly property color foreground: bar ? bar.foreground : Color.foreground
 
+    readonly property bool pairingKnown: hosts ? hosts.pairingKnown : false
+
     readonly property var paired: hosts
-        ? hosts.slots.filter(function (host) { return host.paired; })
+        ? hosts.slots.filter(function (host) { return !root.pairingKnown || host.paired; })
         : []
-    readonly property var empty: hosts
+    readonly property var empty: hosts && root.pairingKnown
         ? hosts.slots.filter(function (host) { return !host.paired; })
         : []
 
@@ -52,7 +55,7 @@ Column {
         bar: root.bar
         group: true
         label: Model.capabilityLabel("host")
-        value: Model.hostLabel(root.currentHost)
+        value: Model.hostLabel(root.currentHost, root.pairingKnown)
     }
 
     ButtonGroup {
@@ -70,7 +73,7 @@ Column {
         options: root.paired.map(function (host) {
             return {
                 value: String(host.slot),
-                label: Model.hostLabel(host),
+                label: Model.hostLabel(host, root.pairingKnown),
                 tooltip: host.active
                     ? "The computer this mouse is on now."
                     : "Move the mouse to this computer. It leaves this one."
