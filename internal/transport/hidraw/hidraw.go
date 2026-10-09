@@ -289,6 +289,11 @@ func (h *Handle) waitReadable(timeout time.Duration) error {
 // of range. It stays 1 while the device is merely idle, which is the
 // distinction worth having — a sleeping mouse is still connected.
 //
+// The exception is charging. A battery report that says "Charging" also
+// drops `online` to 0, so a mouse on a cable to a wall charger, still talking
+// over the receiver, reads as switched off until something else makes the
+// kernel set it again. A charging status therefore counts as a live link.
+//
 // This costs a sysfs read and, unlike asking the device, does not wake it.
 // Without it the only way to find out a device is off is to spend the whole
 // wake budget discovering that nothing answers.
@@ -303,11 +308,16 @@ func (n Node) LinkOnline() (online bool, known bool) {
 	if err != nil || len(entries) == 0 {
 		return false, false
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, entries[0].Name(), "online"))
+	supply := filepath.Join(dir, entries[0].Name())
+	raw, err := os.ReadFile(filepath.Join(supply, "online"))
 	if err != nil {
 		return false, false
 	}
-	return strings.TrimSpace(string(raw)) == "1", true
+	if strings.TrimSpace(string(raw)) == "1" {
+		return true, true
+	}
+	status, _ := os.ReadFile(filepath.Join(supply, "status"))
+	return strings.TrimSpace(string(status)) == "Charging", true
 }
 
 // PowerSupply is what the kernel knows about a device's battery without
