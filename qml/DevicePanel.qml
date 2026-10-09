@@ -99,6 +99,17 @@ Panel {
         collapsed = next;
     }
 
+    // Which Sonar channel's equalizer is shown, by device id.
+    property var sonarEqChannels: ({})
+
+    function selectSonarEqChannel(deviceId, channel) {
+        var next = {};
+        for (var id in sonarEqChannels)
+            next[id] = sonarEqChannels[id];
+        next[deviceId] = channel;
+        sonarEqChannels = next;
+    }
+
     function selectTab(deviceId, tabId) {
         var next = {};
         for (var id in tabSelection)
@@ -475,6 +486,10 @@ Panel {
                                     }
                                     onTabSelected: function (id) {
                                         root.selectTab(modelData.id, id);
+                                    }
+                                    sonarEqChannel: root.sonarEqChannels[modelData.id] || ""
+                                    onSonarEqChannelSelected: function (channel) {
+                                        root.selectSonarEqChannel(modelData.id, channel);
                                     }
                                     onReportRequested: {
                                         root.requestReport(modelData.id);

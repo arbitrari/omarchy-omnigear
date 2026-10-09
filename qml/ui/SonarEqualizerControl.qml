@@ -18,9 +18,11 @@ Column {
 
     signal presetRequested(string channel, string preset)
     signal bandRequested(string channel, string band, int level)
+    signal channelSelected(string channel)
 
-    // Which channel's equalizer is shown.
-    property string channel: "game"
+    // Which channel's equalizer is shown. The panel owns it, for the same
+    // reason it owns the open tab: the card is rebuilt on every poll.
+    property string channel: ""
     readonly property var channelData: {
         var channels = sonar ? sonar.channels : [];
         for (var i = 0; i < channels.length; i++) {
@@ -80,7 +82,7 @@ Column {
             value: root.channelData ? root.channelData.slug : ""
 
             onChanged: function (value) {
-                root.channel = value;
+                root.channelSelected(value);
             }
         }
     }

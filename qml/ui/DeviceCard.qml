@@ -61,6 +61,11 @@ Rectangle {
 
     signal tabSelected(string id)
 
+    // The Sonar channel whose equalizer is shown, owned by the panel too.
+    property string sonarEqChannel: ""
+
+    signal sonarEqChannelSelected(string channel)
+
     // Asks the panel to write this device up as a support request.
     signal reportRequested()
 
@@ -464,6 +469,10 @@ Rectangle {
             visible: root.showingDetail && root.currentTab === "equalizer"
                 && root.device && root.device.sonar !== null
             sonar: root.device ? root.device.sonar : null
+            channel: root.sonarEqChannel
+            onChannelSelected: function (channel) {
+                root.sonarEqChannelSelected(channel);
+            }
             onPresetRequested: function (channel, preset) {
                 root.settingRequested("sonar-eq-" + channel + "-preset", preset);
             }
