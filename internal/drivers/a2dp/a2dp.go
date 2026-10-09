@@ -27,14 +27,19 @@ func Read(address string) (*model.Codec, error) {
 	for _, profile := range card.Profiles {
 		label := profile.Codec()
 		slug := model.CodecSlug(label)
-		if label == "" || !profile.Available || seen[slug] {
+		if label == "" || !profile.Available {
+			continue
+		}
+		// Ahead of the duplicate check: two profiles can carry one codec, and
+		// the sound server lists them in no fixed order.
+		if profile.Name == card.Active {
+			codec.Current = slug
+		}
+		if seen[slug] {
 			continue
 		}
 		seen[slug] = true
 		codec.Options = append(codec.Options, model.CodecOption{Slug: slug, Label: label})
-		if profile.Name == card.Active {
-			codec.Current = slug
-		}
 	}
 	// Best last, the way the sound server ranks them, so a list reads from
 	// the most compatible to the highest quality.
