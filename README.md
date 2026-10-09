@@ -22,7 +22,7 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
 
 > [!IMPORTANT]
-> Unplug each device and plug it back in after you add the rule. A device keeps the permissions it had when it was connected.
+> Disconnect each device and connect them back after you add the rule. A device keeps the permissions it had when it was connected.
 
 ## Update
 
