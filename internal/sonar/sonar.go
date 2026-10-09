@@ -163,9 +163,11 @@ func Enable(target string) error {
 
 // Disable removes the drop-in and restarts PipeWire without the channels.
 // Default output goes back to the headset first, if it was on a channel,
-// so nothing is left playing to a sink that is about to vanish.
+// so nothing is left playing to a sink that is about to vanish. An empty
+// target means the headset has no output to go back to, and nothing waits on
+// it.
 func Disable(target string) error {
-	if current, err := pactl.DefaultSink(); err == nil && strings.HasPrefix(current, "omnigear_") {
+	if current, err := pactl.DefaultSink(); err == nil && target != "" && strings.HasPrefix(current, "omnigear_") {
 		_ = pactl.SetDefaultSink(target)
 	}
 	if err := os.Remove(ConfigPath()); err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -225,7 +227,7 @@ func restart() error {
 func awaitRestart(target string, present bool) error {
 	deadline := time.Now().Add(restartTimeout)
 	for time.Now().Before(deadline) {
-		if sinks, err := pactl.Sinks(); err == nil && hasSink(sinks, target) &&
+		if sinks, err := pactl.Sinks(); err == nil && (target == "" || hasSink(sinks, target)) &&
 			hasChannels(sinks) == present {
 			return nil
 		}

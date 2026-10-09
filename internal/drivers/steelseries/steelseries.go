@@ -560,15 +560,21 @@ func readSonar() (*model.Sonar, error) {
 
 // writeSonar points the channels at the headset's own output, found by the
 // base station's USB ids: its sound card is the same USB device.
+//
+// Turning Sonar off does not need that output. With the card on an off
+// profile there is none, and the channels still have to be removable.
 func writeSonar(device *model.Device, on bool) error {
 	target, err := sonar.SinkFor(device.Node.Vendor, device.Node.Product)
+	if !on {
+		if err != nil {
+			target = ""
+		}
+		return sonar.Disable(target)
+	}
 	if err != nil {
 		return fmt.Errorf("finding the headset's output: %w", err)
 	}
-	if on {
-		return sonar.Enable(target)
-	}
-	return sonar.Disable(target)
+	return sonar.Enable(target)
 }
 
 // chatMix is the base station reporting the ChatMix dial, unprompted, every
