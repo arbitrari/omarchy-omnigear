@@ -41,13 +41,17 @@ func Unknown() []model.Device {
 
 	var found []model.Device
 	for _, node := range hidraw.Enumerate() {
-		if claimed[node.Path] || !hidpp.Speaks(node) {
+		// A receiver is not a device. The things behind it are, and they are
+		// reached by index below rather than as the dongle itself. It is
+		// checked before the claimed paths because a cataloged device behind
+		// it claims its node, and the uncataloged ones beside it still count.
+		if _, isReceiver := hidraw.ReceiverKindOf(node.Vendor, node.Product); isReceiver {
+			if hidpp.Speaks(node) {
+				found = append(found, behindUnknownReceiver(node)...)
+			}
 			continue
 		}
-		// A receiver is not a device. The things behind it are, and they are
-		// reached by index below rather than as the dongle itself.
-		if _, isReceiver := hidraw.ReceiverKindOf(node.Vendor, node.Product); isReceiver {
-			found = append(found, behindUnknownReceiver(node)...)
+		if claimed[node.Path] || !hidpp.Speaks(node) {
 			continue
 		}
 		if catalog.FindByUSB(node.Vendor, node.Product) != nil {
