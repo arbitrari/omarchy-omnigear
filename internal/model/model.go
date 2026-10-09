@@ -56,7 +56,7 @@ var brandLabels = map[Brand]string{
 	Glorious:    "Glorious",
 	FinalMouse:  "FinalMouse",
 	Keychron:    "Keychron",
-	SteelSeries: "Steelseries",
+	SteelSeries: "SteelSeries",
 	HyperX:      "HyperX",
 	Sony:        "Sony",
 	Apple:       "Apple",
