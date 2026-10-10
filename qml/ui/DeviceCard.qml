@@ -624,6 +624,16 @@ Rectangle {
                     root.settingRequested("screen-timeout", slug);
                 }
             }
+
+            LevelControl {
+                bar: root.bar
+                busy: root.busy
+                capability: "screen-brightness"
+                level: root.device && root.device.screen ? root.device.screen.brightness : null
+                onRequested: function (value) {
+                    root.settingRequested("screen-brightness", String(value));
+                }
+            }
         }
 
         // --- power ---------------------------------------------------------

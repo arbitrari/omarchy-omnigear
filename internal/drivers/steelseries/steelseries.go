@@ -61,6 +61,15 @@ const (
 	// 00 turning each off is the table's word, not yet seen.
 	setSonarIcon = 0x8D
 	setChatMix   = 0x49
+
+	// The screen's brightness, 01 dimmest to 0a full, as ggoled has it. 00
+	// is as dim as 01, not off. It is not answered and shows in neither
+	// record, so OmniGear keeps the level it last sent; see screen.go. Read
+	// live on 1038:12E0 firmware 0000.003.082.
+	//
+	//	06 85 01   the dimmest
+	//	06 85 0a   full
+	setScreenBrightness = 0x85
 )
 
 const (
@@ -393,18 +402,19 @@ func (d driver) Read(device *model.Device) model.DeviceState {
 
 // settingCapabilities are the capabilities a write needs the model to have.
 var settingCapabilities = map[model.SettingKey]model.Capability{
-	model.SettingNoiseMode:     model.CapNoiseControl,
-	model.SettingAmbientLevel:  model.CapNoiseControl,
-	model.SettingAutoPowerOff:  model.CapAutoPowerOff,
-	model.SettingSidetone:      model.CapSidetone,
-	model.SettingMicVolume:     model.CapMicVolume,
-	model.SettingMuteLight:     model.CapMuteLight,
-	model.SettingGain:          model.CapGain,
-	model.SettingWirelessMode:  model.CapWirelessMode,
-	model.SettingSonar:         model.CapSonar,
-	model.SettingScreen:        model.CapScreen,
-	model.SettingScreenTimeout: model.CapScreen,
-	model.SettingScreenSaver:   model.CapScreen,
+	model.SettingNoiseMode:        model.CapNoiseControl,
+	model.SettingAmbientLevel:     model.CapNoiseControl,
+	model.SettingAutoPowerOff:     model.CapAutoPowerOff,
+	model.SettingSidetone:         model.CapSidetone,
+	model.SettingMicVolume:        model.CapMicVolume,
+	model.SettingMuteLight:        model.CapMuteLight,
+	model.SettingGain:             model.CapGain,
+	model.SettingWirelessMode:     model.CapWirelessMode,
+	model.SettingSonar:            model.CapSonar,
+	model.SettingScreen:           model.CapScreen,
+	model.SettingScreenTimeout:    model.CapScreen,
+	model.SettingScreenSaver:      model.CapScreen,
+	model.SettingScreenBrightness: model.CapScreen,
 }
 
 func (d driver) Write(device *model.Device, setting *model.Setting) error {
@@ -491,6 +501,12 @@ func (d driver) Write(device *model.Device, setting *model.Setting) error {
 		return conn.Send(setAutoPowerOff, wire)
 	case model.SettingScreen:
 		return writeScreen(conn, setting.Value != 0)
+	case model.SettingScreenBrightness:
+		brightness := clamp(setting, minLevel, maxLevel)
+		if err := conn.Send(setScreenBrightness, brightness); err != nil {
+			return err
+		}
+		return writeScreenBrightness(brightness)
 	case model.SettingWirelessMode:
 		if err := conn.Send(setWirelessMode, byte(setting.Value)); err != nil {
 			return err

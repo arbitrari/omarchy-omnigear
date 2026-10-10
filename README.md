@@ -104,7 +104,7 @@ No keyboards are supported yet. Planned brands: Logitech, Razer, Wooting, Keychr
 - **Equalizer.** A 10-band equalizer for each Sonar channel, with Flat, Bass Boost, Treble Boost, Vocal, and Custom presets. Shown in the **Equalizer** tab.
 - **Wireless Mode.** Favor low latency (speed) or distance (range). The headset drops for a few seconds while it reconnects. Shown in the **Power** tab.
 - **Sonar.** Separate Game, Chat, Media, and Aux outputs, like SteelSeries Sonar. The base station's ChatMix dial balances Game against Chat. Set each channel's volume, and move each playing app to a channel. An app keeps its channel the next time it plays. OmniGear also turns on the Sonar icon and ChatMix on the base station, so no SteelSeries software is needed. The channels stay when you unplug the headset or move its cable, and reconnect to it when it returns. Turning Sonar on or off restarts PipeWire, so audio drops for a moment. Shown in the **Sonar** tab.
-- **Screen.** Turn the base station's screen off, or have it turn off after 1 minute to 1 hour untouched. Turning the knob or the dial brings it back. Shown in the **Screen** tab.
+- **Screen.** Turn the base station's screen off, or have it turn off after 1 minute to 1 hour untouched. Turning the knob or the dial brings it back. Set its brightness from 1 to 10. Shown in the **Screen** tab.
 - **Screensavers.** While the screen is off, the base station shows the screensaver you pick. A preview plays beside the choice in the **Screen** tab.
   - **Blank.** The screen stays dark.
   - **DVD.** A DVD-style logo bounces around the screen.

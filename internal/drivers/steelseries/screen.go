@@ -16,7 +16,9 @@ import (
 // The base station's screen has no off and no timer, and cannot say what it
 // is showing. Off is a picture OmniGear draws, dark or a screensaver, so
 // whether the screen is off is OmniGear's belief, and the timeout and the
-// screensaver are OmniGear's own settings. All are kept in files.
+// screensaver are OmniGear's own settings. The brightness is the base
+// station's, but it cannot be read back, so it is the level OmniGear last
+// sent. All are kept in files.
 //
 // The belief has two writers, `set` and `watch`. Each writes the whole file
 // and each write records something that just happened to the screen, so the
@@ -38,11 +40,12 @@ var screenTimeouts = []screenTimeout{
 	{"1-hour", "1 Hour", time.Hour},
 }
 
-// screenConfig is the timeout and the screensaver, kept with the rest of
-// OmniGear's settings.
+// screenConfig is the timeout, the screensaver and the brightness, kept with
+// the rest of OmniGear's settings.
 type screenConfig struct {
-	Timeout string `json:"timeout"`
-	Saver   string `json:"saver"`
+	Timeout    string `json:"timeout"`
+	Saver      string `json:"saver"`
+	Brightness uint8  `json:"brightness"`
 }
 
 // screenBelief is whether OmniGear last left the screen off, and when. It is
@@ -73,10 +76,12 @@ func runtimePath(name string) string {
 	return filepath.Join(dir, "omnigear", name)
 }
 
-// readScreenConfig is never and blank, until others are chosen. A file from
-// before there were screensavers has only the timeout.
+// readScreenConfig is never, blank and full, until others are chosen. A file
+// from before there were screensavers has only the timeout. Full is a guess
+// until a brightness is set from OmniGear: it is the base station's own
+// default, and one chosen from the base station's menu is never heard of.
 func readScreenConfig() (screenConfig, error) {
-	config := screenConfig{Timeout: screenTimeouts[0].slug, Saver: screenSavers[0].slug}
+	config := screenConfig{Timeout: screenTimeouts[0].slug, Saver: screenSavers[0].slug, Brightness: maxLevel}
 	return config, readJSON(screenConfigPath(), &config)
 }
 
@@ -103,6 +108,13 @@ func (c screenConfig) saver() (*screenSaver, error) {
 	return nil, fmt.Errorf("%s: unknown screensaver %q", screenConfigPath(), c.Saver)
 }
 
+func (c screenConfig) brightness() (uint8, error) {
+	if c.Brightness < minLevel || c.Brightness > maxLevel {
+		return 0, fmt.Errorf("%s: screen brightness %d is not %d to %d", screenConfigPath(), c.Brightness, minLevel, maxLevel)
+	}
+	return c.Brightness, nil
+}
+
 // readScreenTimeout is the timeout's slug and length.
 func readScreenTimeout() (string, time.Duration, error) {
 	config, err := readScreenConfig()
@@ -127,7 +139,11 @@ func writeScreenSaver(slug string) error {
 	return updateScreenConfig(func(c *screenConfig) { c.Saver = slug })
 }
 
-// updateScreenConfig changes one setting and keeps the other. A file that
+func writeScreenBrightness(level uint8) error {
+	return updateScreenConfig(func(c *screenConfig) { c.Brightness = level })
+}
+
+// updateScreenConfig changes one setting and keeps the others. A file that
 // cannot be read is written over, since choosing a setting is how to put it
 // right.
 func updateScreenConfig(change func(*screenConfig)) error {
@@ -147,7 +163,7 @@ func recordScreen(off bool) error {
 }
 
 // readScreen fills in what it can: a bad setting still leaves the switch and
-// the other setting.
+// the other settings.
 func readScreen() (*model.Screen, error) {
 	belief, beliefErr := readScreenBelief()
 	screen := &model.Screen{On: !belief.Off}
@@ -169,7 +185,11 @@ func readScreen() (*model.Screen, error) {
 			screen.Saver.Options = append(screen.Saver.Options, model.ChoiceOption{Slug: s.slug, Label: s.label})
 		}
 	}
-	return screen, errors.Join(beliefErr, timeoutErr, saverErr)
+	brightness, brightnessErr := config.brightness()
+	if brightnessErr == nil {
+		screen.Brightness = level(brightness)
+	}
+	return screen, errors.Join(beliefErr, timeoutErr, saverErr, brightnessErr)
 }
 
 // writeScreen turns the screen off or hands it back, and records which.

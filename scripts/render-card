@@ -82,10 +82,13 @@ ShellRoot {
 
         Timer {
             interval: 1500; running: true
-            onTriggered: frame.grabToImage(function (r) {
-                r.saveToFile(Quickshell.env("OG_OUT"));
-                Qt.quit();
-            })
+            onTriggered: {
+                console.log("render-card: card height", card.implicitHeight);
+                frame.grabToImage(function (r) {
+                    r.saveToFile(Quickshell.env("OG_OUT"));
+                    Qt.quit();
+                });
+            }
         }
     }
 }

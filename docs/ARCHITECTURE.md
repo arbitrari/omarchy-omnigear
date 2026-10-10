@@ -708,12 +708,18 @@ draws the screen too.
 None of this can be read back, so the state lives in OmniGear's own files:
 
 - `~/.config/omnigear/screen.json` holds the timeout, `never` by default,
-  and the screensaver, `blank` by default.
+  the screensaver, `blank` by default, and the brightness, `10` by default.
 - `$XDG_RUNTIME_DIR/omnigear/screen.json` holds whether OmniGear believes the
   screen is off, and when that last changed. `set` and `watch` both write it,
   whole and atomically. Each write records a real event, so the last one wins.
 
 `set` verifies a screen write against these files, not the hardware.
+
+The brightness is the base station's own setting, but neither the `b0` nor the
+`20` record changes when `06 85` sets it. So `set` clamps the level to 1 to 10,
+sends it, and records it. Until it is set once, OmniGear assumes full, the base
+station's default. A brightness changed from the base station's own menu is not
+seen. `watch` does not send it again on connect.
 
 `watch` runs the countdown, since it is already listening. It starts the
 countdown on connect, and restarts it on every report `07`, which also means
