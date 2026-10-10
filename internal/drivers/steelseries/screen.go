@@ -181,58 +181,122 @@ func writeScreen(conn *arctis.Conn, on bool) error {
 	return recordScreen(!on)
 }
 
-// screenRecheck bounds how long watch takes to notice a timeout or a switch
-// set by another process.
-const screenRecheck = 5 * time.Second
+const (
+	// screenRecheck bounds how long watch takes to notice a timeout, or a
+	// switch or a screensaver set by another process.
+	screenRecheck = 5 * time.Second
+	// saverFrame is 25 frames a second. A frame takes 36 ms to send, so
+	// this keeps the link about nine tenths busy.
+	saverFrame = 40 * time.Millisecond
+	// saverRecheck bounds how long a moving screensaver takes to notice the
+	// panel turning the screen on or choosing another, without rereading
+	// the files every frame.
+	saverRecheck = 500 * time.Millisecond
+)
 
 // screenWatch is watch's half of the screen: it counts down from the last
-// time the base station was touched, and turns the screen off at the
-// timeout.
+// time the base station was touched, turns the screen off at the timeout,
+// and moves the screensaver for as long as the screen is off.
 //
 // Touching the base station is known from the reports it sends: 07 25 for
 // each step of the volume knob, 07 45 for the ChatMix dial, 07 bb for the
 // mute button. Any report 07 counts as a touch, and as the screen being back,
 // since touching the base station brings back its own screen. Pressing the
 // knob without turning it brings it back too but sends nothing, so the
-// belief stays off until the next report.
+// belief stays off until the next report, and a moving screensaver covers
+// the screen again at its next frame.
+//
+// Only watch moves a screensaver, since it is the one process that stays.
+// `set screen off` draws the screen dark, and watch puts the screensaver on
+// it when it next reads the belief.
 type screenWatch struct {
-	blank func() error
+	conn screenConn
 	// touched is when the countdown last started.
 	touched time.Time
 	// timeout is the slug the countdown is running for. A new one starts it
 	// again, so choosing a shorter one does not turn the screen off at once.
 	timeout string
+	// saver is the screensaver on the screen, nil unless one is moving.
+	saver *screenSaver
+	// started is when the saver's first frame was due. Frame n is due
+	// n frames later, so the rate holds however long each takes to draw.
+	started time.Time
+	// checked is when the files were last read while the saver moves.
+	checked time.Time
 }
 
-// startScreenWatch starts the countdown on connecting. The base station
-// draws its own screen whenever it powers up, which a new connection
-// usually is.
-func startScreenWatch(blank func() error) *screenWatch {
+// screenConn is what screenWatch draws with: an *arctis.Conn.
+type screenConn interface {
+	Draw(*arctis.Frame) error
+	Blank() error
+	Unblank() error
+}
+
+// startScreenWatch starts the countdown on connecting, with the screen
+// handed back. A new connection is usually a power-up, which draws the base
+// station's own screen anyway, but a restarted bar is not: the last frame of
+// a screensaver would stay up, still, with nothing left to move it.
+func startScreenWatch(conn screenConn) *screenWatch {
+	_ = conn.Unblank()
 	_ = recordScreen(false)
 	slug, _, _ := readScreenTimeout()
-	return &screenWatch{blank: blank, touched: time.Now(), timeout: slug}
+	return &screenWatch{conn: conn, touched: time.Now(), timeout: slug}
 }
 
 // touch is a report from the base station.
-func (w *screenWatch) touch(now time.Time) {
+func (w *screenWatch) touch(now time.Time) error {
 	w.touched = now
+	if w.saver != nil {
+		w.saver = nil
+		// The base station has drawn its own screen already, but a frame
+		// sent as it did could have covered it again. Handing the screen
+		// back makes sure.
+		if err := w.conn.Unblank(); err != nil {
+			return err
+		}
+		_ = recordScreen(false)
+		return nil
+	}
 	if belief, err := readScreenBelief(); err == nil && belief.Off {
 		_ = recordScreen(false)
 	}
+	return nil
 }
 
-// tick turns the screen off if the timeout has passed, and says how long
-// until it should be called again.
+// tick draws the screensaver's next frame while one moves, and otherwise
+// runs the countdown. It says how long until it should be called again.
 func (w *screenWatch) tick(now time.Time) (time.Duration, error) {
-	slug, after, err := readScreenTimeout()
+	if w.saver != nil {
+		return w.animate(now)
+	}
+	config, err := readScreenConfig()
 	if err != nil {
 		return screenRecheck, nil
 	}
-	if slug != w.timeout {
-		w.timeout, w.touched = slug, now
+	timeout, err := config.timeout()
+	if err != nil {
+		return screenRecheck, nil
+	}
+	if timeout.slug != w.timeout {
+		w.timeout, w.touched = timeout.slug, now
+	}
+	// A screensaver that cannot be read shows as Blank, which is what there
+	// was before there were others.
+	saver, err := config.saver()
+	if err != nil {
+		saver = &screenSavers[0]
 	}
 	belief, err := readScreenBelief()
-	if err != nil || belief.Off || after == 0 {
+	if err != nil {
+		return screenRecheck, nil
+	}
+	if belief.Off {
+		if saver.art == nil {
+			return screenRecheck, nil
+		}
+		return w.start(now, saver)
+	}
+	if timeout.after == 0 {
 		return screenRecheck, nil
 	}
 	// Turning the screen on from the panel is a touch too, and the belief is
@@ -240,14 +304,61 @@ func (w *screenWatch) tick(now time.Time) (time.Duration, error) {
 	if belief.At.After(w.touched) {
 		w.touched = belief.At
 	}
-	if idle := now.Sub(w.touched); idle < after {
-		return min(after-idle, screenRecheck), nil
+	if idle := now.Sub(w.touched); idle < timeout.after {
+		return min(timeout.after-idle, screenRecheck), nil
 	}
-	if err := w.blank(); err != nil {
+	wait := screenRecheck
+	if saver.art != nil {
+		wait, err = w.start(now, saver)
+	} else {
+		err = w.conn.Blank()
+	}
+	if err != nil {
 		return 0, err
 	}
 	_ = recordScreen(true)
-	return screenRecheck, nil
+	return wait, nil
+}
+
+// start puts a screensaver on the screen, from its first frame.
+func (w *screenWatch) start(now time.Time, saver *screenSaver) (time.Duration, error) {
+	w.saver, w.started, w.checked = saver, now, now
+	return w.draw(now)
+}
+
+// animate draws the next frame, unless the screen has been turned on or
+// another screensaver chosen since the files were last read.
+func (w *screenWatch) animate(now time.Time) (time.Duration, error) {
+	if now.Sub(w.checked) < saverRecheck {
+		return w.draw(now)
+	}
+	w.checked = now
+	if belief, err := readScreenBelief(); err == nil && !belief.Off {
+		// `set screen on` handed the screen back already, but a frame drawn
+		// since covers it again, and nothing would hand it back after.
+		w.saver = nil
+		return 0, w.conn.Unblank()
+	}
+	if config, err := readScreenConfig(); err == nil {
+		if saver, err := config.saver(); err == nil && saver != w.saver {
+			if saver.art == nil {
+				w.saver = nil
+				return screenRecheck, w.conn.Blank()
+			}
+			w.saver, w.started = saver, now
+		}
+	}
+	return w.draw(now)
+}
+
+// draw sends the frame due now and says how long until the next one is due.
+// A frame drawn late skips the ones it missed, so the art keeps its pace.
+func (w *screenWatch) draw(now time.Time) (time.Duration, error) {
+	n := int(now.Sub(w.started) / saverFrame)
+	if err := w.conn.Draw(w.saver.frame(n)); err != nil {
+		return 0, err
+	}
+	return w.started.Add(time.Duration(n+1) * saverFrame).Sub(now), nil
 }
 
 // readJSON leaves v as it is when the file does not exist.

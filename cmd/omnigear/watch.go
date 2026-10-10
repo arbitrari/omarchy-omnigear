@@ -36,7 +36,8 @@ const rescan = 5 * time.Second
 // cmdWatch follows what a headset announces as it happens — its ChatMix
 // dial, applied to the Sonar channels, and its mute button — for as long as
 // it runs. It also turns a base station's screen off when it has gone
-// untouched for the screen timeout, since nothing else is running to.
+// untouched for the screen timeout, and moves the screensaver while it is
+// off, since nothing else is running to.
 //
 // It is the one command that does not print a single object and exit. The
 // base station reports these only as they change, so something has to be

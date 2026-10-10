@@ -701,7 +701,8 @@ const reportNotice = 0x07
 // this watch and the next one restores it. A failed read of whether Sonar is
 // on announces nothing, so a passing error does not turn it off.
 //
-// It also runs the screen's timeout; see screenWatch.
+// It also runs the screen's timeout and moves its screensaver; see
+// screenWatch.
 func (driver) Watch(node hidraw.Node, events model.WatchEvents) error {
 	conn, err := arctis.Open(node)
 	if err != nil {
@@ -717,7 +718,7 @@ func (driver) Watch(node hidraw.Node, events model.WatchEvents) error {
 	if err := conn.Send(queryStatus); err != nil {
 		return err
 	}
-	screen := startScreenWatch(conn.Blank)
+	screen := startScreenWatch(conn)
 	next := time.Now()
 	for {
 		if now := time.Now(); !now.Before(next) {
@@ -735,7 +736,9 @@ func (driver) Watch(node hidraw.Node, events model.WatchEvents) error {
 			return err
 		}
 		if len(report) >= 2 && report[0] == reportNotice {
-			screen.touch(time.Now())
+			if err := screen.touch(time.Now()); err != nil {
+				return err
+			}
 		}
 		switch {
 		case len(report) >= 4 && report[0] == reportNotice && report[1] == chatMix:
