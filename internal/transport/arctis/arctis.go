@@ -103,39 +103,76 @@ func (c *Conn) Send(command byte, args ...byte) error {
 //	06 93 xx yy ww hh <pixels>   1024 bytes in all
 //
 // at column xx and row yy, ww pixels wide and hh high, one bit a pixel,
-// column by column, zero for dark. The screen is two 64-pixel tiles side by
-// side, at xx 00 and 40, so two all-zero tiles blank all of it. 06 95 is an
+// column by column, one for lit. Within a tile, pixel x, y is bit i = x*64 + y,
+// in byte 6 + i/8 at bit i%8, lowest first:
+//
+//	06 93 00 00 40 40 01 00 …   the left tile, with only its top-left pixel lit
+//
+// The screen is two 64-pixel tiles side by side, at xx 00 and 40. 06 95 is an
 // ordinary request, unanswered, that hands the screen back to the base
 // station, which draws its own at once.
 //
 // ggoled (github.com/JerwuQu/ggoled) was the starting point for the
-// framing. Read live on 1038:12E0 firmware 0000.003.082: the two blank tiles
+// framing. Read live on 1038:12E0 firmware 0000.003.082: two blank tiles
 // left the whole screen dark, 15 and 30 seconds untouched, and 95 brought
 // the base station's own screen straight back. Turning the volume knob or
-// the ChatMix dial brings it back too, with no request at all.
+// the ChatMix dial brings it back too, with no request at all. Each tile
+// takes 18 ms to send, so a whole picture takes 36 ms, however much of it
+// changed.
 const (
 	commandDraw      = 0x93
 	commandOwnScreen = 0x95
 	drawLength       = 1024
 	tileSize         = 0x40
 	screenTiles      = 2
+	tileHeader       = 6
 )
 
-// Blank draws the whole screen dark.
-func (c *Conn) Blank() error {
-	for tile := byte(0); tile < screenTiles; tile++ {
-		report := make([]byte, drawLength)
-		report[0] = reportRequest
-		report[1] = commandDraw
-		report[2] = tile * tileSize
-		report[4] = tileSize
-		report[5] = tileSize
+// The screen's size, in pixels.
+const (
+	ScreenWidth  = tileSize * screenTiles
+	ScreenHeight = tileSize
+)
+
+// Frame is a picture for the whole screen, lit where true, indexed by column
+// and then row from the top left.
+type Frame [ScreenWidth][ScreenHeight]bool
+
+// Draw shows a picture in place of the base station's own screen.
+func (c *Conn) Draw(frame *Frame) error {
+	for _, report := range frame.tiles() {
 		if err := c.handle.SetFeature(report); err != nil {
 			return err
 		}
 	}
 	return nil
 }
+
+// tiles packs a frame into the two reports that draw it.
+func (f *Frame) tiles() [screenTiles][]byte {
+	var reports [screenTiles][]byte
+	for tile := range screenTiles {
+		report := make([]byte, drawLength)
+		report[0] = reportRequest
+		report[1] = commandDraw
+		report[2] = byte(tile * tileSize)
+		report[4] = tileSize
+		report[5] = tileSize
+		for x := range tileSize {
+			for y := range tileSize {
+				if f[tile*tileSize+x][y] {
+					i := x*tileSize + y
+					report[tileHeader+i/8] |= 1 << (i % 8)
+				}
+			}
+		}
+		reports[tile] = report
+	}
+	return reports
+}
+
+// Blank draws the whole screen dark.
+func (c *Conn) Blank() error { return c.Draw(&Frame{}) }
 
 // Unblank hands the screen back to the base station.
 func (c *Conn) Unblank() error { return c.Send(commandOwnScreen) }
