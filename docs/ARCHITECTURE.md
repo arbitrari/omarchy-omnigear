@@ -729,7 +729,7 @@ The belief stays off until the next report, which corrects it.
 ### Off shows a screensaver
 
 Off draws the chosen screensaver: Blank, a DVD-style bouncing logo, the
-Omarchy logo, or the OmniGear wordmark. The screen is an OLED, and a picture
+Omarchy logo, the OmniGear wordmark, or what is playing. The screen is an OLED, and a picture
 that stays lit leaves a ghost, so every screensaver but Blank moves. The DVD
 logo bounces off the edges on a diagonal, a pixel each way every frame. It is
 narrower than the screen by a different amount each way, so in time it
@@ -786,6 +786,38 @@ only until the next frame covers it.
 embeds. It needs ImageMagick and librsvg, and reads the Omarchy wordmark from
 the installed Omarchy. Nothing at runtime does. The Omarchy screensaver reads
 the logo's text at runtime and uses its PBM only when no text fits.
+
+### Now Playing shows the track
+
+The Now Playing screensaver shows the title, the artists, a progress bar,
+and the elapsed and total time, with a pause sign when the track is paused.
+`transport/mpris` reads every player on the session bus, in order of bus
+name, with one `GetAll` each. It shows the first player playing a track with
+a title, or else the first one paused on one. A stopped player is passed
+over, and so is one with no title, as a browser tab with no media is. With
+no track, "Nothing playing" bounces as the DVD logo does.
+
+Frames are drawn from `watch`'s loop, so the players are asked from a
+goroutine, at most once a second, and each frame draws the latest answer.
+Each D-Bus call has 250 ms, so a player that hangs only delays the answer,
+and the players after it are still asked. Between answers, a playing
+track's position is counted on from the last answer, up to the track's
+length. The run asks once before its first frame, so it does not show
+"Nothing playing" before a track.
+
+The text is drawn in X11's misc-fixed fonts: 6x13B for the title, 6x10 for
+the artists, and 5x7 for the times. They are in the public domain.
+`scripts/pixel-fonts` fetches them from freedesktop.org and keeps Latin up to
+Latin Extended-B and the dashes, quotes, and ellipsis of General
+Punctuation, a byte a row, in files the driver embeds. A rune with no glyph
+draws as `?`, and a combining mark is left out.
+
+A line wider than the screen holds for 1.5 s, then scrolls a pixel a frame,
+25 a second, with a gap before the line repeats. When the start comes back
+round, it holds again. The title and the artists scroll independently. A
+new track starts both over. Every 30 s the whole layout moves a pixel, round
+a 2 by 2 square, which spreads the wear of what stays lit, such as the bar's
+outline.
 
 ### Arctis Manager takes the interface away
 
