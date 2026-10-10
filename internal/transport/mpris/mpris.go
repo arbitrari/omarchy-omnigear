@@ -109,6 +109,9 @@ type Track struct {
 	Position time.Duration
 	// Playing is false for a track that is paused.
 	Playing bool
+	// ArtURL is where the album cover is, or empty. Spotify gives an
+	// https URL, and other players a file:// one.
+	ArtURL string
 }
 
 // askWithin bounds each of NowPlaying's calls. A player that has hung would
@@ -169,6 +172,7 @@ func ask(obj dbus.BusObject, method string, args ...any) *dbus.Call {
 //	Metadata        xesam:title  "stardew"
 //	                xesam:artist ["Purity Ring"]
 //	                mpris:length int64 246653000   µs
+//	                mpris:artUrl "https://i.scdn.co/image/…"
 //
 // The specification makes the times int64. Another integer is read too,
 // rather than taken as zero.
@@ -179,6 +183,7 @@ func parseTrack(props map[string]dbus.Variant) (Track, string) {
 	track.Title, _ = metadata["xesam:title"].Value().(string)
 	track.Artists, _ = metadata["xesam:artist"].Value().([]string)
 	track.Length = micros(metadata["mpris:length"])
+	track.ArtURL, _ = metadata["mpris:artUrl"].Value().(string)
 	return track, status
 }
 
