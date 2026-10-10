@@ -856,6 +856,40 @@ grid across a dark background. Brightening the grays with a gamma curve
 only adds noise. Without step 4, a near-black background dithers to a
 scatter of lit pixels.
 
+### The panel previews the screensaver
+
+Under the Screensaver choice, the Screen tab shows the chosen screensaver
+moving. `omnigear screen-preview <saver>` draws it to a GIF and replies with
+its path, `{"ok": true, "path": …}`. Blank shows nothing, so its reply has no
+path. The command touches no device.
+
+The preview plays the same run `watch` would, from the same table, so it
+cannot drift from what the screen shows. Each run gets a stage: the clock,
+and the player Now Playing asks. `watch`'s stage is the real ones. The
+preview's clock moves 40 ms for each frame drawn, so a run of several seconds
+renders in milliseconds. Its player is asked once, and the answer is played
+back with the position counted on by that clock. Asking again would answer in
+real time, which the preview runs ahead of. The cover version waits for its
+cover to load before the first frame, which costs up to the 3 s fetch
+timeout.
+
+The GIF is 128 by 64, one bit, 40 ms a frame, and loops forever. It is 8 s
+of the DVD logo, two rounds of the effects, and 6 s of Now Playing. It goes
+to `$XDG_RUNTIME_DIR/omnigear/screen-preview-<saver>.gif`, written whole and
+atomically, beside the screen belief. On the Nova Pro's host, each took
+25 ms or less, and about 200 ms with a cover fetched from Spotify, most of it
+the fetch.
+
+The service owns the preview, not the card, because the cards are rebuilt
+on every poll. Each rebuilt card asks again. The service draws a new preview
+only for a different screensaver, or for Now Playing when its preview is
+older than 15 s, since the track moves on. One draw runs at a time, and only
+the latest request waits behind it. Each new file bumps a version that goes
+into the image's URL, so Qt does not show a cached copy.
+
+A rebuilt card starts the GIF again from its first frame. Qt cannot seek in a
+GIF: setting `currentFrame` stops it on frame 0 instead.
+
 ### Arctis Manager takes the interface away
 
 Arctis Manager drives the base station through libusb, which unbinds usbhid

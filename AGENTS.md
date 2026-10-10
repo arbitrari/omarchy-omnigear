@@ -18,6 +18,7 @@ mise exec -- go build -o bin/omnigear ./cmd/omnigear   # build the CLI
 mise exec -- go vet ./...
 gofmt -l .                                             # must print nothing
 ./bin/omnigear list | probe | report | get <device>
+./bin/omnigear screen-preview <saver>                  # a screensaver as a GIF; no device write
 ./scripts/dev-install                                  # install into the shell; restarts it
 ./scripts/render-card <device> [tab...]                # PNG per tab, offscreen; shell untouched
 ```
