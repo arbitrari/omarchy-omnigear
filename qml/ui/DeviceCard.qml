@@ -554,47 +554,63 @@ Rectangle {
                 }
             }
 
-            ChoiceControl {
-                bar: root.bar
-                busy: root.busy
-                capability: "screen-saver"
-                choice: root.device && root.device.screen ? root.device.screen.saver : null
-                onRequested: function (slug) {
-                    root.settingRequested("screen-saver", slug);
+            // The preview sits beside the dropdown, at the screen's own size,
+            // so the timeout below stays in view without scrolling.
+            Item {
+                width: parent.width
+                height: Math.max(saverPreview.visible ? saverPreview.height : 0, saverChoice.implicitHeight)
+
+                // The chosen screensaver as the screen draws it, on black
+                // like the OLED. Blank has no preview, so it shows nothing
+                // here and the dropdown takes the whole width.
+                Rectangle {
+                    id: saverPreview
+
+                    readonly property var preview: root.screenPreview
+                    readonly property int inset: Style.space(4)
+
+                    visible: screenTab.saver !== "" && preview !== null
+                        && preview.slug === screenTab.saver && preview.path !== ""
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    // One pixel to each of the screen's 128×64 keeps the art
+                    // sharp.
+                    width: 128 + 2 * inset
+                    height: 64 + 2 * inset
+                    radius: Style.space(4)
+                    color: "black"
+                    border.width: 1
+                    border.color: Util.alpha(root.foreground, 0.2)
+
+                    AnimatedImage {
+                        x: parent.inset
+                        y: parent.inset
+                        width: 128
+                        height: 64
+                        smooth: false
+                        cache: false
+                        // This card is rebuilt on every poll, and the GIF
+                        // starts again from its first frame with it. Qt cannot
+                        // seek in a GIF: setting currentFrame from the time
+                        // since it landed stops it on frame 0 instead.
+                        source: parent.visible
+                            ? "file://" + parent.preview.path + "?v=" + parent.preview.version : ""
+                    }
                 }
-            }
 
-            // The chosen screensaver as the screen draws it, on black like
-            // the OLED. Blank has no preview, so it shows nothing here.
-            Rectangle {
-                readonly property var preview: root.screenPreview
-                readonly property int inset: Style.space(6)
-                // The screen is 128×64. A whole number of pixels to each of
-                // its pixels keeps the art sharp.
-                readonly property int zoom: Math.max(1, Math.min(2, Math.floor((screenTab.width - 2 * inset) / 128)))
-
-                visible: screenTab.saver !== "" && preview !== null
-                    && preview.slug === screenTab.saver && preview.path !== ""
-                width: 128 * zoom + 2 * inset
-                height: 64 * zoom + 2 * inset
-                radius: Style.space(6)
-                color: "black"
-                border.width: 1
-                border.color: Util.alpha(root.foreground, 0.2)
-
-                AnimatedImage {
-                    x: parent.inset
-                    y: parent.inset
-                    width: 128 * parent.zoom
-                    height: 64 * parent.zoom
-                    smooth: false
-                    cache: false
-                    // This card is rebuilt on every poll, and the GIF starts
-                    // again from its first frame with it. Qt cannot seek in a
-                    // GIF: setting currentFrame from the time since it landed
-                    // stops it on frame 0 instead.
-                    source: parent.visible
-                        ? "file://" + parent.preview.path + "?v=" + parent.preview.version : ""
+                ChoiceControl {
+                    id: saverChoice
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: saverPreview.visible ? parent.width - saverPreview.width - Style.space(10) : parent.width
+                    showValue: !saverPreview.visible
+                    bar: root.bar
+                    busy: root.busy
+                    capability: "screen-saver"
+                    choice: root.device && root.device.screen ? root.device.screen.saver : null
+                    onRequested: function (slug) {
+                        root.settingRequested("screen-saver", slug);
+                    }
                 }
             }
 

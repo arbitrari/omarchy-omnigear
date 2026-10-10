@@ -21,6 +21,9 @@ Column {
     property var tooltips: ({})
     property QtObject bar: null
     property bool busy: false
+    // Whether the header repeats the current choice. A dropdown already shows
+    // it, and in a narrow column the two collide.
+    property bool showValue: true
 
     signal requested(string slug)
 
@@ -44,7 +47,7 @@ Column {
         bar: root.bar
         group: true
         label: Model.capabilityLabel(root.capability)
-        value: Model.choiceLabel(root.choice)
+        value: root.showValue ? Model.choiceLabel(root.choice) : ""
     }
 
     ButtonGroup {
