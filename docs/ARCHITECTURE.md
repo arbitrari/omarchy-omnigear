@@ -690,6 +690,41 @@ The status record reports the headset off at once. The base station sends
 The write waits up to fifteen seconds for it, so the panel does not show a
 headset that is off after a change that worked.
 
+### The screen is OmniGear's to turn off
+
+The base station's OLED has no off and no timeout. `06 85 NN` sets its
+brightness from `01` to `0a`, and `00` is the dimmest, not dark. So OmniGear
+draws the screen dark instead. `06 93` is a feature report, 1024 bytes, that
+draws a 64 by 64 tile at a given column and row, one bit a pixel. Two all-zero
+tiles, at columns `00` and `40`, blank the whole screen, and it stays dark
+until something changes it. `06 95` hands the screen back, and the base
+station draws its own at once. ggoled was the starting point for the framing.
+
+Touching the base station also brings its screen back, with no request. Each
+step of the volume knob sends `07 25 NN` (`NN` is byte 3 of the settings
+record), the dial sends `07 45`, and the mute button sends `07 bb`. A power-up
+draws the screen too.
+
+None of this can be read back, so the state lives in OmniGear's own files:
+
+- `~/.config/omnigear/screen.json` holds the timeout, `never` by default.
+- `$XDG_RUNTIME_DIR/omnigear/screen.json` holds whether OmniGear believes the
+  screen is off, and when that last changed. `set` and `watch` both write it,
+  whole and atomically. Each write records a real event, so the last one wins.
+
+`set` verifies a screen write against these files, not the hardware.
+
+`watch` runs the countdown, since it is already listening. It starts the
+countdown on connect, and restarts it on every report `07`, which also means
+the screen is back. When the timeout passes, it blanks the screen, and the
+panel shows it off at its next full read. `watch` rereads both files at least
+every five seconds. A timeout chosen in the panel takes effect without a
+restart and starts the countdown again. Turning the screen on from the panel
+counts as a touch.
+
+A press of the knob without a turn brings the screen back but sends nothing.
+The belief stays off until the next report, which corrects it.
+
 ### Arctis Manager takes the interface away
 
 Arctis Manager drives the base station through libusb, which unbinds usbhid

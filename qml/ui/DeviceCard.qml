@@ -537,6 +537,34 @@ Rectangle {
             }
         }
 
+        // --- screen --------------------------------------------------------
+        Column {
+            width: parent.width
+            spacing: Style.space(10)
+            visible: root.showingDetail && root.currentTab === "screen"
+                && root.device && root.device.screen !== null
+
+            ScreenControl {
+                bar: root.bar
+                busy: root.busy
+                on: root.device && root.device.screen ? root.device.screen.on : null
+                onRequested: function (on) {
+                    root.settingRequested("screen", on ? "on" : "off");
+                }
+            }
+
+            ChoiceControl {
+                bar: root.bar
+                busy: root.busy
+                capability: "screen-timeout"
+                choice: root.device && root.device.screen ? root.device.screen.timeout : null
+                tooltips: ({ "never": "The screen stays on until you turn it off." })
+                onRequested: function (slug) {
+                    root.settingRequested("screen-timeout", slug);
+                }
+            }
+        }
+
         // --- power ---------------------------------------------------------
         ChoiceControl {
             bar: root.bar

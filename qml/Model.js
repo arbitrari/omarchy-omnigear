@@ -163,6 +163,10 @@ function parseDevice(raw) {
     micVolume: parseLevel(s.micVolume),
     micMuted: typeof s.micMuted === "boolean" ? s.micMuted : null,
     usbPort: Number(s.usbPort) > 0 ? Number(s.usbPort) : 0,
+    screen: s.screen ? {
+      on: s.screen.on === true,
+      timeout: parseChoice(s.screen.timeout)
+    } : null,
     sonar: s.sonar ? {
       enabled: s.sonar.enabled === true,
       live: s.sonar.live === true,
@@ -566,6 +570,7 @@ var TAB_GROUPS = [
   { id: "controls", label: "Controls", capabilities: ["touch-panel"] },
   { id: "sonar", label: "Sonar", capabilities: ["sonar"] },
   { id: "wireless", label: "Wireless", capabilities: ["wireless-mode"] },
+  { id: "screen", label: "Screen", capabilities: ["screen"] },
   { id: "power", label: "Power", capabilities: ["auto-power-off"] }
 ]
 
@@ -616,6 +621,10 @@ function capabilityLabel(capability) {
   case "sonar": return "Sonar"
   case "mic-mute": return "Mic Mute"
   case "usb-port": return "USB Port"
+  case "screen": return "Screen"
+  // Not a capability: the screen's second control, which ChoiceControl
+  // heads by this name.
+  case "screen-timeout": return "Screen Timeout"
   default: return capability
   }
 }
@@ -641,7 +650,7 @@ function unsupportedCapabilities(device) {
                  "smart-shift", "hi-res-wheel", "host", "thumbwheel", "buttons",
                  "noise-control", "equalizer", "codec", "auto-power-off", "dsee", "speak-to-chat", "touch-panel",
                  "sidetone", "mic-volume", "mute-light", "gain", "wireless-mode", "sonar",
-                 "mic-mute", "usb-port"]
+                 "mic-mute", "usb-port", "screen"]
   return device.capabilities.filter(function (c) {
     return handled.indexOf(c) === -1
   })
@@ -1061,9 +1070,9 @@ function parseWatchEvent(line) {
 }
 
 /// Whether any device announces changes worth listening for: a ChatMix dial,
-/// or a mute button.
+/// or a mute button. A screen's timeout is counted by the listener too.
 function wantsWatch(devices) {
-  return (devices || []).some(function (d) { return has(d, "sonar") || has(d, "mic-mute") })
+  return (devices || []).some(function (d) { return has(d, "sonar") || has(d, "mic-mute") || has(d, "screen") })
 }
 
 /// Whether a device's microphone is muted: the listener's word if it has
