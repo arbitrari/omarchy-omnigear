@@ -93,6 +93,53 @@ func (c *Conn) Send(command byte, args ...byte) error {
 	return c.handle.Write(report)
 }
 
+// The screen. It has no off of its own: 85 sets its brightness, and 00 there
+// is the dimmest rather than dark. What it does take is a picture, which it
+// shows in place of its own screens until it is handed back or touched.
+//
+// A picture is drawn a tile at a time, each tile a feature report on report
+// 06, too long for an output report:
+//
+//	06 93 xx yy ww hh <pixels>   1024 bytes in all
+//
+// at column xx and row yy, ww pixels wide and hh high, one bit a pixel,
+// column by column, zero for dark. The screen is two 64-pixel tiles side by
+// side, at xx 00 and 40, so two all-zero tiles blank all of it. 06 95 is an
+// ordinary request, unanswered, that hands the screen back to the base
+// station, which draws its own at once.
+//
+// ggoled (github.com/JerwuQu/ggoled) was the starting point for the
+// framing. Read live on 1038:12E0 firmware 0000.003.082: the two blank tiles
+// left the whole screen dark, 15 and 30 seconds untouched, and 95 brought
+// the base station's own screen straight back. Turning the volume knob or
+// the ChatMix dial brings it back too, with no request at all.
+const (
+	commandDraw      = 0x93
+	commandOwnScreen = 0x95
+	drawLength       = 1024
+	tileSize         = 0x40
+	screenTiles      = 2
+)
+
+// Blank draws the whole screen dark.
+func (c *Conn) Blank() error {
+	for tile := byte(0); tile < screenTiles; tile++ {
+		report := make([]byte, drawLength)
+		report[0] = reportRequest
+		report[1] = commandDraw
+		report[2] = tile * tileSize
+		report[4] = tileSize
+		report[5] = tileSize
+		if err := c.handle.SetFeature(report); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Unblank hands the screen back to the base station.
+func (c *Conn) Unblank() error { return c.Send(commandOwnScreen) }
+
 // Read returns the next report, a reply or a notification, for a caller
 // that listens rather than asks.
 func (c *Conn) Read(timeout time.Duration) ([]byte, error) { return c.handle.Read(timeout) }

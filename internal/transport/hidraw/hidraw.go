@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
@@ -237,6 +238,23 @@ func (h *Handle) Write(report []byte) error {
 	}
 	if written != len(report) {
 		return fmt.Errorf("short write to %s: %d of %d bytes", h.path, written, len(report))
+	}
+	return nil
+}
+
+// SetFeature sends a feature report, report id first. A feature report goes
+// over the control pipe rather than the interrupt one, so it can be longer
+// than the interface's input and output reports: a base station's 1024-byte
+// screen tile is one.
+func (h *Handle) SetFeature(report []byte) error {
+	if len(report) == 0 {
+		return fmt.Errorf("set feature on %s: empty report", h.path)
+	}
+	// HIDIOCSFEATURE(len): _IOC(_IOC_WRITE|_IOC_READ, 'H', 0x06, len).
+	request := uintptr(3<<30 | len(report)<<16 | 'H'<<8 | 0x06)
+	_, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(h.fd), request, uintptr(unsafe.Pointer(&report[0])))
+	if errno != 0 {
+		return fmt.Errorf("set feature on %s: %w", h.path, errno)
 	}
 	return nil
 }
