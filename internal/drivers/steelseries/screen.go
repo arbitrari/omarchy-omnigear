@@ -216,8 +216,10 @@ type screenWatch struct {
 	// timeout is the slug the countdown is running for. A new one starts it
 	// again, so choosing a shorter one does not turn the screen off at once.
 	timeout string
-	// saver is the screensaver on the screen, nil unless one is moving.
+	// saver is the screensaver on the screen, nil unless one is moving, and
+	// show is its run.
 	saver *screenSaver
+	show  animation
 	// started is when the saver's first frame was due. Frame n is due
 	// n frames later, so the rate holds however long each takes to draw.
 	started time.Time
@@ -291,7 +293,7 @@ func (w *screenWatch) tick(now time.Time) (time.Duration, error) {
 		return screenRecheck, nil
 	}
 	if belief.Off {
-		if saver.art == nil {
+		if saver.play == nil {
 			return screenRecheck, nil
 		}
 		return w.start(now, saver)
@@ -308,7 +310,7 @@ func (w *screenWatch) tick(now time.Time) (time.Duration, error) {
 		return min(timeout.after-idle, screenRecheck), nil
 	}
 	wait := screenRecheck
-	if saver.art != nil {
+	if saver.play != nil {
 		wait, err = w.start(now, saver)
 	} else {
 		err = w.conn.Blank()
@@ -322,7 +324,8 @@ func (w *screenWatch) tick(now time.Time) (time.Duration, error) {
 
 // start puts a screensaver on the screen, from its first frame.
 func (w *screenWatch) start(now time.Time, saver *screenSaver) (time.Duration, error) {
-	w.saver, w.started, w.checked = saver, now, now
+	w.checked = now
+	w.play(now, saver)
 	return w.draw(now)
 }
 
@@ -341,21 +344,26 @@ func (w *screenWatch) animate(now time.Time) (time.Duration, error) {
 	}
 	if config, err := readScreenConfig(); err == nil {
 		if saver, err := config.saver(); err == nil && saver != w.saver {
-			if saver.art == nil {
+			if saver.play == nil {
 				w.saver = nil
 				return screenRecheck, w.conn.Blank()
 			}
-			w.saver, w.started = saver, now
+			w.play(now, saver)
 		}
 	}
 	return w.draw(now)
+}
+
+// play starts a run of saver, from its first frame.
+func (w *screenWatch) play(now time.Time, saver *screenSaver) {
+	w.saver, w.show, w.started = saver, saver.play(), now
 }
 
 // draw sends the frame due now and says how long until the next one is due.
 // A frame drawn late skips the ones it missed, so the art keeps its pace.
 func (w *screenWatch) draw(now time.Time) (time.Duration, error) {
 	n := int(now.Sub(w.started) / saverFrame)
-	if err := w.conn.Draw(w.saver.frame(n)); err != nil {
+	if err := w.conn.Draw(w.show.frame(n)); err != nil {
 		return 0, err
 	}
 	return w.started.Add(time.Duration(n+1) * saverFrame).Sub(now), nil

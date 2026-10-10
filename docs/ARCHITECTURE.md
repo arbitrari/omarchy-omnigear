@@ -728,13 +728,35 @@ The belief stays off until the next report, which corrects it.
 
 ### Off shows a screensaver
 
-Off draws the chosen screensaver: Blank, a DVD-style bouncing logo, or the
-Omarchy or OmniGear wordmark. The screen is an OLED, and a picture that stays
-lit leaves a ghost, so every screensaver but Blank moves. The art bounces off
-the edges on a diagonal, a pixel each way every frame for the DVD logo and
-every third frame for the wordmarks, about 8 pixels a second. It is narrower
-than the screen by a different amount each way, so in time it crosses all of
-it.
+Off draws the chosen screensaver: Blank, a DVD-style bouncing logo, the
+Omarchy logo, or the OmniGear wordmark. The screen is an OLED, and a picture
+that stays lit leaves a ghost, so every screensaver but Blank moves. The DVD
+logo and the OmniGear wordmark bounce off the edges on a diagonal, a pixel
+each way every frame for the logo and every third frame for the wordmark,
+about 8 pixels a second. Each is narrower than the screen by a different
+amount each way, so in time it crosses all of it.
+
+The Omarchy screensaver copies Omarchy's own. That one runs `ttfx
+--random-effect` in a loop over `~/.config/omarchy/branding/screensaver.txt`,
+so each round a random effect builds the logo. OmniGear reads the same file
+when the screensaver starts, then `$OMARCHY_PATH/logo.txt` (`/usr/share/omarchy` by default), the logo the
+branding file starts as. The file is half-block art. Each character is a pixel
+wide and two tall: `▀` lights the top, `▄` the bottom, and `█` both. Any other
+character that is not a space lights both, so art in plain text still shows.
+Omarchy's logo becomes 81×19 pixels. Art is drawn a character a pixel, not
+scaled, so a file wider than 128 or taller than 64 is passed over, and with no
+file that fits, the embedded wordmark is used.
+
+Each lit pixel of the art is a particle with a home. An effect is an entry in
+a table that gives each particle where it appears, when, and the points it
+passes on its way home. Each leg eases out. The effects are rain, scatter,
+decrypt, slice, expand, and unstable, each named for the `ttfx` effect it
+imitates. A round lasts 6.5 s: the effect builds the logo within 2 s, it holds
+for 3 s, its pixels go dark in random order over 1 s, and the screen stays
+dark for half a second. Each round picks an effect other than the last one,
+and puts the logo at a random place on the screen, so it does not stay lit in
+one place. Every round follows from a seed taken at the start, so a
+frame is known from its number alone.
 
 A frame is the same two `06 93` tiles, and each takes 18 ms to send, so a
 frame takes 36 ms however little of it changed. The bus allows 28 frames a
@@ -762,7 +784,8 @@ only until the next frame covers it.
 
 `scripts/screensaver-art` draws the art as 1-bit PBM files, which the driver
 embeds. It needs ImageMagick and librsvg, and reads the Omarchy wordmark from
-the installed Omarchy. Nothing at runtime does.
+the installed Omarchy. Nothing at runtime does. The Omarchy screensaver reads
+the logo's text at runtime and uses its PBM only when no text fits.
 
 ### Arctis Manager takes the interface away
 

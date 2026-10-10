@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"embed"
 	"fmt"
+	"strings"
+	"unicode"
 )
 
 // art holds the screensavers' pictures, drawn by scripts/screensaver-art.
@@ -50,6 +52,48 @@ func decodePBM(raw []byte) (picture, error) {
 		}
 	}
 	return p, nil
+}
+
+// decodeBlocks reads text art drawn in half blocks, as Omarchy's logo.txt
+// is. Each character is a pixel wide and two tall, ▀ lighting the top, ▄ the
+// bottom and █ both. The start of its second line becomes rows 2 and 3:
+//
+//	" ▄█████▄"   ..#####.
+//	             .#######
+//
+// Any other character that is not a space lights both, so art in plain text
+// shows too. The picture is trimmed to what is lit, and is empty if nothing is.
+func decodeBlocks(text string) picture {
+	type pixel struct{ x, y int }
+	var lit []pixel
+	for row, line := range strings.Split(text, "\n") {
+		for col, r := range []rune(line) {
+			top, bottom := r != '▄', r != '▀'
+			if unicode.IsSpace(r) {
+				top, bottom = false, false
+			}
+			if top {
+				lit = append(lit, pixel{col, 2 * row})
+			}
+			if bottom {
+				lit = append(lit, pixel{col, 2*row + 1})
+			}
+		}
+	}
+	if len(lit) == 0 {
+		return picture{}
+	}
+	left, top, right, bottom := lit[0].x, lit[0].y, lit[0].x, lit[0].y
+	for _, p := range lit {
+		left, right = min(left, p.x), max(right, p.x)
+		top, bottom = min(top, p.y), max(bottom, p.y)
+	}
+	pic := picture{width: right - left + 1, height: bottom - top + 1}
+	pic.lit = make([]bool, pic.width*pic.height)
+	for _, p := range lit {
+		pic.lit[(p.y-top)*pic.width+p.x-left] = true
+	}
+	return pic
 }
 
 // mustArt decodes a picture embedded at build time, so a bad one is a bug in
