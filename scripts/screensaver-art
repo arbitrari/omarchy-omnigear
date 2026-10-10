@@ -1,0 +1,64 @@
+#!/bin/bash
+# Draw the base station screensavers' art as 1-bit PBM files, which the
+# SteelSeries driver embeds. Run it after changing a logo, and commit what it
+# writes. It is for development only: nothing at runtime needs ImageMagick.
+#
+#   scripts/screensaver-art
+#
+# The Omarchy wordmark is read from the installed Omarchy, at
+# /usr/share/omarchy/logo.svg, so this runs on an Omarchy machine.
+#
+# A PBM's set bits are its ink, which a viewer draws black. They are the lit
+# pixels on the screen, so the files look inverted next to the OLED.
+
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+OUT=internal/drivers/steelseries/art
+OMARCHY_LOGO=/usr/share/omarchy/logo.svg
+
+for tool in magick rsvg-convert; do
+  command -v "$tool" >/dev/null || { echo "screensaver-art: $tool is not installed" >&2; exit 1; }
+done
+[[ -f $OMARCHY_LOGO ]] || { echo "screensaver-art: no Omarchy logo at $OMARCHY_LOGO" >&2; exit 1; }
+
+mkdir -p "$OUT"
+
+# 1-bit: dark ink on white becomes set bits, cropped to the ink.
+bilevel() {
+  magick - -background white -alpha remove -alpha off -colorspace gray \
+    -threshold 50% -trim +repage "pbm:$1"
+}
+
+wordmark() {
+  rsvg-convert -w 100 "$1" | bilevel "$OUT/$2.pbm"
+}
+
+wordmark "$OMARCHY_LOGO" omarchy
+wordmark assets/omnigear-logo-black.svg omnigear
+
+# The bouncing logo of DVD players, drawn here from shapes in its likeness
+# rather than copied: two wide D's with crescent counters and a V whose point
+# drops toward a flat disc with a hole. Drawn upright at 560 wide, slanted,
+# then shrunk to 48, small enough to travel far and as small as the counters
+# and the hole survive. The disc is thicker than the original's for the same
+# reason.
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+d() { echo "path 'M $1,0 L $(($1 + 110)),0 C $(($1 + 215)),0 $(($1 + 215)),130 $(($1 + 110)),130 L $1,130 Z'"; }
+counter() { echo "path 'M $(($1 + 42)),36 L $(($1 + 105)),36 C $(($1 + 150)),36 $(($1 + 150)),94 $(($1 + 105)),94 L $(($1 + 30)),94 Z'"; }
+magick -size 560x190 xc:white -fill black -draw "$(d 10)" -draw "$(d 330)" \
+  -draw "polygon 175,0 228,0 262,92 312,0 365,0 262,180" \
+  -fill white -draw "$(counter 10)" -draw "$(counter 330)" \
+  -background white -virtual-pixel white +distort AffineProjection '1,0,-0.25,1,40,0' \
+  +repage -alpha off "$tmp/letters.png"
+lw=$(magick identify -format %w "$tmp/letters.png")
+magick -size "${lw}x105" xc:white -fill black \
+  -draw "ellipse $((lw / 2)),52 $((lw / 2 - 4)),48 0,360" \
+  -fill white -draw "ellipse $((lw / 2)),52 $((lw / 8)),17 0,360" "$tmp/disc.png"
+magick "$tmp/letters.png" "$tmp/disc.png" -append +repage -alpha off -trim +repage \
+  -resize 48x -threshold 50% png:- | bilevel "$OUT/dvd.pbm"
+
+for f in "$OUT"/*.pbm; do
+  echo "$f $(magick identify -format '%wx%h' "$f")"
+done
