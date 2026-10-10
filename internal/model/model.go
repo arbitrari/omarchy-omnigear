@@ -833,8 +833,14 @@ var screenTimeoutSlugs = []string{"never", "1-min", "5-min", "10-min", "15-min",
 func ScreenTimeoutValue(slug string) (uint32, bool) { return choiceValue(screenTimeoutSlugs, slug) }
 func ScreenTimeoutName(value uint32) string         { return choiceName(screenTimeoutSlugs, value) }
 
-// Screen is whether a base station's screen is on, and how long it may go
-// untouched before it is turned off.
+// screenSaverSlugs are what a screen shows while it is off.
+var screenSaverSlugs = []string{"blank", "dvd", "omarchy", "omnigear"}
+
+func ScreenSaverValue(slug string) (uint32, bool) { return choiceValue(screenSaverSlugs, slug) }
+func ScreenSaverName(value uint32) string         { return choiceName(screenSaverSlugs, value) }
+
+// Screen is whether a base station's screen is on, how long it may go
+// untouched before it is turned off, and what it shows while it is off.
 //
 // On is OmniGear's belief rather than a reading: the screen cannot be asked.
 // It is false from the moment OmniGear turns the screen off until the base
@@ -842,6 +848,7 @@ func ScreenTimeoutName(value uint32) string         { return choiceName(screenTi
 type Screen struct {
 	On      bool    `json:"on"`
 	Timeout *Choice `json:"timeout"`
+	Saver   *Choice `json:"saver"`
 }
 
 // DSEE is whether a Sony headset's upscaling is on. Label is the model's own
@@ -1079,10 +1086,12 @@ const (
 	SettingWirelessMode SettingKey = "wireless-mode"
 	// SettingSonar restarts the sound server; see package sonar.
 	SettingSonar SettingKey = "sonar"
-	// SettingScreen and SettingScreenTimeout are read back from what
-	// OmniGear recorded, since the screen cannot be asked; see Screen.
+	// SettingScreen, SettingScreenTimeout and SettingScreenSaver are read
+	// back from what OmniGear recorded, since the screen cannot be asked;
+	// see Screen.
 	SettingScreen        SettingKey = "screen"
 	SettingScreenTimeout SettingKey = "screen-timeout"
+	SettingScreenSaver   SettingKey = "screen-saver"
 
 	// HITS is per click and per field, so each combination is its own key.
 	// Three fields across two buttons is small enough to name outright, and
@@ -1214,6 +1223,13 @@ func ParseSetting(key, value string) (Setting, error) {
 				value, strings.Join(screenTimeoutSlugs, ", "))
 		}
 		return Setting{Key: SettingScreenTimeout, Value: choice}, nil
+	case "screen-saver":
+		choice, ok := ScreenSaverValue(value)
+		if !ok {
+			return Setting{}, fmt.Errorf("%q is not a screensaver (expected one of: %s)",
+				value, strings.Join(screenSaverSlugs, ", "))
+		}
+		return Setting{Key: SettingScreenSaver, Value: choice}, nil
 	case "sidetone":
 		choice, ok := SidetoneValue(value)
 		if !ok {
@@ -1501,6 +1517,11 @@ func (s *DeviceState) Reading(key SettingKey) (uint32, bool) {
 	case SettingScreenTimeout:
 		if s.Screen != nil && s.Screen.Timeout != nil {
 			return ScreenTimeoutValue(s.Screen.Timeout.Current)
+		}
+
+	case SettingScreenSaver:
+		if s.Screen != nil && s.Screen.Saver != nil {
+			return ScreenSaverValue(s.Screen.Saver.Current)
 		}
 
 	case SettingMicVolume:

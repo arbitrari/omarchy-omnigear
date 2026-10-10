@@ -404,6 +404,7 @@ var settingCapabilities = map[model.SettingKey]model.Capability{
 	model.SettingSonar:         model.CapSonar,
 	model.SettingScreen:        model.CapScreen,
 	model.SettingScreenTimeout: model.CapScreen,
+	model.SettingScreenSaver:   model.CapScreen,
 }
 
 func (d driver) Write(device *model.Device, setting *model.Setting) error {
@@ -429,9 +430,13 @@ func (d driver) Write(device *model.Device, setting *model.Setting) error {
 	if setting.Key == model.SettingSonar {
 		return writeSonar(device, setting.Value != 0)
 	}
-	// The timeout is OmniGear's, kept in a file. watch reads it from there.
-	if setting.Key == model.SettingScreenTimeout {
+	// The timeout and the screensaver are OmniGear's, kept in a file. watch
+	// reads them from there.
+	switch setting.Key {
+	case model.SettingScreenTimeout:
 		return writeScreenTimeout(model.ScreenTimeoutName(setting.Value))
+	case model.SettingScreenSaver:
+		return writeScreenSaver(model.ScreenSaverName(setting.Value))
 	}
 	if name, ok := model.SonarAppNameOf(setting.Key); ok {
 		return sonar.MoveApp(name, model.SonarChannelName(setting.Value))

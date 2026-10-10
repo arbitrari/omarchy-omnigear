@@ -54,7 +54,7 @@ func decodePBM(raw []byte) (picture, error) {
 
 // mustArt decodes a picture embedded at build time, so a bad one is a bug in
 // the build rather than something to report.
-func mustArt(name string) picture {
+func mustArt(name string) *picture {
 	raw, err := art.ReadFile("art/" + name + ".pbm")
 	if err != nil {
 		panic(err)
@@ -63,5 +63,5 @@ func mustArt(name string) picture {
 	if err != nil {
 		panic(fmt.Sprintf("art/%s.pbm: %v", name, err))
 	}
-	return p
+	return &p
 }
