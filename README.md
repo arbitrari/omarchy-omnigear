@@ -95,16 +95,23 @@ No keyboards are supported yet. Planned brands: Logitech, Razer, Wooting, Keychr
 <details>
 <summary><b>SteelSeries</b></summary>
 
-|  | Name | Battery | Noise Control | Equalizer | Gain | Sidetone | Mic Volume | Mute Light | Wireless Mode | Auto Power Off | Sonar | Mic Mute | Notes |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 🟩 | Arctis Nova Pro Wireless |🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩| Needs the base station |
+|  | Name | Battery | Noise Control | Equalizer | Gain | Sidetone | Mic Volume | Mute Light | Wireless Mode | Auto Power Off | Sonar | Mic Mute | Screen | Notes |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 🟩 | Arctis Nova Pro Wireless |🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩|🟩| Needs the base station |
 
 - **Battery.** The charge of the headset and of the spare battery in the base station, in eighths.
 - **Noise Control.** Noise cancelling, transparency, or off, with the transparency level. Shown in the **Sound** tab.
 - **Equalizer.** A 10-band equalizer for each Sonar channel, with Flat, Bass Boost, Treble Boost, Vocal, and Custom presets. Shown in the **Equalizer** tab.
 - **Wireless Mode.** Favor low latency (speed) or distance (range). The headset drops for a few seconds while it reconnects. Shown in the **Power** tab.
-- **Sonar.** Separate Game, Chat, Media, and Aux outputs, like SteelSeries Sonar. The base station's ChatMix dial balances Game against Chat. Set each channel's volume, and move each playing app to a channel. An app keeps its channel the next time it plays. Turning Sonar on or off restarts PipeWire, so audio drops for a moment. Shown in the **Sonar** tab.
-- **Screen.** Turn the base station's screen off, or have it turn off after 1 minute to 1 hour untouched. Off is dark, or a screensaver: a DVD-style bouncing logo, the Omarchy logo or OmniGear wordmark built by random effects like Omarchy's own screensaver, or the track that is playing, with its progress and, if you like, its album cover. Turning the knob or the dial brings it back. Shown in the **Screen** tab.
+- **Sonar.** Separate Game, Chat, Media, and Aux outputs, like SteelSeries Sonar. The base station's ChatMix dial balances Game against Chat. Set each channel's volume, and move each playing app to a channel. An app keeps its channel the next time it plays. OmniGear also turns on the Sonar icon and ChatMix on the base station, so no SteelSeries software is needed. The channels stay when you unplug the headset or move its cable, and reconnect to it when it returns. Turning Sonar on or off restarts PipeWire, so audio drops for a moment. Shown in the **Sonar** tab.
+- **Screen.** Turn the base station's screen off, or have it turn off after 1 minute to 1 hour untouched. Turning the knob or the dial brings it back. Shown in the **Screen** tab.
+- **Screensavers.** While the screen is off, the base station shows the screensaver you pick. A preview plays beside the choice in the **Screen** tab.
+  - **Blank.** The screen stays dark.
+  - **DVD.** A DVD-style logo bounces around the screen.
+  - **Omarchy.** Random effects build the Omarchy logo, like Omarchy's own screensaver. It uses your Omarchy screensaver branding.
+  - **OmniGear.** The same effects build the OmniGear wordmark.
+  - **Now Playing.** The title, artist, and progress of the song playing on your computer. Long titles scroll.
+  - **Now Playing + Cover.** The same, with the album cover beside it.
 
 </details>
 
@@ -141,6 +148,14 @@ If you own a device OmniGear does not support, you can add it. You need the devi
    The script installs Go through mise on first run, builds the plugin, installs it into your shell, and restarts the shell.
 
 2. Follow [Add support for a device you own](docs/ADDING-A-DEVICE.md). It covers finding the ids, writing the code, testing, and opening the PR.
+
+3. To check the panel without restarting your shell, run:
+
+   ```sh
+   ./scripts/render-card <device>
+   ```
+
+   It saves a picture of each of the device's tabs, drawn as the bar draws them. It fails if a tab strip runs past the edge of the panel.
 
 ### Use a coding agent
 
