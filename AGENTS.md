@@ -19,9 +19,12 @@ mise exec -- go vet ./...
 gofmt -l .                                             # must print nothing
 ./bin/omnigear list | probe | report | get <device>
 ./scripts/dev-install                                  # install into the shell; restarts it
+./scripts/render-card <device> [tab...]                # PNG per tab, offscreen; shell untouched
 ```
 
 There is no test suite. Verify against the real device with `get` and `set`.
+Check a QML change with `render-card` and look at the PNGs. `--fixture <file>`
+renders a saved `get`, so a state the hardware is not in can be drawn too.
 
 ## Adding hardware
 

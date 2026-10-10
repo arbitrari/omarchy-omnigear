@@ -1,0 +1,100 @@
+#!/bin/bash
+# Render a device's card, one PNG per tab, without touching the running shell.
+#
+#   scripts/render-card <device> [tab...]     tabs default to all of the device's
+#   scripts/render-card --fixture f.json …    render a saved `get` instead
+#
+# A second Quickshell instance loads this checkout's QML against the installed
+# shell's Commons and Ui, so the card is drawn as the bar draws it. It renders
+# offscreen: nothing appears on the display.
+
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+REPO="$PWD"
+OUT="${OUT:-${TMPDIR:-/tmp}/omnigear-render}"
+SHELL_DIR=/usr/share/omarchy/shell
+mkdir -p "$OUT/harness"
+
+if [[ ${1:-} == --fixture ]]; then
+  cp "$2" "$OUT/device.json"
+  shift 2
+else
+  mise exec -- go build -o bin/omnigear ./cmd/omnigear
+  ./bin/omnigear get "$1" >"$OUT/device.json"
+  shift
+fi
+
+H="$OUT/harness"
+ln -sfn "$SHELL_DIR/Commons" "$H/Commons"
+ln -sfn "$SHELL_DIR/Ui" "$H/Ui"
+ln -sfn "$REPO/qml" "$H/omnigear"
+ln -sfn "$REPO/assets" "$H/assets"
+cat >"$H/shell.qml" <<'QML'
+import QtQuick
+import Quickshell
+import Quickshell.Io
+import qs.Commons
+import "omnigear/Model.js" as Model
+import "omnigear/ui"
+
+ShellRoot {
+    FileView { id: fixture; path: Quickshell.env("OG_DEVICE"); blockLoading: true }
+    readonly property var device: Model.parseDevice(JSON.parse(fixture.text()).device)
+
+    FloatingWindow {
+        implicitWidth: 480
+        implicitHeight: Math.max(200, frame.height)
+        color: Color.background
+
+        // The window's own content item cannot be grabbed; this can.
+        Rectangle {
+            id: frame
+            width: 480
+            height: card.implicitHeight + 20
+            color: Color.background
+
+            DeviceCard {
+                id: card
+                x: 10; y: 10; width: 460
+                device: root.device
+                activeTab: Quickshell.env("OG_TAB")
+            }
+        }
+
+        Timer {
+            interval: 1500; running: true
+            onTriggered: frame.grabToImage(function (r) {
+                r.saveToFile(Quickshell.env("OG_OUT"));
+                Qt.quit();
+            })
+        }
+    }
+}
+QML
+sed -i 's/^ShellRoot {/ShellRoot {\n    id: root/' "$H/shell.qml"
+
+tabs=("$@")
+if [[ ${#tabs[@]} -eq 0 ]]; then
+  mapfile -t tabs < <(node -e '
+    const fs = require("fs");
+    const src = fs.readFileSync(process.argv[1], "utf8").replace(/^\.pragma.*$/m, "");
+    const Model = new Function(src + "; return { parseDevice, deviceTabs };")();
+    const d = Model.parseDevice(JSON.parse(fs.readFileSync(process.argv[2])).device);
+    for (const t of Model.deviceTabs(d)) console.log(t.id);
+  ' "$REPO/qml/Model.js" "$OUT/device.json")
+  [[ ${#tabs[@]} -eq 0 ]] && tabs=("")
+fi
+
+for tab in "${tabs[@]}"; do
+  png="$OUT/${tab:-card}.png"
+  rm -f "$png"
+  QT_QPA_PLATFORM=offscreen OG_DEVICE="$OUT/device.json" OG_TAB="$tab" OG_OUT="$png" \
+    timeout 20 quickshell -p "$H/shell.qml" >"$OUT/${tab:-card}.log" 2>&1 || true
+  if [[ -f $png ]]; then
+    echo "$png"
+  else
+    echo "render failed for tab '${tab}': see $OUT/${tab:-card}.log" >&2
+    exit 1
+  fi
+done
