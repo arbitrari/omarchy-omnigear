@@ -1,6 +1,11 @@
 package steelseries
 
-import "github.com/arbitrari/omarchy-omnigear/internal/transport/arctis"
+import (
+	"fmt"
+
+	"github.com/arbitrari/omarchy-omnigear/internal/model"
+	"github.com/arbitrari/omarchy-omnigear/internal/transport/arctis"
+)
 
 // screenSaver is what the screen shows while it is off. The screen is an
 // OLED, which keeps a ghost of whatever stays lit on it, so every picture
@@ -27,9 +32,26 @@ var screenSavers = []screenSaver{
 	{slug: "dvd", label: "DVD", play: drifting(mustArt("dvd"), 1)},
 	{slug: "omarchy", label: "Omarchy", play: playEffects(omarchyArt)},
 	{slug: "omnigear", label: "OmniGear", play: playEffects(func() *picture { return embeddedOmniGear })},
+	{slug: "now-playing", label: "Now Playing", play: playNowPlaying},
 }
 
 var embeddedOmniGear = mustArt("omnigear")
+
+// The model parses a setting's slug from its own list, which cannot import
+// this table. A screensaver added here and not there draws in a test and
+// fails at `set`, as Now Playing first did, so the two are held equal at
+// startup instead.
+func init() {
+	for i, saver := range screenSavers {
+		if model.ScreenSaverName(uint32(i)) != saver.slug {
+			panic(fmt.Sprintf("screensaver %d is %q here and %q in the model",
+				i, saver.slug, model.ScreenSaverName(uint32(i))))
+		}
+	}
+	if extra := model.ScreenSaverName(uint32(len(screenSavers))); extra != "" {
+		panic(fmt.Sprintf("the model has a screensaver %q this table lacks", extra))
+	}
+}
 
 func findScreenSaver(slug string) (*screenSaver, bool) {
 	for i := range screenSavers {
