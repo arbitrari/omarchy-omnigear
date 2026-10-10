@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 668 914" width="668" height="914">
+  <title>Mouse click surfaces</title>
+  <!-- The same glyph's two click shapes, scaled to 82% about each one's own
+       centre so they sit inside their outlines on the shell layer. That margin
+       is the white rim around each dark click; a stroke would have closed up
+       at icon size. -->
+  <path fill="#ffffff" d="M266.63 300.3L266.63 29.7Q199.39 37.9 144.86 76.03Q90.33 114.16 58.35 172.79Q26.37 231.42 26.37 300.3L26.37 300.3L266.63 300.3 M401.37 29.7L401.37 29.7L401.37 300.3L641.63 300.3Q641.63 231.42 609.65 172.79Q577.67 114.16 523.14 76.03Q468.61 37.9 401.37 29.7"/>
+</svg>

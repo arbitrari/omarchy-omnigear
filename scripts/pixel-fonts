@@ -1,0 +1,32 @@
+#!/bin/bash
+# Convert the base station screensavers' fonts into the glyph files the
+# SteelSeries driver embeds. Run it after changing which fonts or runes are
+# kept, and commit what it writes.
+#
+#   scripts/pixel-fonts            fetch the fonts from freedesktop.org
+#   scripts/pixel-fonts <dir>      read 5x7.bdf, 6x10.bdf and 6x13B.bdf from dir
+#
+# The fonts are X11's misc-fixed, which are in the public domain: "Public
+# domain font. Share and enjoy."
+
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+OUT=internal/drivers/steelseries/fonts
+URL=https://gitlab.freedesktop.org/xorg/font/misc-misc/-/raw/master
+FONTS=(5x7 6x10 6x13B)
+
+src=${1:-}
+if [[ -z $src ]]; then
+  src=$(mktemp -d)
+  trap 'rm -rf "$src"' EXIT
+  for font in "${FONTS[@]}"; do
+    curl -fsSL "$URL/$font.bdf" -o "$src/$font.bdf"
+  done
+fi
+
+mkdir -p "$OUT"
+for font in "${FONTS[@]}"; do
+  mise exec -- go run ./scripts/bdf2glyphs "$src/$font.bdf" "$OUT/$font.glyphs"
+  echo "$OUT/$font.glyphs $(stat -c %s "$OUT/$font.glyphs") bytes"
+done

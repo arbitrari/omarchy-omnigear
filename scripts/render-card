@@ -1,0 +1,131 @@
+#!/bin/bash
+# Render a device's card, one PNG per tab, without touching the running shell.
+#
+#   scripts/render-card <device> [tab...]     tabs default to all of the device's
+#   scripts/render-card --fixture f.json …    render a saved `get` instead
+#
+# The screen tab shows the screensaver preview: OG_PREVIEW, a GIF, or else
+# one drawn for the device's screensaver.
+#
+# A second Quickshell instance loads this checkout's QML against the installed
+# shell's Commons and Ui, so the card is drawn as the bar draws it. It renders
+# offscreen: nothing appears on the display.
+
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+REPO="$PWD"
+OUT="${OUT:-${TMPDIR:-/tmp}/omnigear-render}"
+SHELL_DIR=/usr/share/omarchy/shell
+mkdir -p "$OUT/harness"
+
+if [[ ${1:-} == --fixture ]]; then
+  cp "$2" "$OUT/device.json"
+  shift 2
+else
+  mise exec -- go build -o bin/omnigear ./cmd/omnigear
+  ./bin/omnigear get "$1" >"$OUT/device.json"
+  shift
+fi
+
+H="$OUT/harness"
+ln -sfn "$SHELL_DIR/Commons" "$H/Commons"
+ln -sfn "$SHELL_DIR/Ui" "$H/Ui"
+ln -sfn "$REPO/qml" "$H/omnigear"
+ln -sfn "$REPO/assets" "$H/assets"
+cat >"$H/shell.qml" <<'QML'
+import QtQuick
+import Quickshell
+import Quickshell.Io
+import qs.Commons
+import qs.Ui
+import "omnigear/Model.js" as Model
+import "omnigear/ui"
+
+ShellRoot {
+    FileView { id: fixture; path: Quickshell.env("OG_DEVICE"); blockLoading: true }
+    readonly property var device: Model.parseDevice(JSON.parse(fixture.text()).device)
+
+    FloatingWindow {
+        implicitWidth: frame.width
+        implicitHeight: Math.max(200, frame.height)
+        color: Color.background
+
+        // The popup's own surface, sized as DevicePanel sizes it, with the card
+        // inside less the scrollbar gutter. The card then wraps and overflows
+        // as it does in the bar.
+        BorderSurface {
+            id: frame
+            width: Style.space(400)
+            height: card.implicitHeight + contentTopInset + contentBottomInset
+            color: Color.popups.background
+            borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, Math.max(1, Style.space(2)))
+            padding: Style.spacing.popupPadding
+            radius: Style.cornerRadius
+
+            DeviceCard {
+                id: card
+                x: frame.contentLeftInset
+                y: frame.contentTopInset
+                width: frame.width - frame.contentLeftInset - frame.contentRightInset - Style.space(8)
+                device: root.device
+                activeTab: Quickshell.env("OG_TAB")
+                screenPreview: Quickshell.env("OG_PREVIEW") && root.device.screen && root.device.screen.saver ? {
+                    slug: root.device.screen.saver.current,
+                    path: Quickshell.env("OG_PREVIEW"),
+                    at: Date.now(),
+                    version: 1
+                } : null
+                Component.onCompleted: console.log("render-card: card width", width)
+            }
+        }
+
+        Timer {
+            interval: 1500; running: true
+            onTriggered: {
+                console.log("render-card: card height", card.implicitHeight);
+                frame.grabToImage(function (r) {
+                    r.saveToFile(Quickshell.env("OG_OUT"));
+                    Qt.quit();
+                });
+            }
+        }
+    }
+}
+QML
+sed -i 's/^ShellRoot {/ShellRoot {\n    id: root/' "$H/shell.qml"
+
+tabs=("$@")
+if [[ ${#tabs[@]} -eq 0 ]]; then
+  mapfile -t tabs < <(node -e '
+    const fs = require("fs");
+    const src = fs.readFileSync(process.argv[1], "utf8").replace(/^\.pragma.*$/m, "");
+    const Model = new Function(src + "; return { parseDevice, deviceTabs };")();
+    const d = Model.parseDevice(JSON.parse(fs.readFileSync(process.argv[2])).device);
+    for (const t of Model.deviceTabs(d)) console.log(t.id);
+  ' "$REPO/qml/Model.js" "$OUT/device.json")
+  [[ ${#tabs[@]} -eq 0 ]] && tabs=("")
+fi
+
+saver=$(jq -r '.device.state.screen.saver.current // ""' "$OUT/device.json")
+preview=${OG_PREVIEW:-}
+if [[ -z $preview && -n $saver && " ${tabs[*]} " == *" screen "* ]]; then
+  [[ -x bin/omnigear ]] || mise exec -- go build -o bin/omnigear ./cmd/omnigear
+  preview=$(./bin/omnigear screen-preview "$saver" | jq -r '.path // ""')
+fi
+
+for tab in "${tabs[@]}"; do
+  png="$OUT/${tab:-card}.png"
+  rm -f "$png"
+  QT_QPA_PLATFORM=offscreen OG_DEVICE="$OUT/device.json" OG_TAB="$tab" OG_OUT="$png" OG_PREVIEW="$preview" \
+    timeout 20 quickshell -p "$H/shell.qml" >"$OUT/${tab:-card}.log" 2>&1 || true
+  if grep -q "TabBar overflows" "$OUT/${tab:-card}.log"; then
+    echo "tab '${tab}': the tabs run past the card: see $OUT/${tab:-card}.log" >&2
+    exit 1
+  elif [[ -f $png ]]; then
+    echo "$png"
+  else
+    echo "render failed for tab '${tab}': see $OUT/${tab:-card}.log" >&2
+    exit 1
+  fi
+done

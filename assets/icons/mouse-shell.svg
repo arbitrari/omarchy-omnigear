@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 668 914" width="668" height="914">
+  <title>Mouse shell</title>
+  <!-- The md-mouse glyph (U+F037D) of JetBrainsMono Nerd Font, traced from the
+       font outline so this icon matches the category glyphs beside it rather
+       than approximating them. The glyph is drawn as three shapes — left
+       click, body, right click — and this layer is all three, filled. -->
+  <path fill="#ffffff" d="M293 330L293 0Q211 10 144.5 56.5Q78 103 39 174.5Q0 246 0 330L0 330L293 330 M0 414L0 580Q0 670 45 747Q90 824 167 869Q244 914 334 914Q424 914 501 869Q578 824 623 747Q668 670 668 580L668 580L668 414L0 414 M375 0L375 0L375 330L668 330Q668 246 629 174.5Q590 103 523.5 56.5Q457 10 375 0"/>
+</svg>
