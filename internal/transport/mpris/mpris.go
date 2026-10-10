@@ -1,14 +1,16 @@
 // Package mpris asks media players what they are doing, and tells them to
 // play, over the session bus.
 //
-// It exists for one reason: switching a headset's codec takes its audio
-// output away for a moment, and a player whose output disappears pauses.
-// Spotify did, half a second into the switch and before the switch had even
-// finished, and stayed paused. Nobody asked for that, so whoever was playing
-// is put back.
+// It has two jobs. Switching a headset's codec takes its audio output away
+// for a moment, and a player whose output disappears pauses. Spotify did,
+// half a second into the switch and before the switch had even finished, and
+// stayed paused. Nobody asked for that, so whoever was playing is put back.
+// And the base station's Now Playing screensaver shows what is playing.
 package mpris
 
 import (
+	"context"
+	"slices"
 	"strings"
 	"time"
 
@@ -96,4 +98,103 @@ func status(conn *dbus.Conn, name string) string {
 	}
 	s, _ := value.Value().(string)
 	return s
+}
+
+// Track is what a player is playing.
+type Track struct {
+	Title   string
+	Artists []string
+	// Length is zero when the player does not say, as for a stream.
+	Length   time.Duration
+	Position time.Duration
+	// Playing is false for a track that is paused.
+	Playing bool
+}
+
+// askWithin bounds each of NowPlaying's calls. A player that has hung would
+// otherwise hold its caller for 25 s, until the bus gives up on it, and the
+// players after it would go unasked.
+const askWithin = 250 * time.Millisecond
+
+// NowPlaying is the first player playing a track with a title, or else the
+// first one paused on one. Players are taken in order of bus name, so of two
+// the same one is shown each time. A player that has stopped, or says no
+// title, as a browser tab with no media does, is passed over.
+func NowPlaying() (Track, bool) {
+	conn, err := dbus.SessionBus()
+	if err != nil {
+		return Track{}, false
+	}
+	var names []string
+	if err := ask(conn.BusObject(), "org.freedesktop.DBus.ListNames").Store(&names); err != nil {
+		return Track{}, false
+	}
+	slices.Sort(names)
+	var paused *Track
+	for _, name := range names {
+		if !strings.HasPrefix(name, namePrefix) {
+			continue
+		}
+		var props map[string]dbus.Variant
+		if ask(conn.Object(name, objectPath), "org.freedesktop.DBus.Properties.GetAll", player).Store(&props) != nil {
+			continue
+		}
+		track, status := parseTrack(props)
+		if track.Title == "" {
+			continue
+		}
+		if status == "Playing" {
+			return track, true
+		}
+		if status == "Paused" && paused == nil {
+			paused = &track
+		}
+	}
+	if paused != nil {
+		return *paused, true
+	}
+	return Track{}, false
+}
+
+func ask(obj dbus.BusObject, method string, args ...any) *dbus.Call {
+	ctx, cancel := context.WithTimeout(context.Background(), askWithin)
+	defer cancel()
+	return obj.CallWithContext(ctx, method, 0, args...)
+}
+
+// parseTrack reads a player's properties, as Spotify sends them:
+//
+//	PlaybackStatus  "Playing"
+//	Position        int64 6866000                  µs
+//	Metadata        xesam:title  "stardew"
+//	                xesam:artist ["Purity Ring"]
+//	                mpris:length int64 246653000   µs
+//
+// The specification makes the times int64. Another integer is read too,
+// rather than taken as zero.
+func parseTrack(props map[string]dbus.Variant) (Track, string) {
+	status, _ := props["PlaybackStatus"].Value().(string)
+	metadata, _ := props["Metadata"].Value().(map[string]dbus.Variant)
+	track := Track{Playing: status == "Playing", Position: micros(props["Position"])}
+	track.Title, _ = metadata["xesam:title"].Value().(string)
+	track.Artists, _ = metadata["xesam:artist"].Value().([]string)
+	track.Length = micros(metadata["mpris:length"])
+	return track, status
+}
+
+func micros(v dbus.Variant) time.Duration {
+	var n int64
+	switch v := v.Value().(type) {
+	case int64:
+		n = v
+	case uint64:
+		n = int64(v)
+	case int32:
+		n = int64(v)
+	case uint32:
+		n = int64(v)
+	case float64:
+		n = int64(v)
+	}
+	return max(time.Duration(n)*time.Microsecond, 0)
 }
