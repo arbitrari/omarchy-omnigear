@@ -136,14 +136,17 @@ func readStatus(conn *arctis.Conn) (status, error) {
 // settings is the base station's record of the headset's audio settings.
 //
 //	06 20 00 02 02 00 00 14 14 14 00 00 00 00 00 00 00 08 03 01 42 64 64 00 64
-//	      │     │                                      │  └ sidetone, 00–03
-//	      │     │                                      └ microphone volume, 01–0a
-//	      │     └ gain: 01 low, 02 high
+//	      │  │  │                                      │  └ sidetone, 00–03
+//	      │  │  │                                      └ microphone volume, 01–0a
+//	      │  │  └ gain: 01 low, 02 high
+//	      │  └ volume knob's attenuation, as 07 25 reports it
 //	      └ USB port: 00 USB-1, 01 USB-2
 //
 // Each setting was found by writing its setter and watching this record
 // change, and the port by moving the cable from USB-1 to USB-2 and back. The
-// rest is unmapped.
+// knob's byte was matched to 07 25, which the base station sends unprompted
+// at each step of the knob, as it read 02, 04, 05 and 07. Nothing here sets
+// it. The rest is unmapped.
 type settings struct {
 	port      byte
 	gain      byte
@@ -338,6 +341,12 @@ func (d driver) Read(device *model.Device) model.DeviceState {
 		}
 	}
 
+	if device.Entry.Has(model.CapScreen) {
+		if state.Screen, err = readScreen(); err != nil {
+			state.Fail(model.CapScreen, err)
+		}
+	}
+
 	if device.Entry.Has(model.CapSonar) {
 		if state.Sonar, err = readSonar(); err != nil {
 			state.Fail(model.CapSonar, err)
@@ -384,15 +393,17 @@ func (d driver) Read(device *model.Device) model.DeviceState {
 
 // settingCapabilities are the capabilities a write needs the model to have.
 var settingCapabilities = map[model.SettingKey]model.Capability{
-	model.SettingNoiseMode:    model.CapNoiseControl,
-	model.SettingAmbientLevel: model.CapNoiseControl,
-	model.SettingAutoPowerOff: model.CapAutoPowerOff,
-	model.SettingSidetone:     model.CapSidetone,
-	model.SettingMicVolume:    model.CapMicVolume,
-	model.SettingMuteLight:    model.CapMuteLight,
-	model.SettingGain:         model.CapGain,
-	model.SettingWirelessMode: model.CapWirelessMode,
-	model.SettingSonar:        model.CapSonar,
+	model.SettingNoiseMode:     model.CapNoiseControl,
+	model.SettingAmbientLevel:  model.CapNoiseControl,
+	model.SettingAutoPowerOff:  model.CapAutoPowerOff,
+	model.SettingSidetone:      model.CapSidetone,
+	model.SettingMicVolume:     model.CapMicVolume,
+	model.SettingMuteLight:     model.CapMuteLight,
+	model.SettingGain:          model.CapGain,
+	model.SettingWirelessMode:  model.CapWirelessMode,
+	model.SettingSonar:         model.CapSonar,
+	model.SettingScreen:        model.CapScreen,
+	model.SettingScreenTimeout: model.CapScreen,
 }
 
 func (d driver) Write(device *model.Device, setting *model.Setting) error {
@@ -417,6 +428,10 @@ func (d driver) Write(device *model.Device, setting *model.Setting) error {
 	// to the base station.
 	if setting.Key == model.SettingSonar {
 		return writeSonar(device, setting.Value != 0)
+	}
+	// The timeout is OmniGear's, kept in a file. watch reads it from there.
+	if setting.Key == model.SettingScreenTimeout {
+		return writeScreenTimeout(model.ScreenTimeoutName(setting.Value))
 	}
 	if name, ok := model.SonarAppNameOf(setting.Key); ok {
 		return sonar.MoveApp(name, model.SonarChannelName(setting.Value))
@@ -469,6 +484,8 @@ func (d driver) Write(device *model.Device, setting *model.Setting) error {
 				model.AutoPowerOffName(setting.Value))
 		}
 		return conn.Send(setAutoPowerOff, wire)
+	case model.SettingScreen:
+		return writeScreen(conn, setting.Value != 0)
 	case model.SettingWirelessMode:
 		if err := conn.Send(setWirelessMode, byte(setting.Value)); err != nil {
 			return err

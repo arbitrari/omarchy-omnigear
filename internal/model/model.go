@@ -176,6 +176,10 @@ const (
 	// CapUSBPort — which of a base station's USB ports it is listening on.
 	// Reported, not set.
 	CapUSBPort Capability = "usb-port"
+	// CapScreen — turning a base station's screen off, and off by itself
+	// after a while untouched. Neither is the device's: OmniGear blanks the
+	// screen and keeps the timer. See drivers/steelseries.
+	CapScreen Capability = "screen"
 )
 
 // USBID is a vendor/product pair a model shows up as. A model that enumerates
@@ -822,6 +826,24 @@ func GainName(value uint32) string         { return choiceName(gainSlugs, value)
 func WirelessModeValue(slug string) (uint32, bool) { return choiceValue(wirelessModeSlugs, slug) }
 func WirelessModeName(value uint32) string         { return choiceName(wirelessModeSlugs, value) }
 
+// screenTimeoutSlugs are how long a screen may go untouched before it is
+// turned off. As with auto power off, the index is what a Setting carries.
+var screenTimeoutSlugs = []string{"never", "1-min", "5-min", "10-min", "15-min", "30-min", "1-hour"}
+
+func ScreenTimeoutValue(slug string) (uint32, bool) { return choiceValue(screenTimeoutSlugs, slug) }
+func ScreenTimeoutName(value uint32) string         { return choiceName(screenTimeoutSlugs, value) }
+
+// Screen is whether a base station's screen is on, and how long it may go
+// untouched before it is turned off.
+//
+// On is OmniGear's belief rather than a reading: the screen cannot be asked.
+// It is false from the moment OmniGear turns the screen off until the base
+// station is next heard from, which touching it causes.
+type Screen struct {
+	On      bool    `json:"on"`
+	Timeout *Choice `json:"timeout"`
+}
+
 // DSEE is whether a Sony headset's upscaling is on. Label is the model's own
 // name for it, since the same switch is sold under more than one.
 type DSEE struct {
@@ -970,6 +992,7 @@ type DeviceState struct {
 	Sonar          *Sonar        `json:"sonar"`
 	MicMuted       *bool         `json:"micMuted"`
 	USBPort        *int          `json:"usbPort"`
+	Screen         *Screen       `json:"screen"`
 	// Errors holds non-fatal problems, one per capability that could not be
 	// read. Never nil, so it marshals as [] rather than null.
 	Errors []string `json:"errors"`
@@ -1056,6 +1079,10 @@ const (
 	SettingWirelessMode SettingKey = "wireless-mode"
 	// SettingSonar restarts the sound server; see package sonar.
 	SettingSonar SettingKey = "sonar"
+	// SettingScreen and SettingScreenTimeout are read back from what
+	// OmniGear recorded, since the screen cannot be asked; see Screen.
+	SettingScreen        SettingKey = "screen"
+	SettingScreenTimeout SettingKey = "screen-timeout"
 
 	// HITS is per click and per field, so each combination is its own key.
 	// Three fields across two buttons is small enough to name outright, and
@@ -1167,7 +1194,7 @@ func ParseSetting(key, value string) (Setting, error) {
 				value, strings.Join(codecSlugs, ", "))
 		}
 		return Setting{Key: SettingCodec, Value: codec}, nil
-	case "dsee", "speak-to-chat", "touch-panel", "sonar":
+	case "dsee", "speak-to-chat", "touch-panel", "sonar", "screen":
 		on, ok := parseSwitch(value)
 		if !ok {
 			return Setting{}, fmt.Errorf("%q is not on or off", value)
@@ -1180,6 +1207,13 @@ func ParseSetting(key, value string) (Setting, error) {
 				value, strings.Join(autoPowerOffSlugs, ", "))
 		}
 		return Setting{Key: SettingAutoPowerOff, Value: choice}, nil
+	case "screen-timeout":
+		choice, ok := ScreenTimeoutValue(value)
+		if !ok {
+			return Setting{}, fmt.Errorf("%q is not a screen timeout (expected one of: %s)",
+				value, strings.Join(screenTimeoutSlugs, ", "))
+		}
+		return Setting{Key: SettingScreenTimeout, Value: choice}, nil
 	case "sidetone":
 		choice, ok := SidetoneValue(value)
 		if !ok {
@@ -1457,6 +1491,16 @@ func (s *DeviceState) Reading(key SettingKey) (uint32, bool) {
 	case SettingSonar:
 		if s.Sonar != nil {
 			return boolToValue(s.Sonar.Enabled), true
+		}
+
+	case SettingScreen:
+		if s.Screen != nil {
+			return boolToValue(s.Screen.On), true
+		}
+
+	case SettingScreenTimeout:
+		if s.Screen != nil && s.Screen.Timeout != nil {
+			return ScreenTimeoutValue(s.Screen.Timeout.Current)
 		}
 
 	case SettingMicVolume:
