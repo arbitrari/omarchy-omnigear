@@ -834,7 +834,7 @@ func ScreenTimeoutValue(slug string) (uint32, bool) { return choiceValue(screenT
 func ScreenTimeoutName(value uint32) string         { return choiceName(screenTimeoutSlugs, value) }
 
 // screenSaverSlugs are what a screen shows while it is off.
-var screenSaverSlugs = []string{"blank", "dvd", "omarchy", "omnigear", "now-playing"}
+var screenSaverSlugs = []string{"blank", "dvd", "omarchy", "omnigear", "now-playing", "now-playing-cover"}
 
 func ScreenSaverValue(slug string) (uint32, bool) { return choiceValue(screenSaverSlugs, slug) }
 func ScreenSaverName(value uint32) string         { return choiceName(screenSaverSlugs, value) }

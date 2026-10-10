@@ -819,7 +819,9 @@ new track starts both over. Every 30 s the whole layout moves a pixel, round
 a 2 by 2 square, which spreads the wear of what stays lit, such as the bar's
 outline.
 
-When the player gives the track's cover, as `mpris:artUrl`, the cover fills
+Now Playing comes in two versions, with and without the cover. The one
+without never fetches anything. In the other, when the player gives the
+track's cover, as `mpris:artUrl`, the cover fills
 the left 48 by 48 pixels. The title, the artists, and the times sit in the
 column to its right and scroll within it, and the bar runs under both. With
 no cover, while the cover loads, or when it fails to load, the layout is the

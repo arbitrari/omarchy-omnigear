@@ -33,6 +33,7 @@ var screenSavers = []screenSaver{
 	{slug: "omarchy", label: "Omarchy", play: playEffects(omarchyArt)},
 	{slug: "omnigear", label: "OmniGear", play: playEffects(func() *picture { return embeddedOmniGear })},
 	{slug: "now-playing", label: "Now Playing", play: playNowPlaying},
+	{slug: "now-playing-cover", label: "Now Playing + Cover", play: playNowPlayingCover},
 }
 
 var embeddedOmniGear = mustArt("omnigear")

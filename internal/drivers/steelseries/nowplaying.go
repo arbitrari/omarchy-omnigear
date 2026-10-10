@@ -117,7 +117,11 @@ type nowPlaying struct {
 	since int
 }
 
-func playNowPlaying() animation { return newNowPlaying(mpris.NowPlaying, time.Now, loadCover) }
+func playNowPlaying() animation { return newNowPlaying(mpris.NowPlaying, time.Now, nil) }
+
+func playNowPlayingCover() animation {
+	return newNowPlaying(mpris.NowPlaying, time.Now, loadCover)
+}
 
 // newNowPlaying asks once before the first frame, so a run that starts on a
 // track does not show "Nothing playing" first.
@@ -178,7 +182,8 @@ func (p *nowPlaying) answered(r reading) {
 		return
 	}
 	p.coverURL, p.cover = artURL, nil
-	if artURL == "" {
+	// Without a loader the screensaver is the one without the cover.
+	if artURL == "" || p.load == nil {
 		return
 	}
 	go func() {
