@@ -38,6 +38,12 @@ Item {
     width: parent ? parent.width : implicitWidth
     implicitHeight: rowHeight
 
+    // The labels do not wrap or scroll, so a tab past the edge is cut off.
+    // Said in the log, where scripts/render-card looks for it.
+    readonly property bool overflowing: width > 0 && labels.implicitWidth > width
+    onOverflowingChanged: if (overflowing)
+        console.warn("TabBar overflows:", labels.implicitWidth, ">", width)
+
     // The rail runs the full width so the strip reads as one surface, with the
     // active tab's segment sitting brighter on top of it.
     Rectangle {

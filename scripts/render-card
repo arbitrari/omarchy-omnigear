@@ -35,6 +35,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Commons
+import qs.Ui
 import "omnigear/Model.js" as Model
 import "omnigear/ui"
 
@@ -43,22 +44,30 @@ ShellRoot {
     readonly property var device: Model.parseDevice(JSON.parse(fixture.text()).device)
 
     FloatingWindow {
-        implicitWidth: 480
+        implicitWidth: frame.width
         implicitHeight: Math.max(200, frame.height)
         color: Color.background
 
-        // The window's own content item cannot be grabbed; this can.
-        Rectangle {
+        // The popup's own surface, sized as DevicePanel sizes it, with the card
+        // inside less the scrollbar gutter. The card then wraps and overflows
+        // as it does in the bar.
+        BorderSurface {
             id: frame
-            width: 480
-            height: card.implicitHeight + 20
-            color: Color.background
+            width: Style.space(400)
+            height: card.implicitHeight + contentTopInset + contentBottomInset
+            color: Color.popups.background
+            borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, Math.max(1, Style.space(2)))
+            padding: Style.spacing.popupPadding
+            radius: Style.cornerRadius
 
             DeviceCard {
                 id: card
-                x: 10; y: 10; width: 460
+                x: frame.contentLeftInset
+                y: frame.contentTopInset
+                width: frame.width - frame.contentLeftInset - frame.contentRightInset - Style.space(8)
                 device: root.device
                 activeTab: Quickshell.env("OG_TAB")
+                Component.onCompleted: console.log("render-card: card width", width)
             }
         }
 
@@ -91,7 +100,10 @@ for tab in "${tabs[@]}"; do
   rm -f "$png"
   QT_QPA_PLATFORM=offscreen OG_DEVICE="$OUT/device.json" OG_TAB="$tab" OG_OUT="$png" \
     timeout 20 quickshell -p "$H/shell.qml" >"$OUT/${tab:-card}.log" 2>&1 || true
-  if [[ -f $png ]]; then
+  if grep -q "TabBar overflows" "$OUT/${tab:-card}.log"; then
+    echo "tab '${tab}': the tabs run past the card: see $OUT/${tab:-card}.log" >&2
+    exit 1
+  elif [[ -f $png ]]; then
     echo "$png"
   else
     echo "render failed for tab '${tab}': see $OUT/${tab:-card}.log" >&2
