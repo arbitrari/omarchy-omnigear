@@ -102,7 +102,7 @@ No keyboards are supported yet. Planned brands: Logitech, Razer, Wooting, Keychr
 - **Battery.** The charge of the headset and of the spare battery in the base station, in eighths.
 - **Noise Control.** Noise cancelling, transparency, or off, with the transparency level. Shown in the **Sound** tab.
 - **Equalizer.** A 10-band equalizer for each Sonar channel, with Flat, Bass Boost, Treble Boost, Vocal, and Custom presets. Shown in the **Equalizer** tab.
-- **Wireless Mode.** Favor low latency (speed) or distance (range). The headset drops for a few seconds while it reconnects. Shown in the **Wireless** tab.
+- **Wireless Mode.** Favor low latency (speed) or distance (range). The headset drops for a few seconds while it reconnects. Shown in the **Power** tab.
 - **Sonar.** Separate Game, Chat, Media, and Aux outputs, like SteelSeries Sonar. The base station's ChatMix dial balances Game against Chat. Set each channel's volume, and move each playing app to a channel. An app keeps its channel the next time it plays. Turning Sonar on or off restarts PipeWire, so audio drops for a moment. Shown in the **Sonar** tab.
 - **Screen.** Turn the base station's screen off, or have it turn off after 1 minute to 1 hour untouched. Turning the knob or the dial brings it back. Shown in the **Screen** tab.
 

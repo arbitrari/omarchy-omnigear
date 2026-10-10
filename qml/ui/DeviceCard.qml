@@ -518,25 +518,6 @@ Rectangle {
             }
         }
 
-        // --- wireless ------------------------------------------------------
-        ChoiceControl {
-            bar: root.bar
-            busy: root.busy
-            visible: root.showingDetail && root.currentTab === "wireless"
-                && root.device && root.device.wirelessMode !== null
-            capability: "wireless-mode"
-            choice: root.device ? root.device.wirelessMode : null
-            // Said up front, because the drop is otherwise indistinguishable
-            // from the change having broken something.
-            tooltips: ({
-                "speed": "The lowest latency. The headset reconnects for a few seconds when switched.",
-                "range": "Holds the link further from the base station. The headset reconnects for a few seconds when switched."
-            })
-            onRequested: function (slug) {
-                root.settingRequested("wireless-mode", slug);
-            }
-        }
-
         // --- screen --------------------------------------------------------
         Column {
             width: parent.width
@@ -575,6 +556,25 @@ Rectangle {
             choice: root.device ? root.device.autoPowerOff : null
             onRequested: function (slug) {
                 root.settingRequested("auto-power-off", slug);
+            }
+        }
+
+        // --- wireless ------------------------------------------------------
+        ChoiceControl {
+            bar: root.bar
+            busy: root.busy
+            visible: root.showingDetail && root.currentTab === "power"
+                && root.device && root.device.wirelessMode !== null
+            capability: "wireless-mode"
+            choice: root.device ? root.device.wirelessMode : null
+            // Said up front, because the drop is otherwise indistinguishable
+            // from the change having broken something.
+            tooltips: ({
+                "speed": "The lowest latency. The headset reconnects for a few seconds when switched.",
+                "range": "Holds the link further from the base station. The headset reconnects for a few seconds when switched."
+            })
+            onRequested: function (slug) {
+                root.settingRequested("wireless-mode", slug);
             }
         }
 

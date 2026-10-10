@@ -569,9 +569,9 @@ var TAB_GROUPS = [
   { id: "mic", label: "Mic", capabilities: ["mic-volume", "sidetone", "mute-light"] },
   { id: "controls", label: "Controls", capabilities: ["touch-panel"] },
   { id: "sonar", label: "Sonar", capabilities: ["sonar"] },
-  { id: "wireless", label: "Wireless", capabilities: ["wireless-mode"] },
   { id: "screen", label: "Screen", capabilities: ["screen"] },
-  { id: "power", label: "Power", capabilities: ["auto-power-off"] }
+  // Wireless mode has no tab of its own: a seventh tab runs past the panel.
+  { id: "power", label: "Power", capabilities: ["auto-power-off", "wireless-mode"] }
 ]
 
 /// The devices of one kind. Each kind gets its own primary, because "the
