@@ -494,6 +494,11 @@ Panel {
                                     onReportRequested: {
                                         root.requestReport(modelData.id);
                                     }
+                                    screenPreview: root.gear ? root.gear.screenPreview : null
+                                    onScreenPreviewWanted: function (slug) {
+                                        if (root.gear)
+                                            root.gear.previewScreen(slug);
+                                    }
                                 }
                             }
                         }

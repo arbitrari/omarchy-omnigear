@@ -69,6 +69,13 @@ Rectangle {
     // Asks the panel to write this device up as a support request.
     signal reportRequested()
 
+    // The screensaver preview, from the service: { slug, path, at, version }.
+    // Kept there, since this card is rebuilt on every poll.
+    property var screenPreview: null
+
+    // Asks for a screensaver's preview, while the screen tab shows it.
+    signal screenPreviewWanted(string slug)
+
     // Falls back to the first tab when the panel has no preference yet, or
     // when a remembered tab no longer exists because the device lost that
     // capability.
@@ -520,10 +527,23 @@ Rectangle {
 
         // --- screen --------------------------------------------------------
         Column {
+            id: screenTab
+
+            readonly property string saver: root.device && root.device.screen && root.device.screen.saver
+                ? root.device.screen.saver.current : ""
+            readonly property string wantedPreview: visible ? saver : ""
+
+            function askForPreview() {
+                if (wantedPreview !== "")
+                    root.screenPreviewWanted(wantedPreview);
+            }
+
             width: parent.width
             spacing: Style.space(10)
             visible: root.showingDetail && root.currentTab === "screen"
                 && root.device && root.device.screen !== null
+            onWantedPreviewChanged: askForPreview()
+            Component.onCompleted: askForPreview()
 
             ScreenControl {
                 bar: root.bar
@@ -541,6 +561,40 @@ Rectangle {
                 choice: root.device && root.device.screen ? root.device.screen.saver : null
                 onRequested: function (slug) {
                     root.settingRequested("screen-saver", slug);
+                }
+            }
+
+            // The chosen screensaver as the screen draws it, on black like
+            // the OLED. Blank has no preview, so it shows nothing here.
+            Rectangle {
+                readonly property var preview: root.screenPreview
+                readonly property int inset: Style.space(6)
+                // The screen is 128×64. A whole number of pixels to each of
+                // its pixels keeps the art sharp.
+                readonly property int zoom: Math.max(1, Math.min(2, Math.floor((screenTab.width - 2 * inset) / 128)))
+
+                visible: screenTab.saver !== "" && preview !== null
+                    && preview.slug === screenTab.saver && preview.path !== ""
+                width: 128 * zoom + 2 * inset
+                height: 64 * zoom + 2 * inset
+                radius: Style.space(6)
+                color: "black"
+                border.width: 1
+                border.color: Util.alpha(root.foreground, 0.2)
+
+                AnimatedImage {
+                    x: parent.inset
+                    y: parent.inset
+                    width: 128 * parent.zoom
+                    height: 64 * parent.zoom
+                    smooth: false
+                    cache: false
+                    // This card is rebuilt on every poll, and the GIF starts
+                    // again from its first frame with it. Qt cannot seek in a
+                    // GIF: setting currentFrame from the time since it landed
+                    // stops it on frame 0 instead.
+                    source: parent.visible
+                        ? "file://" + parent.preview.path + "?v=" + parent.preview.version : ""
                 }
             }
 

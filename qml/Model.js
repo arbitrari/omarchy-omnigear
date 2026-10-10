@@ -1089,3 +1089,31 @@ function isMicMuted(device, live) {
 /// Nerd Font nf-md-microphone_off (U+F036D), written as its surrogate pair
 /// since it is past what a single \u escape reaches.
 var MIC_MUTED = "\uDB80\uDF6D"
+
+/// How long a Now Playing preview is good for. It shows the track as it was
+/// when it was drawn, and the track moves on. The others look the same each
+/// time they are drawn.
+var PREVIEW_STALE_MS = 15000
+
+/// Whether the screensaver preview should be drawn again, for a card asking
+/// for slug's, given the one there is.
+function previewDue(preview, slug, now) {
+  if (!slug) return false
+  if (!preview || preview.slug !== slug) return true
+  return slug.indexOf("now-playing") === 0 && now - preview.at >= PREVIEW_STALE_MS
+}
+
+/// A `screen-preview` reply: where the GIF is. A saver with nothing to show,
+/// or a preview that failed, has no path, and the card shows nothing.
+function parsePreviewPath(raw) {
+  if (typeof raw !== "string" || raw === "" || raw.length > MAX_REPLY) return ""
+  var data
+  try {
+    data = JSON.parse(raw)
+  } catch (e) {
+    return ""
+  }
+  if (!data || data.ok !== true) return ""
+  var path = safeText(data.path, "", 512)
+  return path.charAt(0) === "/" ? path : ""
+}

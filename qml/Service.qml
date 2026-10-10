@@ -164,6 +164,17 @@ Item {
         property var chatMix: ({})
         property var micMuted: ({})
         property var pendingVolume: null
+        property var screenPreview: ({ slug: "", path: "", at: 0, version: 0 })
+        property string previewing: ""
+        property string queuedPreview: ""
+
+        function nextPreview() {
+            if (previewProcess.running || previewing !== "" || queuedPreview === "")
+                return;
+            var next = queuedPreview;
+            queuedPreview = "";
+            root.previewScreen(next);
+        }
 
         // Counts completed writes. A read that started before a write finished
         // is carrying pre-write values, and applying it would undo what the
@@ -345,6 +356,53 @@ Item {
         interval: 5000
         onTriggered: if (root.wantsWatch && !watchProcess.running)
             watchProcess.running = true
+    }
+
+    // --- screensaver preview --------------------------------------------
+    //
+    // The chosen screensaver, drawn to a GIF by `omnigear screen-preview`
+    // for the card to show under the choice. Kept here because the cards are
+    // rebuilt on every poll: each one asks again, and only a new choice, or
+    // a Now Playing preview the track has moved on from, is drawn again.
+    // `at` is when the file landed, and `version` changes with every file,
+    // so an image does not show the last one from its cache.
+    readonly property var screenPreview: internal.screenPreview
+
+    function previewScreen(slug) {
+        if (root.binaryMissing)
+            return;
+        // A slug is the only thing that says which saver a reply is for, so
+        // a second is not started until the first has both exited and been
+        // read, whichever of the two comes last.
+        if (previewProcess.running || internal.previewing !== "") {
+            internal.queuedPreview = slug !== internal.previewing ? slug : "";
+            return;
+        }
+        if (!Model.previewDue(internal.screenPreview, slug, Date.now()))
+            return;
+        internal.previewing = slug;
+        previewProcess.command = [root.binary, "screen-preview", slug];
+        previewProcess.running = true;
+    }
+
+    Process {
+        id: previewProcess
+        stdout: StdioCollector {
+            id: previewOut
+            waitForEnd: true
+            onStreamFinished: {
+                internal.screenPreview = {
+                    slug: internal.previewing,
+                    path: Model.parsePreviewPath((previewOut.text || "").trim()),
+                    at: Date.now(),
+                    version: internal.screenPreview.version + 1
+                };
+                internal.previewing = "";
+                internal.nextPreview();
+            }
+        }
+        onRunningChanged: if (!running)
+            internal.nextPreview()
     }
 
     // Refresh charge without touching the hardware. What comes back is folded
