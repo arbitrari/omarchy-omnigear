@@ -25,11 +25,11 @@ var screenSavers = []screenSaver{
 	// At the pace of a DVD player's, a pixel each way every frame, 25 a
 	// second.
 	{slug: "dvd", label: "DVD", play: drifting(mustArt("dvd"), 1)},
-	{slug: "omarchy", label: "Omarchy", play: playOmarchy},
-	// A wordmark drifts more slowly, about 8 a second, to be read rather
-	// than watched.
-	{slug: "omnigear", label: "OmniGear", play: drifting(mustArt("omnigear"), 3)},
+	{slug: "omarchy", label: "Omarchy", play: playEffects(omarchyArt)},
+	{slug: "omnigear", label: "OmniGear", play: playEffects(func() *picture { return embeddedOmniGear })},
 }
+
+var embeddedOmniGear = mustArt("omnigear")
 
 func findScreenSaver(slug string) (*screenSaver, bool) {
 	for i := range screenSavers {

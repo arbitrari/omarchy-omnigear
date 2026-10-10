@@ -10,9 +10,10 @@ import (
 	"github.com/arbitrari/omarchy-omnigear/internal/transport/arctis"
 )
 
-// The Omarchy screensaver is Omarchy's own, on the base station: a round at a
-// time, an effect picked at random builds the logo, which holds, then fades.
-// Each round puts the logo somewhere else, so it never sits in one place.
+// The effects are Omarchy's own screensaver's, on the base station: a round
+// at a time, an effect picked at random builds a logo, which holds, then
+// fades. Each round puts the logo somewhere else, so it never sits in one
+// place. The Omarchy and OmniGear screensavers both play them.
 
 // A round's frames, at 25 a second.
 const (
@@ -122,22 +123,24 @@ type round struct {
 	particles []particle
 }
 
-// omarchyShow is a run of the Omarchy screensaver. Every round follows from
+// effectShow is a run of the effects over one logo. Every round follows from
 // the seed, so a run is the same each time it is drawn from that seed.
-type omarchyShow struct {
+type effectShow struct {
 	art   *picture
 	seed  uint64
 	round round
 }
 
-// playOmarchy reads the art afresh, so a logo rebranded since shows at the
-// next run.
-func playOmarchy() animation {
-	return newOmarchyShow(omarchyArt(), uint64(time.Now().UnixNano()))
+// playEffects starts a run over the art art returns, which is read at the
+// start of each run, so a logo rebranded since shows at the next.
+func playEffects(art func() *picture) func() animation {
+	return func() animation {
+		return newEffectShow(art(), uint64(time.Now().UnixNano()))
+	}
 }
 
-func newOmarchyShow(art *picture, seed uint64) *omarchyShow {
-	s := &omarchyShow{art: art, seed: seed}
+func newEffectShow(art *picture, seed uint64) *effectShow {
+	s := &effectShow{art: art, seed: seed}
 	s.round = s.plan(0, -1)
 	return s
 }
@@ -174,7 +177,7 @@ func omarchyArt() *picture {
 
 // plan lays out round n: an effect other than the last round's, and a place
 // for the art anywhere it fits.
-func (s *omarchyShow) plan(n, last int) round {
+func (s *effectShow) plan(n, last int) round {
 	rng := rand.New(rand.NewPCG(s.seed, uint64(n)))
 	pick := rng.IntN(len(effects))
 	if last >= 0 {
@@ -204,7 +207,7 @@ func (s *omarchyShow) plan(n, last int) round {
 	return round{n: n, effect: pick, particles: ps}
 }
 
-func (s *omarchyShow) frame(n int) *arctis.Frame {
+func (s *effectShow) frame(n int) *arctis.Frame {
 	r := n / roundFrames
 	if r < s.round.n {
 		s.round = s.plan(0, -1)

@@ -731,10 +731,10 @@ The belief stays off until the next report, which corrects it.
 Off draws the chosen screensaver: Blank, a DVD-style bouncing logo, the
 Omarchy logo, or the OmniGear wordmark. The screen is an OLED, and a picture
 that stays lit leaves a ghost, so every screensaver but Blank moves. The DVD
-logo and the OmniGear wordmark bounce off the edges on a diagonal, a pixel
-each way every frame for the logo and every third frame for the wordmark,
-about 8 pixels a second. Each is narrower than the screen by a different
-amount each way, so in time it crosses all of it.
+logo bounces off the edges on a diagonal, a pixel each way every frame. It is
+narrower than the screen by a different amount each way, so in time it
+crosses all of it. The Omarchy and OmniGear screensavers play the effects
+below, over the Omarchy logo and the OmniGear wordmark.
 
 The Omarchy screensaver copies Omarchy's own. That one runs `ttfx
 --random-effect` in a loop over `~/.config/omarchy/branding/screensaver.txt`,
