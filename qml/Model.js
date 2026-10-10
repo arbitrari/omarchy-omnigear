@@ -165,7 +165,8 @@ function parseDevice(raw) {
     usbPort: Number(s.usbPort) > 0 ? Number(s.usbPort) : 0,
     screen: s.screen ? {
       on: s.screen.on === true,
-      timeout: parseChoice(s.screen.timeout)
+      timeout: parseChoice(s.screen.timeout),
+      saver: parseChoice(s.screen.saver)
     } : null,
     sonar: s.sonar ? {
       enabled: s.sonar.enabled === true,
@@ -622,8 +623,9 @@ function capabilityLabel(capability) {
   case "mic-mute": return "Mic Mute"
   case "usb-port": return "USB Port"
   case "screen": return "Screen"
-  // Not a capability: the screen's second control, which ChoiceControl
-  // heads by this name.
+  // Not capabilities: the screen's other controls, which ChoiceControl
+  // heads by these names.
+  case "screen-saver": return "Screensaver"
   case "screen-timeout": return "Screen Timeout"
   default: return capability
   }

@@ -537,6 +537,16 @@ Rectangle {
             ChoiceControl {
                 bar: root.bar
                 busy: root.busy
+                capability: "screen-saver"
+                choice: root.device && root.device.screen ? root.device.screen.saver : null
+                onRequested: function (slug) {
+                    root.settingRequested("screen-saver", slug);
+                }
+            }
+
+            ChoiceControl {
+                bar: root.bar
+                busy: root.busy
                 capability: "screen-timeout"
                 choice: root.device && root.device.screen ? root.device.screen.timeout : null
                 tooltips: ({ "never": "The screen stays on until you turn it off." })

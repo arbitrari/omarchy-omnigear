@@ -707,7 +707,8 @@ draws the screen too.
 
 None of this can be read back, so the state lives in OmniGear's own files:
 
-- `~/.config/omnigear/screen.json` holds the timeout, `never` by default.
+- `~/.config/omnigear/screen.json` holds the timeout, `never` by default,
+  and the screensaver, `blank` by default.
 - `$XDG_RUNTIME_DIR/omnigear/screen.json` holds whether OmniGear believes the
   screen is off, and when that last changed. `set` and `watch` both write it,
   whole and atomically. Each write records a real event, so the last one wins.
@@ -724,6 +725,44 @@ counts as a touch.
 
 A press of the knob without a turn brings the screen back but sends nothing.
 The belief stays off until the next report, which corrects it.
+
+### Off shows a screensaver
+
+Off draws the chosen screensaver: Blank, a DVD-style bouncing logo, or the
+Omarchy or OmniGear wordmark. The screen is an OLED, and a picture that stays
+lit leaves a ghost, so every screensaver but Blank moves. The art bounces off
+the edges on a diagonal, a pixel each way every frame for the DVD logo and
+every third frame for the wordmarks, about 8 pixels a second. It is narrower
+than the screen by a different amount each way, so in time it crosses all of
+it.
+
+A frame is the same two `06 93` tiles, and each takes 18 ms to send, so a
+frame takes 36 ms however little of it changed. The bus allows 28 frames a
+second. The screensaver draws 25, which keeps the link about nine tenths
+busy: 10 looked jerky beside it on the base station. Each frame is due 40 ms
+after the last, counted from the first, so the time a frame takes to send
+does not slow the rate. A frame drawn late skips to the one that is due.
+
+Only `watch` moves a screensaver, since it is the one process that keeps
+running. `set screen off` still draws the screen dark, at once, and `watch`
+puts the screensaver on it at its next read of the belief, within five
+seconds. When the timeout passes, `watch` starts the screensaver itself.
+Blank is drawn once, as before.
+
+While a screensaver moves, `watch` reads the base station's reports between
+frames, so a touch is seen within one frame. The base station has already
+drawn its own screen by then, but a frame sent at the same moment can cover it
+again, so `watch` stops and sends `06 95` anyway. It rereads the files at most
+every 500 ms. A belief that has turned on, from the panel, stops it and sends
+`06 95` again for the same reason. A different screensaver takes over from its
+first frame.
+
+A press of the knob sends nothing, so it brings the base station's screen back
+only until the next frame covers it.
+
+`scripts/screensaver-art` draws the art as 1-bit PBM files, which the driver
+embeds. It needs ImageMagick and librsvg, and reads the Omarchy wordmark from
+the installed Omarchy. Nothing at runtime does.
 
 ### Arctis Manager takes the interface away
 

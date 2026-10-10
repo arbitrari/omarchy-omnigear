@@ -5,8 +5,9 @@ import "../Model.js" as Model
 
 // Capability control: a base station's screen, on or off.
 //
-// Off is OmniGear's dark picture, not the device's own off, so the base
-// station takes its screen back as soon as it is touched.
+// Off is a picture OmniGear draws, dark or the chosen screensaver, not the
+// device's own off, so the base station takes its screen back as soon as it
+// is touched.
 Column {
     id: root
 
@@ -48,7 +49,7 @@ Column {
         focusable: false
 
         options: [
-            { value: "off", label: "Off", tooltip: "Blank the screen until the base station is touched." },
+            { value: "off", label: "Off", tooltip: "Show the screensaver until the base station is touched." },
             { value: "on", label: "On", tooltip: "Show the base station's own screen." }
         ]
         value: root.on === true ? "on" : "off"
