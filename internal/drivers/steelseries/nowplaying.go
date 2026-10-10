@@ -18,7 +18,16 @@ import (
 //	[########............]   progress
 //	1:12      ||      4:06   elapsed, paused, length, 5x7
 //
-// A line too long for the screen scrolls. The whole layout moves a pixel
+// With the album's cover, the cover takes the left of the screen, the text
+// the right, and the bar runs underneath both:
+//
+//	+------+ stardew
+//	| art  | Purity Ring
+//	|      | 1:12  ||  4:06
+//	+------+
+//	[########............]
+//
+// A line too long for its column scrolls. The whole layout moves a pixel
 // every 30 s, so nothing stays lit in one place. With nothing playing,
 // "Nothing playing" bounces as the DVD logo does.
 const (
@@ -40,15 +49,34 @@ const (
 // pixel spare at the right and bottom for them.
 var shifts = [...]point{{0, 0}, {1, 0}, {1, 1}, {0, 1}}
 
-// The layout, before its shift. Text and the bar span textLeft to textRight.
+// layout is where a track's parts go, before the shift. Text spans left to
+// right, and the bar barLeft to barRight, each right end exclusive.
+type layout struct {
+	left, right                   int
+	titleTop, artistTop, timesTop int
+	pauseLeft                     int
+	barLeft, barRight, barTop     int
+}
+
+var (
+	textOnly = layout{
+		left: 2, right: arctis.ScreenWidth - 3,
+		titleTop: 5, artistTop: 21, timesTop: 50,
+		pauseLeft: (arctis.ScreenWidth - pauseWidth) / 2,
+		barLeft:   2, barRight: arctis.ScreenWidth - 3, barTop: 39,
+	}
+	// beside is the layout beside a cover, which fills columns 0 to
+	// coverSize-1, and coverSize with the shift.
+	beside = layout{
+		left: coverSize + 3, right: arctis.ScreenWidth - 1,
+		titleTop: 2, artistTop: 18, timesTop: 41,
+		pauseLeft: (coverSize + 3 + arctis.ScreenWidth - 1 - pauseWidth) / 2,
+		barLeft:   0, barRight: arctis.ScreenWidth - 1, barTop: 53,
+	}
+)
+
 const (
-	textLeft   = 2
-	textRight  = arctis.ScreenWidth - 3
-	titleTop   = 5
-	artistTop  = 21
-	barTop     = 39
 	barHeight  = 7
-	timesTop   = 50
 	pauseWidth = 6
 )
 
@@ -65,6 +93,9 @@ type reading struct {
 type nowPlaying struct {
 	read func() (mpris.Track, bool)
 	now  func() time.Time
+	// load fetches a cover, which can take seconds, so it runs on a
+	// goroutine of its own.
+	load func(artURL string) (*picture, error)
 	idle drift
 
 	mu sync.Mutex
@@ -73,6 +104,12 @@ type nowPlaying struct {
 	latest reading
 	asking bool
 	asked  time.Time
+	// cover is the latest track's cover, nil while it loads and when it
+	// could not be loaded. Only the latest track's is kept, and it is
+	// fetched once, when the track's URL changes, so a URL that failed is
+	// not tried again every second.
+	coverURL string
+	cover    *picture
 
 	// shown is the track the marquees run for, and since the frame they
 	// started on. Only frame touches them.
@@ -80,15 +117,17 @@ type nowPlaying struct {
 	since int
 }
 
-func playNowPlaying() animation { return newNowPlaying(mpris.NowPlaying, time.Now) }
+func playNowPlaying() animation { return newNowPlaying(mpris.NowPlaying, time.Now, loadCover) }
 
 // newNowPlaying asks once before the first frame, so a run that starts on a
 // track does not show "Nothing playing" first.
-func newNowPlaying(read func() (mpris.Track, bool), now func() time.Time) *nowPlaying {
-	p := &nowPlaying{read: read, now: now, idle: drift{nothingPlaying, idleStep}}
+func newNowPlaying(read func() (mpris.Track, bool), now func() time.Time, load func(string) (*picture, error)) *nowPlaying {
+	p := &nowPlaying{read: read, now: now, load: load, idle: drift{nothingPlaying, idleStep}}
 	track, ok := read()
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.asked = now()
-	p.latest = reading{track, ok, p.asked}
+	p.answered(reading{track, ok, p.asked})
 	return p
 }
 
@@ -108,17 +147,17 @@ func textPicture(f *font, s string) *picture {
 	return p
 }
 
-// reading is the latest answer, and asks again if a second has passed and
-// no question is out. A player that hangs holds back the next question
-// only until mpris gives up on it.
-func (p *nowPlaying) reading(now time.Time) reading {
+// reading is the latest answer and its cover, and asks again if a second
+// has passed and no question is out. A player that hangs holds back the
+// next question only until mpris gives up on it.
+func (p *nowPlaying) reading(now time.Time) (reading, *picture) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if !p.asking && now.Sub(p.asked) >= pollEvery {
 		p.asking, p.asked = true, now
 		go p.ask()
 	}
-	return p.latest
+	return p.latest, p.cover
 }
 
 func (p *nowPlaying) ask() {
@@ -126,12 +165,38 @@ func (p *nowPlaying) ask() {
 	at := p.now()
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.latest, p.asking = reading{track, ok, at}, false
+	p.answered(reading{track, ok, at})
+	p.asking = false
+}
+
+// answered keeps r, and starts loading its cover if it has a new one. The
+// caller holds mu.
+func (p *nowPlaying) answered(r reading) {
+	p.latest = r
+	artURL := r.track.ArtURL
+	if !r.ok || artURL == p.coverURL {
+		return
+	}
+	p.coverURL, p.cover = artURL, nil
+	if artURL == "" {
+		return
+	}
+	go func() {
+		cover, err := p.load(artURL)
+		if err != nil {
+			return
+		}
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		if p.coverURL == artURL {
+			p.cover = cover
+		}
+	}()
 }
 
 func (p *nowPlaying) frame(n int) *arctis.Frame {
 	now := p.now()
-	r := p.reading(now)
+	r, cover := p.reading(now)
 	if !r.ok {
 		p.shown = ""
 		return p.idle.frame(n)
@@ -146,36 +211,45 @@ func (p *nowPlaying) frame(n int) *arctis.Frame {
 	if r.track.Length > 0 {
 		position = min(position, r.track.Length)
 	}
-	return drawTrack(r.track, position, max(n-p.since, 0), shifts[n/shiftFrames%len(shifts)])
+	return drawTrack(r.track, cover, position, max(n-p.since, 0), shifts[n/shiftFrames%len(shifts)])
 }
 
-// drawTrack lays out a track at a position, its lines scrolled as they are
-// after scrolled frames on screen.
-func drawTrack(track mpris.Track, position time.Duration, scrolled int, shift point) *arctis.Frame {
+// drawTrack lays out a track and its cover, if it has one, at a position,
+// its lines scrolled as they are after scrolled frames on screen.
+func drawTrack(track mpris.Track, cover *picture, position time.Duration, scrolled int, shift point) *arctis.Frame {
 	var frame arctis.Frame
-	left, right := textLeft+shift.x, textRight+shift.x
-	marquee(&frame, font6x13B, left, right, titleTop+shift.y, track.Title, scrolled)
-	marquee(&frame, font6x10, left, right, artistTop+shift.y, strings.Join(track.Artists, ", "), scrolled)
+	l := textOnly
+	if cover != nil {
+		l = beside
+		for x := range cover.width {
+			for y := range cover.height {
+				frame[x+shift.x][y+shift.y] = cover.at(x, y)
+			}
+		}
+	}
+	left, right := l.left+shift.x, l.right+shift.x
+	marquee(&frame, font6x13B, left, right, l.titleTop+shift.y, track.Title, scrolled)
+	marquee(&frame, font6x10, left, right, l.artistTop+shift.y, strings.Join(track.Artists, ", "), scrolled)
 
-	top := barTop + shift.y
-	for x := left; x < right; x++ {
+	barLeft, barRight, top := l.barLeft+shift.x, l.barRight+shift.x, l.barTop+shift.y
+	for x := barLeft; x < barRight; x++ {
 		frame[x][top], frame[x][top+barHeight-1] = true, true
 	}
 	for y := top; y < top+barHeight; y++ {
-		frame[left][y], frame[right-1][y] = true, true
+		frame[barLeft][y], frame[barRight-1][y] = true, true
 	}
 	// The fill sits a dark pixel inside the outline.
 	if track.Length > 0 {
-		inner := right - left - 4
+		inner := barRight - barLeft - 4
 		filled := int(int64(inner) * int64(position) / int64(track.Length))
-		for x := left + 2; x < left+2+filled; x++ {
+		for x := barLeft + 2; x < barLeft+2+filled; x++ {
 			for y := top + 2; y < top+barHeight-2; y++ {
 				frame[x][y] = true
 			}
 		}
 	}
 
-	times := timesTop + shift.y
+	times := l.timesTop + shift.y
 	hours := track.Length >= time.Hour || position >= time.Hour
 	font5x7.draw(&frame, wholeScreen, clockTime(position, hours), left, times)
 	if track.Length > 0 {
@@ -183,7 +257,7 @@ func drawTrack(track mpris.Track, position time.Duration, scrolled int, shift po
 		font5x7.draw(&frame, wholeScreen, total, right-font5x7.measure(total), times)
 	}
 	if !track.Playing {
-		pause := (arctis.ScreenWidth-pauseWidth)/2 + shift.x
+		pause := l.pauseLeft + shift.x
 		for y := times; y < times+font5x7.height-1; y++ {
 			for _, x := range []int{0, 1, 4, 5} {
 				frame[pause+x][y] = true

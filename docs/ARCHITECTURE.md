@@ -819,6 +819,41 @@ new track starts both over. Every 30 s the whole layout moves a pixel, round
 a 2 by 2 square, which spreads the wear of what stays lit, such as the bar's
 outline.
 
+When the player gives the track's cover, as `mpris:artUrl`, the cover fills
+the left 48 by 48 pixels. The title, the artists, and the times sit in the
+column to its right and scroll within it, and the bar runs under both. With
+no cover, while the cover loads, or when it fails to load, the layout is the
+text-only one.
+
+Spotify gives an https URL to a 640 px JPEG, and other players give a
+`file://` path or a PNG. The driver fetches http and https with a 3 s
+timeout, reads `file://` paths, and reads at most 5 MB either way. It
+decodes JPEG and PNG with the standard library, and any other format shows
+no cover. An image that says it is wider or taller than 4096 px is refused
+before it is decoded, because decoding it would take that much memory.
+
+The fetch runs on a goroutine of its own and never inside a frame. The
+goroutine that asks the players starts it when the track's URL changes, and
+each frame draws whatever cover has arrived. Only the current track's cover
+is kept. A URL that fails is not tried again until the track changes, so a
+dead link costs one fetch, not one a second.
+
+The cover is dithered to one bit in five steps.
+
+1. Crop the image to its center square.
+2. Shrink the square to 48 px, each pixel the mean luma of the pixels it
+   covers.
+3. Stretch the grays so the darkest is black and the lightest white.
+4. Draw the darkest 10% as black and stretch the rest over the full range.
+5. Diffuse each pixel's error to its neighbors, as Floyd and Steinberg do,
+   with a threshold of half.
+
+The steps were chosen by eye, on a dark cover and a busy one. A plain
+threshold loses every midtone. An ordered (Bayer) dither leaves a visible
+grid across a dark background. Brightening the grays with a gamma curve
+only adds noise. Without step 4, a near-black background dithers to a
+scatter of lit pixels.
+
 ### Arctis Manager takes the interface away
 
 Arctis Manager drives the base station through libusb, which unbinds usbhid
