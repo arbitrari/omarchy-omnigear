@@ -14,6 +14,7 @@ import (
 
 	"github.com/arbitrari/omarchy-omnigear/internal/catalog"
 	"github.com/arbitrari/omarchy-omnigear/internal/discovery"
+	"github.com/arbitrari/omarchy-omnigear/internal/drivers/steelseries"
 	"github.com/arbitrari/omarchy-omnigear/internal/model"
 	"github.com/arbitrari/omarchy-omnigear/internal/sonar"
 	"github.com/arbitrari/omarchy-omnigear/internal/transport/hidpp"
@@ -63,6 +64,9 @@ USAGE:
                                            set a Sonar channel's volume at once, with
                                            no device read and no verifying one; for
                                            a knob being dragged
+    omnigear screen-preview <saver>        draw a base station screensaver to an
+                                           animated GIF, for the panel; no device
+                                           is touched
     omnigear watch                         follow a headset's ChatMix dial, applied
                                            to the Sonar channels, and its mute
                                            button; one JSON line per change, until
@@ -130,6 +134,11 @@ func run(args []string) (reply, error) {
 			return nil, fmt.Errorf("usage: omnigear sonar-volume <channel> <0-100>")
 		}
 		return cmdSonarVolume(args[1], args[2])
+	case "screen-preview":
+		if len(args) != 2 {
+			return nil, fmt.Errorf("usage: omnigear screen-preview <saver>")
+		}
+		return cmdScreenPreview(args[1])
 	case "catalog":
 		return cmdCatalog()
 	case "battery":
@@ -325,6 +334,19 @@ func cmdSonarVolume(channel, value string) (reply, error) {
 		return nil, err
 	}
 	return reply{"ok": true}, nil
+}
+
+// cmdScreenPreview replies with where the GIF is. Blank has none, and its
+// reply has no path.
+func cmdScreenPreview(saver string) (reply, error) {
+	path, err := steelseries.WriteScreenPreview(saver)
+	if err != nil {
+		return nil, err
+	}
+	if path == "" {
+		return reply{"ok": true}, nil
+	}
+	return reply{"ok": true, "path": path}, nil
 }
 
 func cmdCatalog() (reply, error) {

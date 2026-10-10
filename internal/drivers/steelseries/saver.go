@@ -2,9 +2,11 @@ package steelseries
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/arbitrari/omarchy-omnigear/internal/model"
 	"github.com/arbitrari/omarchy-omnigear/internal/transport/arctis"
+	"github.com/arbitrari/omarchy-omnigear/internal/transport/mpris"
 )
 
 // screenSaver is what the screen shows while it is off. The screen is an
@@ -14,8 +16,20 @@ type screenSaver struct {
 	slug, label string
 	// play starts a run of the screensaver. It is nil for Blank, which
 	// lights nothing and so need not move.
-	play func() animation
+	play func(stage) animation
+	// sample is how many frames a preview of it shows.
+	sample int
 }
+
+// stage is what a run plays against: the time, and the player Now Playing
+// shows. watch's is the real ones. A preview's clock moves a frame each
+// frame drawn, so a run of seconds renders in a moment.
+type stage struct {
+	now  func() time.Time
+	read func() (mpris.Track, bool)
+}
+
+var liveStage = stage{now: time.Now, read: mpris.NowPlaying}
 
 // animation is one run of a screensaver.
 type animation interface {
@@ -29,11 +43,11 @@ var screenSavers = []screenSaver{
 	{slug: "blank", label: "Blank"},
 	// At the pace of a DVD player's, a pixel each way every frame, 25 a
 	// second.
-	{slug: "dvd", label: "DVD", play: drifting(mustArt("dvd"), 1)},
-	{slug: "omarchy", label: "Omarchy", play: playEffects(omarchyArt)},
-	{slug: "omnigear", label: "OmniGear", play: playEffects(func() *picture { return embeddedOmniGear })},
-	{slug: "now-playing", label: "Now Playing", play: playNowPlaying},
-	{slug: "now-playing-cover", label: "Now Playing + Cover", play: playNowPlayingCover},
+	{slug: "dvd", label: "DVD", play: drifting(mustArt("dvd"), 1), sample: 200},
+	{slug: "omarchy", label: "Omarchy", play: playEffects(omarchyArt), sample: 2 * roundFrames},
+	{slug: "omnigear", label: "OmniGear", play: playEffects(func() *picture { return embeddedOmniGear }), sample: 2 * roundFrames},
+	{slug: "now-playing", label: "Now Playing", play: playNowPlaying, sample: 150},
+	{slug: "now-playing-cover", label: "Now Playing + Cover", play: playNowPlayingCover, sample: 150},
 }
 
 var embeddedOmniGear = mustArt("omnigear")
@@ -73,8 +87,8 @@ type drift struct {
 	step int
 }
 
-func drifting(art *picture, step int) func() animation {
-	return func() animation { return drift{art, step} }
+func drifting(art *picture, step int) func(stage) animation {
+	return func(stage) animation { return drift{art, step} }
 }
 
 func (d drift) frame(n int) *arctis.Frame {

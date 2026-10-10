@@ -110,6 +110,9 @@ type nowPlaying struct {
 	// not tried again every second.
 	coverURL string
 	cover    *picture
+	// loads counts the covers being fetched, for a preview to wait on, so
+	// it draws the cover from its first frame.
+	loads sync.WaitGroup
 
 	// shown is the track the marquees run for, and since the frame they
 	// started on. Only frame touches them.
@@ -117,11 +120,9 @@ type nowPlaying struct {
 	since int
 }
 
-func playNowPlaying() animation { return newNowPlaying(mpris.NowPlaying, time.Now, nil) }
+func playNowPlaying(s stage) animation { return newNowPlaying(s.read, s.now, nil) }
 
-func playNowPlayingCover() animation {
-	return newNowPlaying(mpris.NowPlaying, time.Now, loadCover)
-}
+func playNowPlayingCover(s stage) animation { return newNowPlaying(s.read, s.now, loadCover) }
 
 // newNowPlaying asks once before the first frame, so a run that starts on a
 // track does not show "Nothing playing" first.
@@ -186,7 +187,9 @@ func (p *nowPlaying) answered(r reading) {
 	if artURL == "" || p.load == nil {
 		return
 	}
+	p.loads.Add(1)
 	go func() {
+		defer p.loads.Done()
 		cover, err := p.load(artURL)
 		if err != nil {
 			return

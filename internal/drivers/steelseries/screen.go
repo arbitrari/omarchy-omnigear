@@ -62,12 +62,15 @@ func screenConfigPath() string {
 	return filepath.Join(dir, "omnigear", "screen.json")
 }
 
-func screenBeliefPath() string {
+func screenBeliefPath() string { return runtimePath("screen.json") }
+
+// runtimePath is a file kept until logout.
+func runtimePath(name string) string {
 	dir := os.Getenv("XDG_RUNTIME_DIR")
 	if dir == "" {
 		dir = filepath.Join(os.TempDir(), fmt.Sprintf("omnigear-%d", os.Getuid()))
 	}
-	return filepath.Join(dir, "omnigear", "screen.json")
+	return filepath.Join(dir, "omnigear", name)
 }
 
 // readScreenConfig is never and blank, until others are chosen. A file from
@@ -356,7 +359,7 @@ func (w *screenWatch) animate(now time.Time) (time.Duration, error) {
 
 // play starts a run of saver, from its first frame.
 func (w *screenWatch) play(now time.Time, saver *screenSaver) {
-	w.saver, w.show, w.started = saver, saver.play(), now
+	w.saver, w.show, w.started = saver, saver.play(liveStage), now
 }
 
 // draw sends the frame due now and says how long until the next one is due.
@@ -384,13 +387,17 @@ func readJSON(path string, v any) error {
 	return nil
 }
 
-// writeJSON replaces a file by renaming a finished copy over it, so a reader
-// never sees half of one.
 func writeJSON(path string, v any) error {
 	raw, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
+	return writeFile(path, raw)
+}
+
+// writeFile replaces a file by renaming a finished copy over it, so a reader
+// never sees half of one.
+func writeFile(path string, raw []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}

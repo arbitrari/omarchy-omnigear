@@ -5,7 +5,6 @@ import (
 	"math/rand/v2"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/arbitrari/omarchy-omnigear/internal/transport/arctis"
 )
@@ -133,9 +132,9 @@ type effectShow struct {
 
 // playEffects starts a run over the art art returns, which is read at the
 // start of each run, so a logo rebranded since shows at the next.
-func playEffects(art func() *picture) func() animation {
-	return func() animation {
-		return newEffectShow(art(), uint64(time.Now().UnixNano()))
+func playEffects(art func() *picture) func(stage) animation {
+	return func(s stage) animation {
+		return newEffectShow(art(), uint64(s.now().UnixNano()))
 	}
 }
 
