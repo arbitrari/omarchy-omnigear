@@ -126,6 +126,75 @@ func writeScreen(conn *arctis.Conn, on bool) error {
 	return recordScreen(!on)
 }
 
+// screenRecheck bounds how long watch takes to notice a timeout or a switch
+// set by another process.
+const screenRecheck = 5 * time.Second
+
+// screenWatch is watch's half of the screen: it counts down from the last
+// time the base station was touched, and turns the screen off at the
+// timeout.
+//
+// Touching the base station is known from the reports it sends: 07 25 for
+// each step of the volume knob, 07 45 for the ChatMix dial, 07 bb for the
+// mute button. Any report 07 counts as a touch, and as the screen being back,
+// since touching the base station brings back its own screen. Pressing the
+// knob without turning it brings it back too but sends nothing, so the
+// belief stays off until the next report.
+type screenWatch struct {
+	blank func() error
+	// touched is when the countdown last started.
+	touched time.Time
+	// timeout is the slug the countdown is running for. A new one starts it
+	// again, so choosing a shorter one does not turn the screen off at once.
+	timeout string
+}
+
+// startScreenWatch starts the countdown on connecting. The base station
+// draws its own screen whenever it powers up, which a new connection
+// usually is.
+func startScreenWatch(blank func() error) *screenWatch {
+	_ = recordScreen(false)
+	slug, _, _ := readScreenTimeout()
+	return &screenWatch{blank: blank, touched: time.Now(), timeout: slug}
+}
+
+// touch is a report from the base station.
+func (w *screenWatch) touch(now time.Time) {
+	w.touched = now
+	if belief, err := readScreenBelief(); err == nil && belief.Off {
+		_ = recordScreen(false)
+	}
+}
+
+// tick turns the screen off if the timeout has passed, and says how long
+// until it should be called again.
+func (w *screenWatch) tick(now time.Time) (time.Duration, error) {
+	slug, after, err := readScreenTimeout()
+	if err != nil {
+		return screenRecheck, nil
+	}
+	if slug != w.timeout {
+		w.timeout, w.touched = slug, now
+	}
+	belief, err := readScreenBelief()
+	if err != nil || belief.Off || after == 0 {
+		return screenRecheck, nil
+	}
+	// Turning the screen on from the panel is a touch too, and the belief is
+	// the only way watch hears of it.
+	if belief.At.After(w.touched) {
+		w.touched = belief.At
+	}
+	if idle := now.Sub(w.touched); idle < after {
+		return min(after-idle, screenRecheck), nil
+	}
+	if err := w.blank(); err != nil {
+		return 0, err
+	}
+	_ = recordScreen(true)
+	return screenRecheck, nil
+}
+
 // readJSON leaves v as it is when the file does not exist.
 func readJSON(path string, v any) error {
 	raw, err := os.ReadFile(path)

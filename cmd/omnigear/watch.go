@@ -35,7 +35,8 @@ const rescan = 5 * time.Second
 
 // cmdWatch follows what a headset announces as it happens — its ChatMix
 // dial, applied to the Sonar channels, and its mute button — for as long as
-// it runs.
+// it runs. It also turns a base station's screen off when it has gone
+// untouched for the screen timeout, since nothing else is running to.
 //
 // It is the one command that does not print a single object and exit. The
 // base station reports these only as they change, so something has to be
@@ -123,7 +124,7 @@ func cmdWatch() error {
 func findWatched() (hidraw.Node, *model.Entry, model.Watcher, bool) {
 	for _, node := range hidraw.Enumerate() {
 		entry := catalog.FindByUSB(node.Vendor, node.Product)
-		if entry == nil || !(entry.Has(model.CapSonar) || entry.Has(model.CapMicMute)) {
+		if entry == nil || !(entry.Has(model.CapSonar) || entry.Has(model.CapMicMute) || entry.Has(model.CapScreen)) {
 			continue
 		}
 		watcher, ok := entry.Driver.(model.Watcher)

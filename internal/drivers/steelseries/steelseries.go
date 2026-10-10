@@ -695,6 +695,8 @@ const reportNotice = 0x07
 // power loss, and its node goes away with the power, so every replug ends
 // this watch and the next one restores it. A failed read of whether Sonar is
 // on announces nothing, so a passing error does not turn it off.
+//
+// It also runs the screen's timeout; see screenWatch.
 func (driver) Watch(node hidraw.Node, events model.WatchEvents) error {
 	conn, err := arctis.Open(node)
 	if err != nil {
@@ -710,13 +712,25 @@ func (driver) Watch(node hidraw.Node, events model.WatchEvents) error {
 	if err := conn.Send(queryStatus); err != nil {
 		return err
 	}
+	screen := startScreenWatch(conn.Blank)
+	next := time.Now()
 	for {
-		report, err := conn.Read(time.Minute)
+		if now := time.Now(); !now.Before(next) {
+			wait, err := screen.tick(now)
+			if err != nil {
+				return err
+			}
+			next = now.Add(wait)
+		}
+		report, err := conn.Read(time.Until(next))
 		if errors.Is(err, hidraw.ErrTimeout) {
 			continue
 		}
 		if err != nil {
 			return err
+		}
+		if len(report) >= 2 && report[0] == reportNotice {
+			screen.touch(time.Now())
 		}
 		switch {
 		case len(report) >= 4 && report[0] == reportNotice && report[1] == chatMix:
