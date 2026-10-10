@@ -4,6 +4,9 @@
 #   scripts/render-card <device> [tab...]     tabs default to all of the device's
 #   scripts/render-card --fixture f.json …    render a saved `get` instead
 #
+# The screen tab shows the screensaver preview: OG_PREVIEW, a GIF, or else
+# one drawn for the device's screensaver.
+#
 # A second Quickshell instance loads this checkout's QML against the installed
 # shell's Commons and Ui, so the card is drawn as the bar draws it. It renders
 # offscreen: nothing appears on the display.
@@ -67,6 +70,12 @@ ShellRoot {
                 width: frame.width - frame.contentLeftInset - frame.contentRightInset - Style.space(8)
                 device: root.device
                 activeTab: Quickshell.env("OG_TAB")
+                screenPreview: Quickshell.env("OG_PREVIEW") && root.device.screen && root.device.screen.saver ? {
+                    slug: root.device.screen.saver.current,
+                    path: Quickshell.env("OG_PREVIEW"),
+                    at: Date.now(),
+                    version: 1
+                } : null
                 Component.onCompleted: console.log("render-card: card width", width)
             }
         }
@@ -95,10 +104,17 @@ if [[ ${#tabs[@]} -eq 0 ]]; then
   [[ ${#tabs[@]} -eq 0 ]] && tabs=("")
 fi
 
+saver=$(jq -r '.device.state.screen.saver.current // ""' "$OUT/device.json")
+preview=${OG_PREVIEW:-}
+if [[ -z $preview && -n $saver && " ${tabs[*]} " == *" screen "* ]]; then
+  [[ -x bin/omnigear ]] || mise exec -- go build -o bin/omnigear ./cmd/omnigear
+  preview=$(./bin/omnigear screen-preview "$saver" | jq -r '.path // ""')
+fi
+
 for tab in "${tabs[@]}"; do
   png="$OUT/${tab:-card}.png"
   rm -f "$png"
-  QT_QPA_PLATFORM=offscreen OG_DEVICE="$OUT/device.json" OG_TAB="$tab" OG_OUT="$png" \
+  QT_QPA_PLATFORM=offscreen OG_DEVICE="$OUT/device.json" OG_TAB="$tab" OG_OUT="$png" OG_PREVIEW="$preview" \
     timeout 20 quickshell -p "$H/shell.qml" >"$OUT/${tab:-card}.log" 2>&1 || true
   if grep -q "TabBar overflows" "$OUT/${tab:-card}.log"; then
     echo "tab '${tab}': the tabs run past the card: see $OUT/${tab:-card}.log" >&2
